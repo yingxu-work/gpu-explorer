@@ -71,5 +71,38 @@ test('step active ids always map to boxes', function () {
   });
 });
 
+test('GEMM layout reads as one pipeline, not scattered boxes', function () {
+  var boxes = M.boxesFor('gemm', S.JOURNEYS.gemm);
+  var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+  assert.ok(byId['a-tile'].x < byId['smem'].x, 'inputs must sit left of shared memory');
+  assert.ok(byId['smem'].x < byId['warp'].x && byId['warp'].x < byId['c-out'].x, 'smem -> compute -> output must run left to right');
+  assert.ok(Math.abs(byId['smem'].z) < 0.01 && Math.abs(byId['c-out'].z) < 0.01, 'smem and output must sit on the central spine');
+  assert.ok(Math.abs(byId['a-tile'].z + byId['b-tile'].z) < 0.01, 'A row and B column must be symmetric about the spine');
+  assert.ok(Math.abs(byId['warp'].z + byId['sm'].z) < 0.01, 'compute grid must be symmetric about the spine');
+  assert.ok(byId['smem'].w > byId['warp'].w, 'shared memory must read as one distinct central block');
+});
+test('stacking layout is one centred column with symmetric side blocks', function () {
+  var boxes = M.boxesFor('stacking', S.JOURNEYS.stacking);
+  var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+  ['lid', 'logic-top', 'bond', 'logic-low', 'mem-layer', 'substrate'].forEach(function (id) {
+    assert.ok(Math.abs(byId[id].x) < 0.01 && Math.abs(byId[id].z) < 0.01, id + ' must sit on the central column');
+  });
+  assert.ok(Math.abs(byId['cut-core'].x + byId['gpu-block'].x) < 0.01, 'side blocks must flank symmetrically');
+  assert.ok(byId['cut-core'].y === byId['gpu-block'].y, 'side blocks must share logic-layer height');
+});
+test('chain journeys run in regular left-to-right rows', function () {
+  var pt = M.boxesFor('pagetable', S.JOURNEYS.pagetable);
+  var byId = {}; pt.forEach(function (b) { byId[b.id] = b; });
+  var chain = ['cpu', 'tlb', 'pgd', 'pud', 'pmd', 'pte'];
+  for (var i = 1; i < chain.length; i++) {
+    assert.ok(byId[chain[i]].x > byId[chain[i - 1]].x, chain[i] + ' must sit right of ' + chain[i - 1]);
+    assert.ok(byId[chain[i]].z === byId[chain[i - 1]].z, 'chain row must share one depth');
+  }
+  var px = M.boxesFor('pixel', S.JOURNEYS.pixel);
+  var pxId = {}; px.forEach(function (b) { pxId[b.id] = b; });
+  assert.ok(pxId['tex'].x === pxId['shader'].x, 'texture must sit under the shader');
+  assert.ok(pxId['pixel'].x === pxId['fb'].x, 'target pixel must sit under the frame buffer');
+});
+
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);
