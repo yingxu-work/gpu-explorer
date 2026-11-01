@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102i';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102i';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102j';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102j';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -145,7 +145,7 @@ class HardwareScene {
     if(notify)this.userNavigate('component');
     // Tree selection is an explicit physical navigation action. Logical
     // lesson selection enters through update(), so it never forces a level.
-    const rawComponent=this.hardware.components[id];
+    const rawComponent=this.hardware.components[id]||this.hardware.components[ALIASES[id]];
     if(notify&&rawComponent&&['sm','hbm','power','interconnect'].includes(rawComponent.level)&&this.level!==rawComponent.level)this.setLevel(rawComponent.level);
     else if(notify&&rawComponent&&['sm','hbm','power','interconnect'].includes(this.level)&&rawComponent.level!==this.level)this.setLevel(rawComponent.level);
     else if(notify&&['sm','l2'].includes(id)&&['board','package'].includes(this.level))this.setLevel('die');

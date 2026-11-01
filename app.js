@@ -96,8 +96,8 @@
     state.compareModel = null;
     transition({ type: 'ENTER_GUIDE', playback: options.playback });
     $('follow-camera').checked = true;
-    document.querySelector('.inspector-scroll').scrollTop = 0;
     render();
+    document.querySelector('.inspector-scroll').scrollTop = 0;
   }
   function exploreAction(event) {
     transition(event);
@@ -297,7 +297,7 @@
     $('route-caption').textContent = story.caption;
     const path = $('route-nodes'); path.replaceChildren();
     story.nodes.forEach((label, index) => {
-      if (index) { const arrow = document.createElement('i'); arrow.textContent = story.kind === 'dependency' && index === 1 ? '×' : '→'; path.append(arrow); }
+      if (index) { const arrow = document.createElement('i'); arrow.textContent = story.kind === 'target' ? '·' : story.kind === 'dependency' && index === 1 ? '×' : '→'; path.append(arrow); }
       const node = document.createElement('span'); node.textContent = label; node.dataset.index = index; path.append(node);
     });
   }
@@ -373,8 +373,11 @@
     if (!applyingScene && ui.selection !== id) { transition({ type: 'SELECT', id, level: scene()?.getLevel?.() }); render(); }
   };
   window.__gpuExplorerMoveSelection = dir => {
-    S.selectNext(state, dir); const id = state.selected;
-    exploreAction({ type: 'SELECT', id }); S.select(state, id);
+    const components = (scene()?.getComponents?.() || []).filter(item => item.level === ui.level);
+    if (!components.length) return;
+    const current = components.findIndex(item => item.id === ui.selection);
+    const index = current < 0 ? (dir > 0 ? 0 : components.length - 1) : (current + dir + components.length) % components.length;
+    exploreAction({ type: 'SELECT', id: components[index].id });
   };
   window.addEventListener('gpu-user-navigate', event => {
     if (applyingScene) return;
@@ -428,7 +431,7 @@
   $('home-btn').onclick = resetCamera;
   $('selection-close').onclick = () => { state.selected = null; exploreAction({ type: 'SELECT', id: null }); };
   $('fullscreen-btn').onclick = async () => {
-    try { if (document.fullscreenElement) await document.exitFullscreen(); else await $('diagram').requestFullscreen(); }
+    try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.querySelector('.canvas-panel').requestFullscreen(); }
     catch { toast('此浏览器暂不支持全屏。'); }
   };
   $('start-walkthrough').onclick = () => enterGuide({ journey: 'gemm', index: 0 });
@@ -482,7 +485,7 @@
       if (now - lastHashFrame > 200) { syncHash(); lastHashFrame = now; }
     }
     if (ui.advanceRequested) { S.next(state); enterGuide({ playback: 'sequence' }); }
-    else if (ui.playback !== previous.playback || ui.explodeAuto !== previous.explodeAuto) {
+    else if (ui.playback !== previous.playback || ui.explodeAuto !== previous.explodeAuto || (previous.progress < 1 && ui.progress >= 1)) {
       renderPlayback(); window.GpuExplorerLab?.render($('journey-lab'), state, S.currentStep(state), ui.progress); syncHash();
     }
     requestAnimationFrame(frame);

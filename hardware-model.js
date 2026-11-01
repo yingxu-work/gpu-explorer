@@ -1,6 +1,6 @@
-import { createHBMDetail } from './hbm-model.js?v=20261102i';
-import { createPowerDetail } from './power-model.js?v=20261102i';
-import { createInterconnectDetail } from './interconnect-model.js?v=20261102i';
+import { createHBMDetail } from './hbm-model.js?v=20261102j';
+import { createPowerDetail } from './power-model.js?v=20261102j';
+import { createInterconnectDetail } from './interconnect-model.js?v=20261102j';
 
 // Hide every sibling subtree along the selected object's ancestor path.
 // Ancestors remain as paths, without retaining their unselected own meshes.

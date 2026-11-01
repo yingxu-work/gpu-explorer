@@ -96,6 +96,7 @@
         return { ...ui, playback: ui.playback === 'paused' ? 'step' : 'paused', dwell: 0 };
       case 'SCENE_LEVEL':
         return LEVELS.includes(event.level) ? { ...ui, level: event.level,
+          cameraPreset: event.level === ui.level ? ui.cameraPreset : 'three-quarter',
           isolated: event.level === ui.level ? ui.isolated : false,
           explode: event.level === 'sm' ? 0 : ui.explode } : ui;
       case 'SCENE_ISOLATION':
