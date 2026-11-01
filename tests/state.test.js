@@ -166,6 +166,18 @@ test('per-model GEMM notes exist for H100 and A100, default to shared body', fun
   var pt = S.JOURNEYS.pagetable.steps[0];
   eq(S.getStepNote(pt, 'a20pro'), pt.body); // no per-model note: shared body
 });
+test('page-table return path uses a return lane, not a diagonal flow', function () {
+  var j = S.JOURNEYS.pagetable;
+  var ret = j.flows.filter(function (f) { return f.from === 'cache' && f.to === 'cpu'; });
+  eq(ret.length, 1); eq(ret[0].route, 'return');
+  // No other journey uses a return lane.
+  Object.keys(S.JOURNEYS).forEach(function (k) {
+    if (k === 'pagetable') return;
+    S.JOURNEYS[k].flows.forEach(function (f) { assert.ok(!f.route, k + ' should not use a return lane'); });
+  });
+  // The step that lights the return path is still the last step.
+  eq(j.steps[j.steps.length - 1].flows.indexOf('cache>cpu') >= 0, true);
+});
 test('compare mode round-trips in URL hash', function () {
   var s = S.createState({});
   S.goto(s, 4); S.setCompare(s, 'a100');

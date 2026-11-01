@@ -51,18 +51,32 @@
     (journey.flows || []).forEach(function (f) {
       const a = byId[f.from], b = byId[f.to];
       if (!a || !b) return;
-      const p1 = edgePoint(a, b), p2 = edgePoint(b, a);
       const hot = live[f.from + '>' + f.to];
+      const stroke = hot ? '#b45309' : '#94a3b8';
+      if (f.route === 'return') {
+        // Return lane: down below the diagram, across, then up into the
+        // target from below — no long diagonal crossing the whole diagram.
+        const laneY = 470;
+        const ax = center(a).x, ay = a.y + a.h, bx = center(b).x, by = b.y + b.h;
+        const pl = el('polyline', {
+          points: ax + ',' + ay + ' ' + ax + ',' + laneY + ' ' + bx + ',' + laneY + ' ' + bx + ',' + by,
+          fill: 'none', stroke: stroke, 'stroke-width': hot ? '3.5' : '2',
+          'marker-end': hot ? 'url(#arr-hot' + suffix + ')' : 'url(#arr' + suffix + ')',
+        });
+        svg.appendChild(pl);
+        return;
+      }
+      const p1 = edgePoint(a, b), p2 = edgePoint(b, a);
       const line = el('line', {
         x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
-        stroke: hot ? '#b45309' : '#94a3b8', 'stroke-width': hot ? '3.5' : '2',
+        stroke: stroke, 'stroke-width': hot ? '3.5' : '2',
         'marker-end': hot ? 'url(#arr-hot' + suffix + ')' : 'url(#arr' + suffix + ')',
         'stroke-dasharray': (f.from === 'smem' && f.to === 'sm') || (f.from === 'tex') ? '7 5' : '',
       });
       svg.appendChild(line);
     });
     journey.nodes.forEach(function (node) {
-      const g = el('g', { class: 'svg-node', tabindex: '0' });
+      const g = el('g', { class: 'svg-node', tabindex: '0', role: 'button', 'aria-label': node.label + '：' + (node.detail || '') });
       const isActive = step.active.indexOf(node.id) >= 0;
       const isSel = state.selected === node.id;
       const rect = el('rect', {
@@ -85,19 +99,32 @@
         node.kind === 'data' ? '数据' : node.kind === 'compute' ? '计算' : node.kind === 'memory' ? '存储' : '控制');
       g.appendChild(kind);
       g.addEventListener('click', function () { S.select(state, node.id); syncHash(); render(); });
-      g.addEventListener('mouseenter', function (ev) {
+      // Keyboard: Enter/Space on a focused block selects it, like a click.
+      g.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); S.select(state, node.id); syncHash(); render(); }
+      });
+      function showTip(x, y) {
         const tip = $('tooltip');
         tip.textContent = node.label + '：' + (node.detail || '');
         tip.style.display = 'block';
-        tip.style.left = (ev.clientX + 12) + 'px';
-        tip.style.top = (ev.clientY + 12) + 'px';
-      });
+        tip.style.left = x + 'px';
+        tip.style.top = y + 'px';
+      }
+      g.addEventListener('mouseenter', function (ev) { showTip(ev.clientX + 12, ev.clientY + 12); });
       g.addEventListener('mouseleave', function () { $('tooltip').style.display = 'none'; });
+      // Focus (keyboard/tab): same tooltip, anchored to the block itself
+      // instead of the mouse, so it works without a pointer.
+      g.addEventListener('focus', function () {
+        const r = g.getBoundingClientRect();
+        showTip(Math.min(r.right + 8, window.innerWidth - 340), r.top + 8);
+      });
+      g.addEventListener('blur', function () { $('tooltip').style.display = 'none'; });
       svg.appendChild(g);
     });
   }
 
   function render() {
+    $('tooltip').style.display = 'none';
     const journey = S.currentJourney(state);
     const step = S.currentStep(state);
     $('journey-title').textContent = journey.title;

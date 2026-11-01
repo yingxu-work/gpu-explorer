@@ -68,7 +68,7 @@
         { from: 'cpu', to: 'tlb' }, { from: 'tlb', to: 'pgd' },
         { from: 'pgd', to: 'pud' }, { from: 'pud', to: 'pmd' },
         { from: 'pmd', to: 'pte' }, { from: 'pte', to: 'ram' },
-        { from: 'ram', to: 'cache' }, { from: 'cache', to: 'cpu' },
+        { from: 'ram', to: 'cache' }, { from: 'cache', to: 'cpu', route: 'return' },
       ],
       views: {
         structure: '结构视角：CPU、TLB、页表各级、内存与缓存的位置关系。',

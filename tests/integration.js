@@ -30,7 +30,7 @@ server.listen(0, '127.0.0.1', async () => {
   try {
     const index = await get(port, '/');
     assert.equal(index.status, 200);
-    for (const marker of ['GPU Explorer', 'journey-select', 'model-select', 'diagram', 'diagram-svg', 'overview', 'verdict', 'play-btn', 'state.js', 'app.js']) {
+    for (const marker of ['GPU Explorer', 'journey-select', 'model-select', 'compare-select', 'compare-diagram', 'diagram', 'diagram-svg', 'overview', 'verdict', 'play-btn', 'state.js', 'app.js']) {
       assert.ok(index.body.includes(marker), 'index missing: ' + marker);
     }
     for (const asset of ['/state.js', '/app.js', '/styles.css']) {
