@@ -14,6 +14,20 @@
 // the active / selected / hovered block, larger; active = amber
 // emissive, selected = indigo. Shell copy and text budgets are
 // unchanged from Round 9.
+//
+// Round 11 (this round only, shell/copy/budgets/framed die/sparse
+// labels unchanged): (1) die depth — block heights +~30% (in
+// scene-map.js), plinth thickened and grounded to the slab top,
+// shadow frustum widened to cover the whole package, key light
+// stronger and ambient lower for harder shadow grounding, die
+// cameras lowered (GEMM 43deg -> ~38deg elevation, other die
+// ~43deg -> ~35deg) so the slab sides read; (2) active identity —
+// the amber/indigo wash is cut back (active 0.45 -> 0.20, selected
+// 1.0 -> 0.30) and the pop moves to a thin amber/indigo frame on
+// the block's top face, so the base hue (e.g. smem teal) stays
+// readable; (3) stacking side blocks — a shared base shelf under
+// each side block spans the gap to the column face (see
+// M.stackingShelf), so they no longer float detached.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -85,16 +99,20 @@ function SceneView(container, isCompare) {
   this.controls.minDistance = 6;
   this.controls.maxDistance = 45;
   this.controls.maxPolarAngle = Math.PI * 0.49;
-  this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  var key = new THREE.DirectionalLight(0xffffff, 0.95); key.position.set(8, 14, 6);
+  this.scene.add(new THREE.AmbientLight(0xffffff, 0.42));
+  var key = new THREE.DirectionalLight(0xffffff, 1.15); key.position.set(8, 14, 6);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
-  key.shadow.camera.left = -13; key.shadow.camera.right = 13;
-  key.shadow.camera.top = 13; key.shadow.camera.bottom = -13;
+  // Round 11: shadow frustum widened from +/-13 to +/-16 — the GEMM
+  // package is 29 wide with HBM slabs out to +/-13.35, so at +/-13
+  // the outer slabs and exploded edge blocks fell outside the shadow
+  // map and lost their grounding shadow.
+  key.shadow.camera.left = -16; key.shadow.camera.right = 16;
+  key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
   key.shadow.camera.near = 1; key.shadow.camera.far = 40;
   key.shadow.bias = -0.0004;
   this.scene.add(key);
-  var fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(-8, 6, -8); this.scene.add(fill);
+  var fill = new THREE.DirectionalLight(0xffffff, 0.30); fill.position.set(-8, 6, -8); this.scene.add(fill);
   this.group = new THREE.Group(); this.scene.add(this.group);
   this.meshes = {}; this.labels = {}; this.flowLines = [];
   this.journeyId = null; this.stepKey = null; this.explodeT = 0;
@@ -247,13 +265,49 @@ SceneView.prototype.build = function (journeyId, journey) {
     // on explode and on raycast-free rendering; their colours dim with
     // the parent in applyHighlight via userData.plinthMat/topMat.
     var plinthMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(box.color).multiplyScalar(0.55), roughness: 0.7, metalness: 0.1, transparent: !!box.disabled, opacity: box.disabled ? 0.45 : 1 });
-    var plinth = new THREE.Mesh(new THREE.BoxGeometry(box.w + 0.28, 0.14, box.d + 0.28), plinthMat);
-    plinth.position.set(0, -box.h / 2 + 0.07, 0); plinth.receiveShadow = true; mesh.add(plinth);
+    // Round 11: plinth thickened 0.14 -> 0.20 and dropped so its
+    // bottom meets the die slab top (-0.30 world; die centre y is
+    // h/2 - 0.25, so the plinth bottom must sit at -h/2 - 0.05
+    // relative to the mesh centre). A floating plinth reads as a
+    // floating block; a grounded one reads as a slab on silicon.
+    var plinth = new THREE.Mesh(new THREE.BoxGeometry(box.w + 0.28, 0.20, box.d + 0.28), plinthMat);
+    plinth.position.set(0, -box.h / 2 + 0.05, 0); plinth.receiveShadow = true; mesh.add(plinth);
     var topMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(box.color).multiplyScalar(1.12), roughness: 0.55, metalness: 0.2, transparent: !!box.disabled, opacity: box.disabled ? 0.45 : 1 });
-    var topPlate = new THREE.Mesh(new THREE.BoxGeometry(Math.max(box.w - 0.45, 0.5), 0.1, Math.max(box.d - 0.45, 0.5)), topMat);
-    topPlate.position.set(0, box.h / 2 - 0.06, 0); mesh.add(topPlate);
+    var topPlate = new THREE.Mesh(new THREE.BoxGeometry(Math.max(box.w - 0.45, 0.5), 0.12, Math.max(box.d - 0.45, 0.5)), topMat);
+    topPlate.position.set(0, box.h / 2 - 0.05, 0); mesh.add(topPlate);
     mesh.userData.plinthMat = plinthMat; mesh.userData.topMat = topMat;
     mesh.userData.plinthBase = plinthMat.color.clone(); mesh.userData.topBase = topMat.color.clone();
+    // Round 11 active/selected frame: a thin amber (active) or
+    // indigo (selected) border on the block's top face, toggled in
+    // applyHighlight. The pop is the frame, not a wash over the
+    // whole block, so the base hue stays identifiable. Child of the
+    // mesh, so it follows explode and is not raycast-pickable
+    // (pick() uses recursive=false on the meshes dict only).
+    var frameMat = new THREE.MeshStandardMaterial({ color: ACTIVE_EMISSIVE, emissive: ACTIVE_EMISSIVE, emissiveIntensity: 0.7, roughness: 0.5, metalness: 0.2 });
+    var frame = new THREE.Group();
+    var fxA = new THREE.Mesh(new THREE.BoxGeometry(box.w, 0.09, 0.20), frameMat);
+    fxA.position.set(0, box.h / 2 + 0.055, box.d / 2 - 0.10); frame.add(fxA);
+    var fxB = new THREE.Mesh(new THREE.BoxGeometry(box.w, 0.09, 0.20), frameMat);
+    fxB.position.set(0, box.h / 2 + 0.055, -(box.d / 2 - 0.10)); frame.add(fxB);
+    var fzA = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.09, Math.max(box.d - 0.40, 0.3)), frameMat);
+    fzA.position.set(box.w / 2 - 0.10, box.h / 2 + 0.055, 0); frame.add(fzA);
+    var fzB = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.09, Math.max(box.d - 0.40, 0.3)), frameMat);
+    fzB.position.set(-(box.w / 2 - 0.10), box.h / 2 + 0.055, 0); frame.add(fzB);
+    frame.visible = false; mesh.add(frame);
+    mesh.userData.frame = frame; mesh.userData.frameMat = frameMat;
+    // Round 11 stacking shelf: a shared base under each side block,
+    // spanning the gap to the column face (pure geometry from
+    // scene-map.js, so it is unit-tested there). Child of the mesh,
+    // so on explode it rides its block outwards and separates with
+    // it, as exploded parts should; at explode 0 it grounds the
+    // block to the column instead of floating.
+    if (isStack && (box.id === 'cut-core' || box.id === 'gpu-block')) {
+      var sh = M.stackingShelf(box);
+      var shelf = new THREE.Mesh(
+        new THREE.BoxGeometry(sh.w, sh.h, sh.d),
+        new THREE.MeshStandardMaterial({ color: 0x2a2a2c, roughness: 0.8, metalness: 0 }));
+      shelf.position.set(sh.dx, sh.dy, sh.dz); shelf.receiveShadow = true; mesh.add(shelf);
+    }
     self.group.add(mesh); self.meshes[box.id] = mesh;
     var sprite = makeLabelSprite(box.label + (box.disabled ? ' ×' : ''), colorHex(box.color));
     var lw = Math.min(Math.max(box.w + 0.5, 2.0), 3.4);
@@ -319,8 +373,12 @@ SceneView.prototype.build = function (journeyId, journey) {
   // whole die and cuts edge blocks out of frame (verified bug in the
   // first 3D screenshots).
   if (isStack) { this.camera.position.set(4, 12, 20); this.target.set(0, 2.6, 0.5); }
-  else if (journeyId === 'gemm') { this.camera.position.set(8, 20, 19); this.target.set(0, 0.3, 0); }
-  else { this.camera.position.set(9, 18, 17); this.target.set(0, 0.4, 0); }
+  // Round 11: die cameras lowered (GEMM elevation ~44deg -> ~38deg,
+  // other die ~43deg -> ~35deg) and pulled slightly out, so the
+  // taller slabs' sides read at overview without clipping the
+  // 29-wide GEMM package — verified against screenshots, not assumed.
+  else if (journeyId === 'gemm') { this.camera.position.set(8, 17, 20); this.target.set(0, 0.3, 0); }
+  else { this.camera.position.set(9, 15, 19); this.target.set(0, 0.4, 0); }
   this.controls.target.copy(this.target); this.stepKey = null;
 };
 SceneView.prototype.applyHighlight = function (step, selectedId) {
@@ -344,9 +402,22 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     if (dim !== 1) mesh.material.color.multiplyScalar(dim);
     if (mesh.userData.plinthMat) { mesh.userData.plinthMat.color.copy(mesh.userData.plinthBase); if (dim !== 1) mesh.userData.plinthMat.color.multiplyScalar(dim); }
     if (mesh.userData.topMat) { mesh.userData.topMat.color.copy(mesh.userData.topBase); if (dim !== 1) mesh.userData.topMat.color.multiplyScalar(dim); }
+    // Round 11: wash cut back — active 0.45 -> 0.20, selected
+    // 1.0 -> 0.30 — so a teal block stays teal instead of washing
+    // toward cream under amber + a brightened top plate. The pop
+    // is now the top-face frame below, not the emissive.
     mesh.material.emissive = new THREE.Color(isSel ? SELECT_EMISSIVE : (isActive ? ACTIVE_EMISSIVE : 0x000000));
-    mesh.material.emissiveIntensity = isSel ? 1.0 : (isActive ? 0.45 : 0);
+    mesh.material.emissiveIntensity = isSel ? 0.30 : (isActive ? 0.20 : 0);
     mesh.scale.setScalar((isSel || isHover) ? 1.05 : 1);
+    var frame = mesh.userData.frame;
+    if (frame) {
+      frame.visible = !!(isSel || isActive);
+      if (isSel || isActive) {
+        var fc = isSel ? SELECT_EMISSIVE : ACTIVE_EMISSIVE;
+        mesh.userData.frameMat.color.setHex(fc);
+        mesh.userData.frameMat.emissive.setHex(fc);
+      }
+    }
     // Round 10 label rule (GEX/PC Anatomy): die journeys show a label
     // ONLY for the active / selected / hovered block, larger than
     // before, so the frame is not 40% label rectangles. Stacking keeps
@@ -368,7 +439,7 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     d.mesh.material.color.setHex(d.mesh.userData.baseColor);
     if (!parentActive && !parentSel) d.mesh.material.color.multiplyScalar(DIM_FACTOR);
     d.mesh.material.emissive = new THREE.Color((parentSel || parentActive) ? ACTIVE_EMISSIVE : 0x000000);
-    d.mesh.material.emissiveIntensity = (parentSel || parentActive) ? 0.5 : 0;
+    d.mesh.material.emissiveIntensity = (parentSel || parentActive) ? 0.20 : 0;
   });
   if (step) {
     var live = {}; (step.flows || []).forEach(function (f) { live[f] = true; });
@@ -409,10 +480,10 @@ SceneView.prototype.setCameraPreset = function (name) {
   var t = this.target;
   if (name === 'top') { this.camera.position.set(t.x, 24, t.z + 0.01); }
   else if (name === 'side') { this.camera.position.set(0, t.y + 0.8, 26); }
-  else { // three-quarter: journey default framing
+  else { // three-quarter: journey default framing (Round 11 values)
     if (this.journeyId === 'stacking') { this.camera.position.set(4, 12, 20); }
-    else if (this.journeyId === 'gemm') { this.camera.position.set(8, 20, 19); }
-    else { this.camera.position.set(9, 18, 17); }
+    else if (this.journeyId === 'gemm') { this.camera.position.set(8, 17, 20); }
+    else { this.camera.position.set(9, 15, 19); }
   }
   this.controls.target.copy(t);
   this.controls.update();

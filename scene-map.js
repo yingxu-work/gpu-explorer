@@ -42,36 +42,41 @@
       // Anatomy: height ~15-20% of footprint). Shared Memory is the
       // central spine block: tall in depth, spanning both input rows.
       // Total span x -9.9..8.1, z -3.7..3.7, inside a 20.8 x 9.6 die.
-      'a-tile': { x: -8.0, z: -2.6, w: 3.8, d: 2.2, h: 0.7 },
-      'b-tile': { x: -8.0, z: 2.6, w: 3.8, d: 2.2, h: 0.7 },
-      smem:     { x: -3.2, z: 0,    w: 4.0, d: 5.6, h: 0.8 },
-      warp:     { x: 1.8,  z: -2.6, w: 3.6, d: 1.8, h: 0.55 },
-      sm:       { x: 1.8,  z: 2.6,  w: 3.6, d: 2.2, h: 0.85 },
-      'c-out':  { x: 6.6,  z: 0,    w: 3.0, d: 3.0, h: 0.75 }
+      // Round 11: heights raised ~30% (h 0.8..1.1, still flat slabs,
+      // not towers) because the Round 10 die read vertically thin
+      // at overview; footprints and gaps are unchanged.
+      'a-tile': { x: -8.0, z: -2.6, w: 3.8, d: 2.2, h: 0.95 },
+      'b-tile': { x: -8.0, z: 2.6, w: 3.8, d: 2.2, h: 0.95 },
+      smem:     { x: -3.2, z: 0,    w: 4.0, d: 5.6, h: 1.05 },
+      warp:     { x: 1.8,  z: -2.6, w: 3.6, d: 1.8, h: 0.8 },
+      sm:       { x: 1.8,  z: 2.6,  w: 3.6, d: 2.2, h: 1.1 },
+      'c-out':  { x: 6.6,  z: 0,    w: 3.0, d: 3.0, h: 1.0 }
     },
     pagetable: {
       // Top row, evenly spaced left -> right; bottom row returns under
       // the right column, with a long clean return lane (cache -> cpu).
-      cpu:   { x: -8.6,  z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
-      tlb:   { x: -5.16, z: -2.7, w: 2.9, d: 2.0, h: 0.8 },
-      pgd:   { x: -1.72, z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
-      pud:   { x: 1.72,  z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
-      pmd:   { x: 5.16,  z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
-      pte:   { x: 8.6,   z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
-      ram:   { x: 8.6,   z: 2.7,  w: 2.9, d: 2.0, h: 0.85 },
-      cache: { x: 1.72,  z: 2.7,  w: 2.9, d: 2.0, h: 0.8 }
+      // Round 11: same ~30% height raise as GEMM, footprints unchanged.
+      cpu:   { x: -8.6,  z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
+      tlb:   { x: -5.16, z: -2.7, w: 2.9, d: 2.0, h: 1.0 },
+      pgd:   { x: -1.72, z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
+      pud:   { x: 1.72,  z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
+      pmd:   { x: 5.16,  z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
+      pte:   { x: 8.6,   z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
+      ram:   { x: 8.6,   z: 2.7,  w: 2.9, d: 2.0, h: 1.05 },
+      cache: { x: 1.72,  z: 2.7,  w: 2.9, d: 2.0, h: 1.0 }
     },
     pixel: {
       // Top row, evenly spaced left -> right; texture sits under the
       // shader (its sampling loop is vertical), target pixel under the
       // frame buffer (its write is vertical).
-      tri:    { x: -8.4, z: -2.7, w: 3.0, d: 2.0, h: 0.85 },
-      raster: { x: -4.2, z: -2.7, w: 3.0, d: 2.0, h: 0.85 },
-      shader: { x: 0,    z: -2.7, w: 3.0, d: 2.0, h: 0.85 },
-      depth:  { x: 4.2,  z: -2.7, w: 3.0, d: 2.0, h: 0.85 },
-      fb:     { x: 8.4,  z: -2.7, w: 3.0, d: 2.0, h: 0.8 },
-      tex:    { x: 0,    z: 2.7,  w: 3.0, d: 2.0, h: 0.8 },
-      pixel:  { x: 8.4,  z: 2.7,  w: 3.0, d: 2.0, h: 0.85 }
+      // Round 11: same ~30% height raise as GEMM, footprints unchanged.
+      tri:    { x: -8.4, z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
+      raster: { x: -4.2, z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
+      shader: { x: 0,    z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
+      depth:  { x: 4.2,  z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
+      fb:     { x: 8.4,  z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
+      tex:    { x: 0,    z: 2.7,  w: 3.0, d: 2.0, h: 1.0 },
+      pixel:  { x: 8.4,  z: 2.7,  w: 3.0, d: 2.0, h: 1.05 }
     },
     stacking: {
       // Centred vertical column (x 0, z 0), base grounded on the slab.
@@ -87,8 +92,12 @@
       lid:       { x: 0, z: 0, w: 8.6, d: 5.6, h: 0.45, y: 5.0, labelZ: 3.8 },
       // Side tier blocks flank the column symmetrically in x, both at
       // logic-band height, forward of the column so they read as tiers.
-      'cut-core': { x: 7.4, z: 2.2, w: 3.2, d: 3.0, h: 0.9, y: 3.15 },
-      'gpu-block': { x: -7.4, z: 2.2, w: 3.2, d: 3.0, h: 0.9, y: 3.15 }
+      // Round 11: moved inward (7.4 -> 6.9) so the gap to the column
+      // face (x +/-4.3) is 1.0, not 1.5; stackingShelf() below then
+      // spans that gap with a shared base, so the blocks no longer
+      // float detached from the column.
+      'cut-core': { x: 6.9, z: 2.2, w: 3.2, d: 3.0, h: 0.9, y: 3.15 },
+      'gpu-block': { x: -6.9, z: 2.2, w: 3.2, d: 3.0, h: 0.9, y: 3.15 }
     }
   };
   // Explode offsets per journey. Die: radial from the chip centre, so the
@@ -174,6 +183,22 @@
     out.push({ role: 'shared-strip', dx: 0, dy: 0, dz: box.d / 2 + 0.10, w: box.w, h: 0.5, d: 0.2, color: KIND_COLOR.memory });
     return out;
   }
+  // Round 11 shared base for a stacking side block: a flat shelf
+  // under the block, spanning from the column face (x +/-4.3, the
+  // column width is 8.6) to the block's outer edge, its top exactly
+  // meeting the block's bottom. Returns offsets relative to the
+  // block centre, so scene3d.js can attach it as a child mesh that
+  // rides the block on explode and grounds it at explode 0.
+  // Column half-width is a parameter so the test can pin it.
+  function stackingShelf(box, columnHalfW) {
+    var halfW = (typeof columnHalfW === 'number') ? columnHalfW : 4.3;
+    var side = box.x >= 0 ? 1 : -1;
+    var outer = box.x + side * box.w / 2;
+    var innerEdge = side * halfW;
+    var w = Math.abs(outer - innerEdge);
+    var cx = (innerEdge + outer) / 2;
+    return { dx: cx - box.x, dy: -box.h / 2 - 0.10, dz: 0, w: w, h: 0.20, d: box.d };
+  }
   function explodePos(box, t) {
     t = clamp01(t);
     return {
@@ -193,7 +218,7 @@
     active.forEach(function (b) { sx += b.x; sy += b.y; sz += b.z; });
     return { x: sx / active.length, y: sy / active.length, z: sz / active.length };
   }
-  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails };
+  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails, stackingShelf: stackingShelf };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerSceneMap = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

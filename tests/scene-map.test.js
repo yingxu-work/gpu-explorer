@@ -129,12 +129,40 @@ test('Round 10 GEMM: one framed die — flat blocks inside 20.8 x 9.6, constant 
   var boxes = M.boxesFor('gemm', S.JOURNEYS.gemm);
   var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
   boxes.forEach(function (b) {
-    assert.ok(b.h <= 0.85, b.id + ' must be flat, not a tall box (h=' + b.h + ')');
+    // Round 11: heights raised to 0.8..1.1 (was <= 0.85) so the die
+    // reads at overview; still flat slabs, not towers (<= 1.15).
+    assert.ok(b.h >= 0.8 && b.h <= 1.15, b.id + ' must be a taller flat slab, not thin or a tower (h=' + b.h + ')');
     assert.ok(Math.abs(b.x) + b.w / 2 <= 10.5, b.id + ' must fit inside the die frame in x');
     assert.ok(Math.abs(b.z) + b.d / 2 <= 4.9, b.id + ' must fit inside the die frame in z');
   });
   assert.ok(byId['smem'].d > byId['sm'].d, 'smem spine must be deeper than the SM block');
   assert.ok(byId['c-out'].x - byId['c-out'].w / 2 > byId['sm'].x + byId['sm'].w / 2, 'output must sit right of compute with a gap');
+});
+
+test('Round 11 stacking: side blocks sit 1.0 from the column, shelf spans the gap', function () {
+  var boxes = M.boxesFor('stacking', S.JOURNEYS.stacking);
+  var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+  // Column face is at x +/-4.3 (column width 8.6).
+  ['cut-core', 'gpu-block'].forEach(function (id) {
+    var b = byId[id];
+    var inner = Math.abs(b.x) - b.w / 2;
+    assert.ok(Math.abs(inner - 4.3 - 1.0) < 0.01, id + ' inner edge must be 1.0 from the column face, got gap ' + (inner - 4.3));
+    var sh = M.stackingShelf(b);
+    var shelfInner = Math.abs(b.x + sh.dx) - sh.w / 2;
+    var shelfOuter = Math.abs(b.x + sh.dx) + sh.w / 2;
+    assert.ok(Math.abs(shelfInner - 4.3) < 0.01, id + ' shelf must start at the column face');
+    assert.ok(Math.abs(shelfOuter - (Math.abs(b.x) + b.w / 2)) < 0.01, id + ' shelf must reach the block outer edge');
+    assert.ok(Math.abs((b.y - b.h / 2) - (b.y + sh.dy + sh.h / 2)) < 0.01, id + ' shelf top must meet the block bottom');
+  });
+  assert.ok(byId['cut-core'].x === -byId['gpu-block'].x, 'shelf geometry must stay symmetric');
+});
+
+test('Round 11 die journeys: heights raised, footprints unchanged', function () {
+  ['pagetable', 'pixel'].forEach(function (key) {
+    M.boxesFor(key, S.JOURNEYS[key]).forEach(function (b) {
+      assert.ok(b.h >= 1.0 && b.h <= 1.15, key + ':' + b.id + ' height must be raised flat slab (h=' + b.h + ')');
+    });
+  });
 });
 
 test('Round 9 GEMM: warp is a narrow dispatch strip, smem the wide central block', function () {
