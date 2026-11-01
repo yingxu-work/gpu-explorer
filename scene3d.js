@@ -183,6 +183,10 @@ function SceneView(container, isCompare) {
   this.renderer.domElement.style.width = '100%';
   this.renderer.domElement.style.height = '520px';
   this.renderer.domElement.tabIndex = 0;
+  // Piece 4: the canvas itself is the selectable element for keyboard
+  // users (3D meshes cannot take DOM focus). Its label states the
+  // keyboard contract; no visible label is added to the canvas.
+  this.renderer.domElement.setAttribute('aria-label', '可交互 3D 场景：拖动旋转，滚轮缩放，点击方块选中；聚焦后方向键移动选中部件');
   container.appendChild(this.renderer.domElement);
   this.scene = new THREE.Scene();
   this.scene.background = new THREE.Color(0x161618);
@@ -244,6 +248,22 @@ function SceneView(container, isCompare) {
   this.renderer.domElement.addEventListener('click', function (ev) {
     var hit = pick(ev);
     if (hit && window.__gpuExplorerOnSelect) window.__gpuExplorerOnSelect(hit.userData.id);
+  });
+  // Piece 4: canvas-focused arrow keys move the SELECTION (same
+  // highlight as a mouse click), not the step. Left/Up = previous node,
+  // Right/Down = next node, wrapping, via the app bridge. The event is
+  // stopped so the document-level step handler never also advances.
+  // OrbitControls does not bind arrow keys here (listenToKeyEvents is
+  // never called), so there is no pan conflict. Space/Enter are left
+  // alone: Space on a focused canvas still toggles play/pause via the
+  // document handler, matching the bottom-bar hint.
+  this.renderer.domElement.addEventListener('keydown', function (ev) {
+    var dir = 0;
+    if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') dir = 1;
+    else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') dir = -1;
+    if (!dir || !window.__gpuExplorerMoveSelection) return;
+    ev.preventDefault(); ev.stopPropagation();
+    window.__gpuExplorerMoveSelection(dir);
   });
   this.resize();
   var self2 = this;

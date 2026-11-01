@@ -112,17 +112,32 @@
     if (window.GpuExplorer3D) window.GpuExplorer3D.update(journey, step, state);
 
     // Keyboard-accessible block list: same selection as clicking a 3D
-    // block, so selection is not mouse-only.
+    // block, so selection is not mouse-only. Piece 4: render() rebuilds
+    // this list on every selection/step change, which used to drop
+    // keyboard focus back to the top of the page; the previously
+    // focused button (by node id) is restored after the rebuild, so
+    // Tab -> arrows -> Enter/Space works end to end. aria-pressed
+    // mirrors the .active class for screen readers.
     const bl = $('block-list');
+    var focusedBlockId = null;
+    if (document.activeElement && document.activeElement.dataset && document.activeElement.dataset.nodeId && bl.contains(document.activeElement)) {
+      focusedBlockId = document.activeElement.dataset.nodeId;
+    }
     bl.innerHTML = '';
     journey.nodes.forEach(function (node) {
       const b = document.createElement('button');
       b.className = state.selected === node.id ? 'active' : '';
       b.textContent = node.label + (node.disabled ? ' ×' : '');
+      b.dataset.nodeId = node.id;
       b.setAttribute('aria-label', node.label + '：' + (node.detail || ''));
+      b.setAttribute('aria-pressed', state.selected === node.id ? 'true' : 'false');
       b.onclick = function () { S.select(state, node.id); syncHash(); render(); };
       bl.appendChild(b);
     });
+    if (focusedBlockId) {
+      var fb = bl.querySelector('[data-node-id="' + focusedBlockId + '"]');
+      if (fb) { try { fb.focus({ preventScroll: true }); } catch (e) { fb.focus(); } }
+    }
 
     const code = $('code-panel');
     code.innerHTML = '';
@@ -137,6 +152,10 @@
   }
   window.__gpuExplorerRender = render;
   window.__gpuExplorerOnSelect = function (id) { S.select(state, id); syncHash(); render(); };
+  // Piece 4: canvas-focused arrow keys move the selection (scene3d.js
+  // calls this; the canvas element itself is never rebuilt by render(),
+  // so canvas focus survives the re-render, unlike the block list).
+  window.__gpuExplorerMoveSelection = function (dir) { S.selectNext(state, dir); syncHash(); render(); };
 
   function syncHash() { history.replaceState(null, '', '#' + S.encodeState(state)); }
   function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
@@ -198,8 +217,38 @@
   document.querySelectorAll('[data-view]').forEach(function (b) {
     b.onclick = function () { S.setView(state, b.dataset.view); render(); };
   });
+  // Piece 4: arrow keys inside the block list move FOCUS between the
+  // list's buttons (wrapping at both ends; Home/End jump to the ends);
+  // Enter/Space then activate the focused button natively and select
+  // + highlight the 3D block, exactly like a mouse click. Arrows here
+  // must not step the journey, so the event is stopped before the
+  // document-level step handler below sees it.
+  $('block-list').addEventListener('keydown', function (e) {
+    var btns = Array.prototype.slice.call($('block-list').querySelectorAll('button'));
+    var idx = btns.indexOf(e.target);
+    if (idx < 0) return;
+    var move = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') move = 1;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') move = -1;
+    else if (e.key === 'Home') move = 'first';
+    else if (e.key === 'End') move = 'last';
+    if (move === null) return;
+    e.preventDefault(); e.stopPropagation();
+    var target = move === 'first' ? btns[0] : move === 'last' ? btns[btns.length - 1] : btns[(idx + move + btns.length) % btns.length];
+    if (target) target.focus();
+  });
   document.addEventListener('keydown', function (e) {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return;
+    // Piece 4: a focused BUTTON must keep its native Space/Enter
+    // activation. Before this fix the Space branch below hijacked Space
+    // on every button (block-list buttons, timeline chips, prev/next),
+    // so Space on a block-list button toggled play instead of selecting
+    // the block. Buttons now activate natively; Space still toggles
+    // play when focus is on the page body or the 3D canvas.
+    if (e.target && e.target.tagName === 'BUTTON') return;
+    // Canvas-focused arrows are selection moves (handled + stopped in
+    // scene3d.js); guard here too so a step never jumps under them.
+    if (e.target && e.target.closest && e.target.closest('.scene3d') && e.key.indexOf('Arrow') === 0) return;
     if (e.key === 'ArrowRight') { state.playing = false; stopTimer(); S.next(state); render(); }
     if (e.key === 'ArrowLeft') { state.playing = false; stopTimer(); S.prev(state); render(); }
     if (e.key === ' ') { e.preventDefault(); $('play-btn').click(); }

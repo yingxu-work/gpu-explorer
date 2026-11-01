@@ -37,6 +37,17 @@ server.listen(0, '127.0.0.1', async () => {
     assert.equal(app.status, 200);
     assert.ok(app.body.includes('STEP_CHIPS'), 'app must render per-step chips from STEP_CHIPS');
     assert.ok(app.body.includes('currentStepChip'), 'app must show only the selected step gloss');
+    // Piece 4: keyboard selection plumbing must be present in the
+    // served app: block-list focus-move handler, canvas move bridge,
+    // focus restore across re-renders, and aria-pressed on list buttons.
+    assert.ok(app.body.includes('__gpuExplorerMoveSelection'), 'app must expose the canvas arrow-selection bridge');
+    assert.ok(app.body.includes('selectNext'), 'app must move selection via state.selectNext');
+    assert.ok(app.body.includes('aria-pressed'), 'block-list buttons must carry aria-pressed');
+    assert.ok(app.body.includes('focusedBlockId'), 'block-list focus must survive re-renders');
+    assert.ok(index.body.includes('方向键移动选中'), 'index must document the canvas arrow-key contract');
+    const scene3d = await get(port, '/scene3d.js');
+    assert.ok(scene3d.body.includes('__gpuExplorerMoveSelection'), 'scene3d canvas arrows must call the selection bridge');
+    assert.ok(scene3d.body.includes('aria-label'), 'scene3d canvas must carry an aria-label');
     for (const asset of ['/state.js', '/app.js', '/scene-map.js', '/scene3d.js', '/three/three.module.js', '/three/addons/controls/OrbitControls.js', '/styles.css']) {
       const r = await get(port, asset);
       assert.equal(r.status, 200, asset + ' should serve');

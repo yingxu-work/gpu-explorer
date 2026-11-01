@@ -40,6 +40,21 @@ test('select rejects nodes not in the current journey', function () {
   S.select(s, 'pte'); eq(s.selected, null);
   S.select(s, 'smem'); eq(s.selected, 'smem');
 });
+test('Piece 4: selectNext moves selection in node order, wraps, keeps step/playing', function () {
+  var s = S.createState({});
+  var nodes = S.currentJourney(s).nodes;
+  S.selectNext(s, 1); eq(s.selected, nodes[0].id);
+  S.selectNext(s, 1); eq(s.selected, nodes[1].id);
+  S.selectNext(s, -1); eq(s.selected, nodes[0].id);
+  S.selectNext(s, -1); eq(s.selected, nodes[nodes.length - 1].id);
+  S.selectNext(s, 1); eq(s.selected, nodes[0].id);
+  eq(s.stepIndex, 0); eq(s.playing, false);
+  var t = S.createState({});
+  S.next(t); S.next(t); t.playing = true;
+  S.selectNext(t, 1); eq(t.stepIndex, 2); eq(t.playing, true);
+  S.setJourney(t, 'pagetable');
+  S.selectNext(t, -1); eq(t.selected, S.currentJourney(t).nodes[S.currentJourney(t).nodes.length - 1].id);
+});
 test('playStep advances while playing and stops at the end', function () {
   var s = S.createState({}); s.playing = true;
   S.playStep(s); eq(s.stepIndex, 1); eq(s.playing, true);

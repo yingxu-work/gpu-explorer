@@ -73,20 +73,20 @@
     <div class="diagrams">
       <div id="diagram" class="diagram" aria-label="3D 过程示意图">
         <h3 id="main-model-name" class="diagram-model"></h3>
-        <div id="scene3d" class="scene3d" aria-label="可交互 3D 场景：拖动旋转，滚轮缩放，点击方块选中"></div>
-        <p class="scene-hint">拖动旋转 · 滚轮缩放 · 点击选中</p>
+        <div id="scene3d" class="scene3d" aria-label="可交互 3D 场景：拖动旋转，滚轮缩放，点击方块选中；聚焦后方向键移动选中部件"></div>
+        <p class="scene-hint">拖动旋转 · 滚轮缩放 · 点击选中 · 方向键移动选中</p>
         <nav class="cam-bar" aria-label="视角预设"><span class="cam-label">视角</span><button data-cam="three-quarter">四分之三</button><button data-cam="top">顶视</button><button data-cam="side">侧视</button></nav>
         <div class="legend-row" aria-label="图例">
           <span><span class="swatch sw-compute"></span>计算</span>
           <span><span class="swatch sw-memory"></span>存储</span>
           <span><span class="swatch sw-data"></span>数据</span>
         </div>
-        <nav id="block-list" class="block-list" aria-label="部件列表（键盘可选）"></nav>
+        <nav id="block-list" class="block-list" aria-label="部件列表（键盘可选：方向键移动，回车或空格选中）"></nav>
       </div>
       <div id="compare-diagram" class="diagram" aria-label="对比型号 3D 示意图" style="display:none">
         <h3 id="compare-model-name" class="diagram-model"></h3>
         <p id="compare-model-note" class="note"></p>
-        <div id="scene3d-compare" class="scene3d" aria-label="对比型号 3D 场景"></div>
+        <div id="scene3d-compare" class="scene3d" aria-label="对比型号 3D 场景：聚焦后方向键移动选中部件"></div>
         <p id="compare-step-note" class="fact"></p>
       </div>
     </div>
@@ -116,7 +116,7 @@
     <button id="play-btn" class="play-main">▶ 播放</button>
     <button id="next-btn">下一步</button>
     <button id="reset-btn">回到开头</button>
-    <span class="hint">键盘：← → 单步，空格 播放/暂停</span>
+    <span class="hint">键盘：← → 单步（画布或部件列表聚焦时移动选中），空格 播放/暂停</span>
     <label class="explode-field">拆开
       <input id="explode-slider" type="range" min="0" max="100" value="0" aria-label="拆开程度">
       <span id="explode-value">0%</span>

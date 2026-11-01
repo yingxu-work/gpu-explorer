@@ -345,6 +345,22 @@
     if (ok) state.selected = nodeId;
     return state;
   }
+  // Piece 4 (keyboard): move the block selection one node forward (+1)
+  // or backward (-1) in the current journey's node order, wrapping at
+  // both ends. With no selection yet, +1 starts at the first node and
+  // -1 at the last, so a canvas-focused arrow always lands somewhere.
+  // Step index and playing are untouched: selection movement is not
+  // step navigation, even though both use arrow keys in different
+  // focus contexts (see app.js / scene3d.js).
+  function selectNext(state, dir) {
+    var nodes = currentJourney(state).nodes;
+    if (!nodes.length) return state;
+    var cur = -1;
+    for (var i = 0; i < nodes.length; i++) if (nodes[i].id === state.selected) cur = i;
+    var nextIdx = cur < 0 ? (dir < 0 ? nodes.length - 1 : 0) : (cur + dir + nodes.length) % nodes.length;
+    state.selected = nodes[nextIdx].id;
+    return state;
+  }
   function playStep(state) {
     if (!state.playing) return state;
     if (isAtEnd(state)) { state.playing = false; return state; }
@@ -374,7 +390,7 @@
     return out;
   }
 
-  const api = { MODELS, JOURNEYS, VIEWS, PREDICTS, PHASES, STEP_CHIPS, currentPhase, currentStepChip, createState, currentJourney, currentStep, getStepNote, setCompare, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, playStep, encodeState, decodeState, getPredict, predict, predictionMade };
+  const api = { MODELS, JOURNEYS, VIEWS, PREDICTS, PHASES, STEP_CHIPS, currentPhase, currentStepChip, createState, currentJourney, currentStep, getStepNote, setCompare, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, selectNext, playStep, encodeState, decodeState, getPredict, predict, predictionMade };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerState = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

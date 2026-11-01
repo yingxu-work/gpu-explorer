@@ -60,6 +60,10 @@ h1, h2, h3 { line-height: 1.3; }
 .diagram-model { margin: 4px 8px 8px; font-size: 0.9375rem; font-weight: 600; color: #F4F4F5; }
 .scene3d { width: 100%; height: 520px; border-radius: 8px; overflow: hidden; background: #161618; border: 1px solid #2F2F31; }
 .scene3d canvas { display: block; cursor: grab; }
+/* Piece 4: canvas focus ring, focus-visible only (inset, so the
+   .scene3d overflow:hidden frame does not clip it). No permanent
+   visible change to the canvas. */
+.scene3d canvas:focus-visible { outline: 2px solid #5E6AD2; outline-offset: -2px; }
 .scene3d canvas:active { cursor: grabbing; }
 .scene-hint { color: #9B9BA4; font-size: 0.8125rem; margin: 8px 8px 0; }
 .cam-bar { display: flex; align-items: center; gap: 6px; margin: 8px 8px 0; }
