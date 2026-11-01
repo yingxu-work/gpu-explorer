@@ -33,10 +33,10 @@ server.listen(0, '127.0.0.1', async () => {
     for (const id of ['model-select','compare-select','scene3d','component-tree','journey-lab',
       'explode-slider','explode-auto-btn','block-list','overview','play-btn','prev-btn','next-btn',
       'focus-btn','isolate-btn','home-btn','labels-btn','follow-camera','replay-btn','motion-btn',
-      'help-dialog','sources-dialog','crumb']) {
+      'help-dialog','sources-dialog','crumb','teaching-status','route-phase','route-nodes','route-caption','explore-title','explore-description']) {
       assert.ok(index.body.includes('id="' + id + '"'), 'missing public control: ' + id);
     }
-    for (const level of ['board','package','die','sm']) {
+    for (const level of ['board','package','die','sm','hbm','power','interconnect']) {
       assert.ok(index.body.includes('data-level="' + level + '"'), 'missing anatomy level: ' + level);
     }
     // Follow all local script/style references, then the ESM imports they use.
@@ -49,6 +49,9 @@ server.listen(0, '127.0.0.1', async () => {
       assert.strictEqual(result.status, 200, 'asset must serve: ' + asset);
       assert.ok(result.body.length > 100, 'empty asset: ' + asset);
       assert.ok(result.type === (asset.endsWith('.js') ? 'text/javascript' : 'text/css'), 'correct MIME: ' + asset);
+      for (const match of result.body.matchAll(/from\s+['"](\.\.?\/[^'"]+\.js)(?:\?[^'"]*)?['"]/g)) {
+        assets.add(path.posix.resolve(path.posix.dirname(asset), match[1]));
+      }
     }
     assert.strictEqual((await get(port, '/missing.html')).status, 404);
     assert.ok(index.body.includes('./three/three.module.js'), 'Three.js must remain local');

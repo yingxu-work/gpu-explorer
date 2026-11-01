@@ -57,11 +57,44 @@ test('mechanical dissection from an isolated functional SM opens the package ins
   }
 });
 test('hardware actions pause sequence playback; presentation preferences need no mode transition', () => {
-  for (const [type, fields] of [['LEVEL',{level:'die'}],['SELECT',{id:'hbm'}],['NAVIGATE',{}],['CAMERA',{preset:'top'}],['EXPLODE_SET',{value:.5}]]) {
+  for (const [type, fields] of [['LEVEL',{level:'die'}],['SELECT',{id:'hbm'}],['EXPLODE_SET',{value:.5}]]) {
     let ui = act(I.create({}, base), 'ENTER_GUIDE', { playback: 'sequence' });
     ui = act(ui, type, fields);
     assert.equal(ui.mode, 'explore'); assert.equal(ui.playback, 'paused');
     assert.equal(ui.explodeAuto, false);
+  }
+});
+test('camera presets and orbit preserve guide step, clock, sequence and revision', () => {
+  const context={...base,stepIndex:5};
+  let ui=act(I.create({},context),'ENTER_GUIDE',{playback:'sequence'},context);
+  ui=act(ui,'TICK',{dt:100},context);
+  const progress=ui.progress,revision=ui.guideRevision;
+  for(const preset of ['top','side','three-quarter']){
+    ui=act(ui,'CAMERA',{preset},context);
+    assert.equal(ui.mode,'learn');assert.equal(ui.playback,'sequence');assert.equal(ui.progress,progress);
+    assert.equal(ui.guideRevision,revision);assert.equal(ui.level,'sm');assert.equal(ui.cameraPreset,preset);
+  }
+  ui=act(ui,'NAVIGATE',{},context);
+  assert.equal(ui.mode,'learn');assert.equal(ui.playback,'sequence');assert.equal(ui.cameraPreset,'free');
+  assert.equal(ui.progress,progress);assert.equal(ui.guideRevision,revision);
+  ui=act(ui,'TICK',{dt:100},context);assert.ok(ui.progress>progress);
+});
+test('camera changes while paused never resume or restart the lesson', () => {
+  let ui=I.create({},base);ui=act(ui,'TICK',{dt:100});ui=act(ui,'PAUSE');
+  const progress=ui.progress,revision=ui.guideRevision;
+  ui=act(ui,'CAMERA',{preset:'top'});ui=act(ui,'NAVIGATE');
+  assert.equal(ui.mode,'learn');assert.equal(ui.playback,'paused');assert.equal(ui.progress,progress);
+  assert.equal(ui.guideRevision,revision);
+});
+test('HBM, power and interconnect have independent breadcrumbs and return to the lesson', () => {
+  assert.deepEqual(I.breadcrumbs('hbm'),['board','package','hbm']);
+  assert.deepEqual(I.breadcrumbs('power'),['board','power']);
+  assert.deepEqual(I.breadcrumbs('interconnect'),['board','interconnect']);
+  assert.deepEqual(I.breadcrumbs('sm'),['board','package','die','sm']);
+  for(const level of ['hbm','power','interconnect']){
+    let ui=I.create({mode:'explore',level},base);
+    ui=act(ui,'EXPLODE_SET',{value:.7});assert.equal(ui.level,level);assert.equal(ui.explode,.7);
+    ui=act(ui,'ENTER_GUIDE',{}, {...base,stepIndex:1});cleanGuide(ui,'hbm');
   }
 });
 test('replay cancels sequence advancement and stays on the same domain step', () => {

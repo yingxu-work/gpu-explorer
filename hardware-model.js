@@ -1,3 +1,7 @@
+import { createHBMDetail } from './hbm-model.js?v=20261102i';
+import { createPowerDetail } from './power-model.js?v=20261102i';
+import { createInterconnectDetail } from './interconnect-model.js?v=20261102i';
+
 // Hide every sibling subtree along the selected object's ancestor path.
 // Ancestors remain as paths, without retaining their unselected own meshes.
 export function isolateHardwareSubtree(root, selected) {
@@ -184,11 +188,19 @@ export function createHardwareModel(T, model = 'h100') {
   }));
   const power = component('power', '多相供电 / VRM', '电感、功率级与去耦电容将电源转换为 GPU 使用的低电压、大电流供电。', 'board', pcb, 'pcb');
   const inductors = [], inductorCaps = [], controllers = [], caps = [], capEnds = [];
+  const powerLeads = [], powerLands = [], magneticSeams = [];
   for (const side of [-1,1]) for (let i = 0; i < 8; i++) {
     const z = -5.85 + i * 1.62;
     inductors.push({x:side*6.55,y:.05,z,w:.82,h:.62,d:1.03});
     inductorCaps.push({x:side*6.55,y:.37,z,w:.72,h:.025,d:.85});
     controllers.push({x:side*7.45,y:-.12,z,w:.36,h:.33,d:.82});
+    // Solder lands, power-stage leads and the seam in each molded ferrite
+    // housing give the board a readable manufacturing scale at grazing angles.
+    for(const end of [-1,1]) {
+      powerLands.push({x:side*6.55,y:-.245,z:z+end*.46,w:.90,h:.07,d:.18});
+      magneticSeams.push({x:side*6.55+end*.315,y:.386,z,w:.012,h:.012,d:.76});
+      for(let pin=0;pin<6;pin++)powerLeads.push({x:side*7.45+end*.215,y:-.225,z:z-.32+pin*.128,w:.12,h:.07,d:.064});
+    }
     for(let k=0;k<3;k++) { const cz=z-.42+k*.42;
       caps.push({x:side*5.56,y:-.18,z:cz,w:.22,h:.22,d:.25});
       capEnds.push({x:side*5.56,y:-.168,z:cz-.105,w:.23,h:.23,d:.045},{x:side*5.56,y:-.168,z:cz+.105,w:.23,h:.23,d:.045});
@@ -196,6 +208,7 @@ export function createHardwareModel(T, model = 'h100') {
   }
   instances(power,inductors,mats.black); instances(power,inductorCaps,mats.darkMetal); instances(power,controllers,mats.chip);
   instances(power,caps,mats.ceramic); instances(power,capEnds,mats.silver);
+  instances(power,powerLands,mats.silver); instances(power,powerLeads,mats.silver); instances(power,magneticSeams,mats.black);
   for(const side of [-1,1]) for(let i=0;i<8;i++) surfaceText(power,'R22',side*6.55,.388,-5.85+i*1.62,.5,.23,'#879293','500 45px monospace');
   // Dense decoupling rows at north/south edges and around the package.
   const smallCaps = [], smallEnds = [], resistors=[];
@@ -223,6 +236,12 @@ export function createHardwareModel(T, model = 'h100') {
   const bga=[];
   for(let x=-4.9;x<=4.9;x+=.24) for(let z=-4.65;z<=4.65;z+=.24) if(Math.abs(x)>4.1||Math.abs(z)>3.9) bga.push({x,y:-.29,z,w:.11,h:.11,d:.11});
   instances(substrate,bga,mats.silver,new T.SphereGeometry(.5,6,4));
+  // A segmented substrate edge reveals the copper-bearing laminate without
+  // pretending the microscopic production stack-up is visible at this scale.
+  const substrateEdges=[];
+  for(const x of [-5.355,5.355])for(let band=0;band<3;band++)substrateEdges.push({x,y:-.205+band*.075,z:0,w:.012,h:.009,d:9.72});
+  for(const z of [-5.105,5.105])for(let band=0;band<3;band++)substrateEdges.push({x:0,y:-.205+band*.075,z,w:10.15,h:.009,d:.012});
+  instances(substrate,substrateEdges,mats.copper);
   const interposer = component('interposer','硅中介层','高密度横向连接将 GPU 与五组 HBM 连接起来。拆解时，纵向间距被放大以便观察。','package',serial,'package');
   layers.push({group:interposer,factor:1.8});
   box(interposer,0,.145,0,9.75,.10,8.4,mats.siliconSide);
@@ -246,9 +265,11 @@ export function createHardwareModel(T, model = 'h100') {
   const hbm = component('hbm',`5 × ${specification.hbm} 堆栈`,`五组有源 HBM 提供 ${specification.memory} 容量。每组由多层 DRAM 通过 TSV 垂直连接；展示厚度经过放大。`,'package',serial,'package');
   layers.push({group:hbm,factor:3.1});
   const hbmPositions = [{x:-3.75,z:-2.6},{x:-3.75,z:0},{x:-3.75,z:2.6},{x:3.75,z:-2.6},{x:3.75,z:0}];
+  const hbmBasePads=[];
   for(let i=0;i<hbmPositions.length;i++) {
     const p=hbmPositions[i];
     box(hbm,p.x,.26,p.z,1.65,.07,1.95,mats.gold);
+    for(const side of [-1,1])for(let contact=0;contact<18;contact++)hbmBasePads.push({x:p.x+side*.825,y:.262,z:p.z-.83+contact*.098,w:.035,h:.055,d:.045});
     for(let slice=0;slice<8;slice++) {
       const plate=box(hbm,p.x,.32+slice*.045,p.z,1.54,.035,1.82,slice%2?mats.memory:mats.darkMetal);
       hbmSlices.push({mesh:plate,y:plate.position.y,index:slice});
@@ -258,6 +279,7 @@ export function createHardwareModel(T, model = 'h100') {
     const capacityLabel=surfaceText(hbm,`${i+1}  ·  16 GB`,p.x,.732,p.z+.3,1.1,.18,'#89979e','400 40px monospace');
     hbmSlices.push({mesh:memoryLabel,y:.731,index:8},{mesh:capacityLabel,y:.732,index:8});
   }
+  instances(hbm,hbmBasePads,mats.silver);
   // Sixth site is a visible unpopulated pad, not a claimed sixth HBM stack.
   if(!ampere) {
     box(interposer,3.75,.245,2.6,1.64,.035,1.94,mats.substrate);
@@ -272,18 +294,22 @@ export function createHardwareModel(T, model = 'h100') {
   // Seal ring catches grazing light, a thin continuous metallic edge.
   for(const z of [-3.76,3.76]) box(die,0,.419,z,5.18,.015,.025,mats.gold,false);
   for(const x of [-2.57,2.57]) box(die,x,.419,0,.025,.015,7.52,mats.gold,false);
+  const dieBumps=[];
+  for(const side of [-1,1])for(let pin=0;pin<48;pin++)dieBumps.push({x:side*2.52,y:.223,z:-3.48+pin*.148,w:.043,h:.035,d:.043});
+  instances(die,dieBumps,mats.gold,new T.SphereGeometry(.5,6,4));
   const l2 = component('l2',`${specification.l2} L2 缓存`,'SM 与显存之间共享的片上缓存。读写可能命中 L2，未命中时才访问 HBM。','die',die,'gpu-die');
   box(l2,0,.438,0,.35,.048,6.28,mats.gold);
   const l2Banks=[]; for(let i=0;i<36;i++) l2Banks.push({x:0,y:.471,z:-2.98+i*.17,w:.25,h:.014,d:.1});
   instances(l2,l2Banks,mats.darkMetal);
   const sm = component('sm',`${specification.sm} 个有源 SM`,'线程块被调度到 SM。双击进入一个 SM，查看四个执行子分区、寄存器、Tensor Core 和共享内存。','die',die,'gpu-die');
-  const smCells=[], disabledCells=[],smBanks=[],smPartitionLines=[];
+  const smCells=[], disabledCells=[],smBanks=[],smPartitionLines=[],smTensorTiles=[],smRegisterRows=[];
   let activeIndex=0;
   const rows=4;
   for(let gpc=0;gpc<specification.gpc;gpc++) {
     const side=gpc%2?1:-1, row=Math.floor(gpc/2);
     const centreX=side*1.38, centreZ=-2.57+row*1.71;
     box(sm,centreX,.434,centreZ,2.05,.035,1.52,mats.black,false);
+    surfaceText(sm,`GPC ${gpc}`,centreX,.456,centreZ-.695,1.68,.10,'#839987','400 30px monospace');
     const count=ampere?(gpc<3?16:15):(gpc<4?17:16);
     for(let n=0;n<18;n++) {
       const x=centreX-.85+(n%6)*.34, z=centreZ-.52+Math.floor(n/6)*.49;
@@ -292,11 +318,14 @@ export function createHardwareModel(T, model = 'h100') {
         smCells.push(cell); activeIndex++;
         for(let b=0;b<3;b++) smBanks.push({x:x-.085+b*.085,y:.487,z:z-.07,w:.045,h:.009,d:.19});
         smPartitionLines.push({x,y:.489,z:z+.14,w:.24,h:.008,d:.035});
+        for(const dx of [-.075,.075])smTensorTiles.push({x:x+dx,y:.495,z:z+.074,w:.045,h:.012,d:.048});
+        for(let row=0;row<3;row++)smRegisterRows.push({x:x-.086+row*.086,y:.495,z:z-.145,w:.055,h:.011,d:.028});
       } else disabledCells.push(cell);
     }
   }
   instances(sm,smCells,mats.activeSM); instances(sm,disabledCells,mats.inactiveSM);
   instances(sm,smBanks,mats.darkMetal); instances(sm,smPartitionLines,mats.trace);
+  instances(sm,smTensorTiles,mats.tensor); instances(sm,smRegisterRows,mats.register);
   surfaceText(die,`${specification.die}   /   ${specification.sm} SM`,0,.45,3.55,3.5,.28,'#b4c1ae','600 42px monospace');
   surfaceText(die,'PCIe  ·  GIGATHREAD ENGINE',0,.451,-3.54,4.0,.21,'#aebbac','500 34px monospace');
   const siliconCover=new T.Mesh(unitBox,new T.MeshPhysicalMaterial({
@@ -318,7 +347,7 @@ export function createHardwareModel(T, model = 'h100') {
   const smem=component('smem','L1 数据缓存 / 共享内存',`四个子分区共用的统一存储资源，合计 ${ampere?'192':'256'} KB；其中 Shared Memory 最多 ${ampere?'164':'228'} KB。32 banks 指共享内存，不是整个 L1 缓存。这里的长条位置来自功能框图，不表示真实芯片距离。`,'sm',smAssembly,'sm-detail');
   const instruction=component('instruction-cache','L1 指令缓存','SM 级指令缓存与 L1 数据缓存不同；每个子分区还具有本地 L0 指令缓存。','sm',smAssembly,'sm-detail');
   const smBus=component('sm-bus','SM 内部互连','功能示意：执行管线、LD/ST 与共用 L1 数据缓存/共享内存相连。线路是教学路由，不是厂家金属布线。','sm',smAssembly,'sm-detail');
-  const fp32=[],registers=[],registerStrips=[],lsuCells=[];
+  const fp32=[],registers=[],registerStrips=[],lsuCells=[],laneContacts=[],registerWordlines=[],tensorArrays=[],tensorBus=[];
   const partitionOrigins=[{x:-2.65,z:-1.72},{x:2.65,z:-1.72},{x:-2.65,z:1.08},{x:2.65,z:1.08}];
   box(instruction,0,.23,-3.65,10.15,.12,.25,mats.register);
   surfaceText(instruction,'L1 INSTRUCTION CACHE',0,.296,-3.65,8.5,.18,'#d0dfeb','500 32px monospace');
@@ -329,21 +358,33 @@ export function createHardwareModel(T, model = 'h100') {
     box(scheduler,x,.255,z-.87,4.65,.14,.20,mats.scheduler);
     surfaceText(scheduler,`SMSP ${partition}  /  WARP SCHEDULER`,x,.332,z-.87,4.27,.16,'#eee2cb','500 31px monospace');
     box(dispatch,x,.25,z-.64,4.65,.10,.13,mats.copper);
-    for(let row=0;row<2;row++)for(let bank=0;bank<16;bank++)registers.push({x:x-2.14+bank*.285,y:.25,z:z-.43+row*.16,w:.22,h:.10,d:.105});
+    for(let row=0;row<2;row++)for(let bank=0;bank<16;bank++){
+      const bx=x-2.14+bank*.285,bz=z-.43+row*.16;
+      registers.push({x:bx,y:.25,z:bz,w:.22,h:.10,d:.105});
+      registerWordlines.push({x:bx,y:.307,z:bz,w:.16,h:.012,d:.018});
+    }
     registerStrips.push({x,y:.33,z:z-.11,w:4.40,h:.025,d:.07});
     // The small green cells retain the correct FP32 lane count (32/16 per partition).
-    for(let row=0;row<(ampere?2:4);row++)for(let lane=0;lane<8;lane++)fp32.push({x:x-1.52+lane*.31,y:.24,z:z+.10+row*.19,w:.23,h:.13,d:.14});
+    for(let row=0;row<(ampere?2:4);row++)for(let lane=0;lane<8;lane++){
+      const lx=x-1.52+lane*.31,lz=z+.10+row*.19;
+      fp32.push({x:lx,y:.24,z:lz,w:.23,h:.13,d:.14});
+      laneContacts.push({x:lx-.092,y:.313,z:lz,w:.026,h:.014,d:.105},{x:lx+.092,y:.313,z:lz,w:.026,h:.014,d:.105});
+    }
     box(smAssembly,x-2.04,.24,z+.39,.27,.13,.88,mats.trace);
     box(smAssembly,x+1.00,.24,z+.39,.31,.13,.88,mats.register);
     box(tensor,x+1.80,.27,z+.39,.98,.22,.93,mats.tensor);
-    surfaceText(tensor,'TENSOR',x+1.80,.385,z+.39,.89,.20,'#f1e4c8','600 34px monospace');
+    for(let row=0;row<4;row++)for(let col=0;col<4;col++)tensorArrays.push({x:x+1.48+col*.21,y:.391,z:z+.08+row*.20,w:.14,h:.02,d:.13});
+    tensorBus.push({x:x+1.80,y:.408,z:z+.39,w:.84,h:.016,d:.035},{x:x+1.80,y:.408,z:z+.39,w:.035,h:.016,d:.80});
+    surfaceText(tensor,'TENSOR',x+1.80,.426,z+.39,.89,.20,'#f1e4c8','600 34px monospace');
     for(let lane=0;lane<8;lane++)lsuCells.push({x:x-2.10+lane*.47,y:.25,z:z+1.02,w:.37,h:.12,d:.17});
     box(smAssembly,x+1.98,.25,z+1.02,.56,.12,.17,mats.scheduler);
     // Branches terminate at the central interconnect, rather than crossing scheduler boxes.
     box(smBus,x*.5,.18,z+1.18,Math.abs(x),.035,.045,mats.trace,false);
   }
   instances(registerGroup,registers,mats.register);instances(registerGroup,registerStrips,mats.silver);
+  instances(registerGroup,registerWordlines,mats.darkMetal);
   instances(smAssembly,fp32,mats.activeSM);instances(lsu,lsuCells,mats.copper);
+  instances(smAssembly,laneContacts,mats.trace);instances(tensor,tensorArrays,mats.darkMetal);instances(tensor,tensorBus,mats.copper);
   box(smBus,0,.18,.50,.065,.035,3.75,mats.trace,false);
   box(smBus,0,.18,2.40,10.1,.035,.07,mats.trace,false);
   const tma=ampere?null:component('tma','Tensor Memory Accelerator','Hopper 的 TMA 异步搬运张量，可将全局内存的数据搬入共享内存。它是数据搬运硬件，和 warp 调度器不同。','sm',smAssembly,'sm-detail');
@@ -354,19 +395,31 @@ export function createHardwareModel(T, model = 'h100') {
   surfaceText(smem,`${ampere?'192':'256'} KB  L1 DATA CACHE / SHARED MEMORY`,0,.43,3.20,9.25,.26,'#d6efea','500 32px monospace');
   for(let unit=0;unit<4;unit++)box(smAssembly,-3.84+unit*2.56,.21,3.86,2.32,.10,.24,mats.register);
   surfaceText(smAssembly,'FUNCTIONAL ORGANIZATION  /  NOT A PHYSICAL FLOORPLAN',0,.12,-4.03,9.6,.20,'#aab9ba','400 28px monospace');
+  const hbmDetail=createHBMDetail(T,model),powerDetail=createPowerDetail(T,model),interconnectDetail=createInterconnectDetail(T,model);
+  const hbmRoot=hbmDetail.root,powerRoot=powerDetail.root,interconnectRoot=interconnectDetail.root;
+  root.add(hbmRoot,powerRoot,interconnectRoot);
+  Object.assign(components,hbmDetail.components,powerDetail.components,interconnectDetail.components);
   const anchors={
     pcb:new T.Vector3(-6.5,.25,6.1),package:new T.Vector3(-4.7,.3,4.7),interposer:new T.Vector3(4.8,.35,3.6),
     hbm:new T.Vector3(-3.75,.9,-2.6),'gpu-die':new T.Vector3(0,.8,0),l2:new T.Vector3(0,.6,0),
     power:new T.Vector3(6.55,.5,-3),sxm:new T.Vector3(0,-.65,6.85),sm:new T.Vector3(-1.5,.7,-1),
     'a-tile':new T.Vector3(-3.75,.9,-2.6),'b-tile':new T.Vector3(-3.75,.9,0),'c-out':new T.Vector3(3.75,.9,0),
-    warp:new T.Vector3(-2.65,.5,-2.59),smem:new T.Vector3(0,.6,3.20),tensor:new T.Vector3(-.85,.5,-1.33),registers:new T.Vector3(-2.65,.5,-2.03),lsu:new T.Vector3(-2.65,.4,-.70),tma:new T.Vector3(0,.4,2.65)
+    warp:new T.Vector3(-2.65,.5,-2.59),smem:new T.Vector3(0,.6,3.20),tensor:new T.Vector3(-.85,.5,-1.33),registers:new T.Vector3(-2.65,.5,-2.03),lsu:new T.Vector3(-2.65,.4,-.70),tma:new T.Vector3(0,.4,2.65),
+    ...hbmDetail.anchors,...powerDetail.anchors,...interconnectDetail.anchors
   };
   function setExplode(t) {
+    t=Math.max(0,Math.min(1,Number(t)||0));
     for(const layer of layers) layer.group.position.y=t*layer.factor;
     for(const slice of hbmSlices) slice.mesh.position.y=slice.y+slice.index*t*.12;
+    hbmDetail.setExplode(t);powerDetail.setExplode(t);interconnectDetail.setExplode(t);
   }
-  function setLevel(level){siliconCover.visible=level==='board'||level==='package';}
-  return { root, components, layers, smRoot, pcb, serial, anchors, specification, materials:mats, partitionOrigins, setExplode, setLevel, surfaceText };
+  function setLevel(level){
+    siliconCover.visible=level==='board'||level==='package';
+    pcb.visible=level==='board';serial.visible=['board','package','die'].includes(level);smRoot.visible=level==='sm';
+    hbmRoot.visible=level==='hbm';powerRoot.visible=level==='power';interconnectRoot.visible=level==='interconnect';
+  }
+  return { root, components, layers, smRoot, pcb, serial, hbmRoot, hbmDetail, powerRoot, powerDetail, interconnectRoot, interconnectDetail,
+    siliconCover, siliconCoverMaterial:siliconCover.material, anchors, specification, materials:mats, partitionOrigins, setExplode, setLevel, surfaceText };
 }
 
 // Surface-aligned teaching routes. These express memory hierarchy and functional

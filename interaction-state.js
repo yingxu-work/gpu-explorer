@@ -6,11 +6,18 @@
   else root.GpuExplorerInteraction = api;
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
-  const LEVELS = ['board', 'package', 'die', 'sm'];
-  const GEMM_LEVELS = ['board', 'package', 'die', 'package', 'sm', 'sm', 'sm', 'package'];
+  const LEVELS = ['board', 'package', 'die', 'sm', 'hbm', 'power', 'interconnect'];
+  const PARENTS = { board: null, package: 'board', die: 'package', sm: 'die',
+    hbm: 'package', power: 'board', interconnect: 'board' };
+  const GEMM_LEVELS = ['board', 'hbm', 'die', 'package', 'sm', 'sm', 'sm', 'package'];
   const clamp = value => Math.max(0, Math.min(1, Number(value) || 0));
   function guideLevel(context) {
     return context.journey === 'gemm' ? GEMM_LEVELS[context.stepIndex] || 'board' : 'board';
+  }
+  function breadcrumbs(level) {
+    const chain = [];
+    for (let next = LEVELS.includes(level) ? level : 'board'; next; next = PARENTS[next]) chain.unshift(next);
+    return chain;
   }
   function sequenceIntent(ui, context = {}) {
     if (ui.mode === 'learn' && ui.playback === 'sequence') return 'pause';
@@ -62,8 +69,8 @@
         return { ...ui, isolated: !!ui.selection &&
           (event.value === undefined ? !ui.isolated : !!event.value) };
       case 'CAMERA':
-        return { ...explore(ui), cameraPreset: event.preset || 'three-quarter' };
-      case 'NAVIGATE': return { ...explore(ui), cameraPreset: 'free' };
+        return { ...ui, cameraPreset: event.preset || 'three-quarter', explodeAuto: false };
+      case 'NAVIGATE': return { ...ui, cameraPreset: 'free', explodeAuto: false };
       case 'EXPLODE_SET':
         ui = explore(ui);
         if (ui.level === 'sm') ui = { ...ui, level: 'package', selection: null,
@@ -124,5 +131,5 @@
       default: return ui;
     }
   }
-  return { LEVELS, GEMM_LEVELS, guideLevel, sequenceIntent, create, transition };
+  return { LEVELS, GEMM_LEVELS, PARENTS, breadcrumbs, guideLevel, sequenceIntent, create, transition };
 });

@@ -5,7 +5,17 @@
   const I = window.GpuExplorerInteraction;
   const $ = id => document.getElementById(id);
   const LEVELS = I.LEVELS;
-  const LEVEL_NAMES = { board: 'SXM 模组', package: '芯片封装', die: 'GPU Die', sm: 'SM' };
+  const LEVEL_NAMES = { board: 'SXM 模组', package: '芯片封装', die: 'GPU Die', sm: 'SM',
+    hbm: 'HBM 内存', power: '供电模块', interconnect: 'PCB / SXM' };
+  const VIEW_INFO = {
+    board: { title: '一块模组，各司其职。', body: '从计算、存储到供电与互连，沿着部件走进机器内部。', features: [['计算与存储','进入封装、裸片、SM 或 HBM。'],['支撑计算的部件','查看多相供电、PCB 层叠与 SXM 连接器。']] },
+    package: { title: '连接计算与存储。', body: '裸片、HBM、中介层与基板，共同组成 GPU 封装。', features: [['硅中介层','近距离连接 GPU 和 HBM，承载大量并行信号。'],['封装基板','将封装内的连接引到模组 PCB。']] },
+    die: { title: '从 L2，走到 SM。', body: '查看计算阵列、共享 L2 与片上互连的功能组织。', features: [['一组组计算资源','线程块被分发到 SM，而不是沿流水线依次经过所有 SM。'],['数据共享层级','L2 在多个 SM 之间共享；L1 与 Shared 位于各个 SM 内。']] },
+    sm: { title: '一个 SM，四个子分区。', body: '顺着调度、派发、运算和 LD/ST，看它们如何协作。', features: [['指令与数据分开看','调度器发射指令，操作数通过寄存器、LD/ST 和内部互连流动。'],['共享的片上存储','四个子分区共用 L1 数据缓存与 Shared Memory。']] },
+    hbm: { title: '把存储，纵向堆起来。', body: '展开 DRAM 叠层、垂直互连和底部接口，理解 HBM 如何连接 GPU。', features: [['垂直与横向','TSV 穿过硅片，微凸点连接层间，中介层把数据横向送往 GPU。'],['并行通道','通道为存取提供并行性；本剖面用简化分区展示组织。']] },
+    power: { title: '电压变低，电流变大。', body: '沿多相 Buck 的开关级、电感和电容，看电源如何被转换与稳定。', features: [['多相协作','多组功率级与电感交错工作，分担输出电流。'],['控制与去耦','控制回路调节输出；输入与输出电容抑制电压波动。']] },
+    interconnect: { title: '信号要有去路，也有回路。', body: '切开 PCB，看铜层、通孔、差分对和 SXM 接触阵列。', features: [['跨越 PCB 层','普通通孔连接铜层；它与 HBM 内的硅通孔 TSV 是不同结构。'],['连接到系统','SXM 接触阵列承担模组的电源与高速连接，图中不对应真实引脚定义。']] }
+  };
   const TITLES = { gemm: '一次矩阵乘法', pagetable: '一次地址翻译', pixel: '一个像素的旅程', stacking: '芯片为什么堆起来' };
   const SPECS = {
     h100: { name: 'H100', arch: 'HOPPER', year: 2022, sm: 132, l2: '50MB', hbm: 'HBM3', shared: '228KB' },
@@ -122,6 +132,8 @@
           applied = { model: state.model, guideRevision: ui.guideRevision,
             level: ui.level, explode: 0, selection: null, isolated: false, camera: 'three-quarter' };
         }
+        if (ui.cameraPreset !== 'free' && applied.camera !== ui.cameraPreset) sc.setCamera(ui.cameraPreset);
+        applied.camera = ui.cameraPreset;
       } else {
         let changedLevel = applied.level !== ui.level;
         if (changedLevel) { sc.setLevel(ui.level); applied.level = ui.level; applied.isolated = false; }
@@ -151,7 +163,7 @@
     document.body.dataset.level = ui.level;
     const crumb = $('crumb');
     crumb.replaceChildren();
-    LEVELS.slice(0, LEVELS.indexOf(ui.level) + 1).forEach((level, i) => {
+    I.breadcrumbs(ui.level).forEach((level, i) => {
       if (i) { const sep = document.createElement('span'); sep.textContent = '›'; crumb.append(sep); }
       const button = document.createElement('button');
       button.textContent = LEVEL_NAMES[level];
@@ -177,11 +189,12 @@
   }
   function renderTree() {
     const components = scene()?.getComponents?.() || [];
-    const key = state.model + components.map(item => item.id).join();
+    const key = state.model + ui.level + components.map(item => item.id).join();
     if (lastTreeKey === key) return;
     lastTreeKey = key;
     $('component-tree').replaceChildren();
-    components.filter(item => ['pcb','gpu-die','hbm','power','interposer','tensor','smem','lsu'].includes(item.id)).forEach(item => {
+    const major = ['pcb','gpu-die','hbm','power','interposer','sxm'];
+    components.filter(item => item.level === ui.level || (ui.level === 'board' && major.includes(item.id))).forEach(item => {
       const button = document.createElement('button');
       button.textContent = item.label;
       button.dataset.component = item.id;
@@ -268,6 +281,25 @@
     $('diagram').dataset.isolated = String(ui.isolated);
     $('diagram').dataset.explode = ui.explode.toFixed(3);
     $('diagram').dataset.guideRevision = ui.guideRevision;
+    if (state.journey === 'gemm') {
+      const story = window.GpuExplorerStory.forStep(state.stepIndex);
+      $('route-status').textContent = ui.progress >= 1 ? story.complete : ui.playback === 'paused' ? '已暂停' : '演示中';
+      $('teaching-status').dataset.state = ui.progress >= 1 ? 'complete' : ui.playback === 'paused' ? 'paused' : 'running';
+    }
+  }
+  function renderGuideStatus() {
+    const visible = ui.mode === 'learn' && state.journey === 'gemm';
+    $('teaching-status').hidden = !visible;
+    if (!visible) return;
+    const story = window.GpuExplorerStory.forStep(state.stepIndex);
+    $('teaching-status').dataset.kind = story.kind;
+    $('route-phase').textContent = story.phase;
+    $('route-caption').textContent = story.caption;
+    const path = $('route-nodes'); path.replaceChildren();
+    story.nodes.forEach((label, index) => {
+      if (index) { const arrow = document.createElement('i'); arrow.textContent = story.kind === 'dependency' && index === 1 ? '×' : '→'; path.append(arrow); }
+      const node = document.createElement('span'); node.textContent = label; node.dataset.index = index; path.append(node);
+    });
   }
   function render() {
     updateScene();
@@ -284,9 +316,9 @@
     $('model-meta').textContent = 'NVIDIA ' + spec.arch + ' · ' + spec.year;
     $('stat-sm').textContent = spec.sm; $('stat-memory-type').textContent = spec.hbm + ' 显存';
     $('main-model-name').textContent = 'NVIDIA · ' + spec.arch;
-    $('hero-title').textContent = ui.level === 'sm' ? spec.name + ' · SM' : spec.name;
+    $('hero-title').textContent = ['sm','hbm','power','interconnect'].includes(ui.level) ? ({ sm: spec.name + ' · SM', hbm: spec.hbm, power: 'VRM', interconnect: 'PCB / SXM' })[ui.level] : spec.name;
     $('hero-subtitle').textContent = ui.level === 'sm' ? '功能布局示意，不代表物理距离' : '';
-    $('step-counter').textContent = ui.mode === 'explore' ? String(LEVELS.indexOf(ui.level) + 1).padStart(2, '0') + ' / 04' : String(state.stepIndex + 1).padStart(2, '0') + ' / ' + String(journey.steps.length).padStart(2, '0');
+    $('step-counter').textContent = ui.mode === 'explore' ? String(LEVELS.indexOf(ui.level) + 1).padStart(2, '0') + ' / ' + String(LEVELS.length).padStart(2, '0') : String(state.stepIndex + 1).padStart(2, '0') + ' / ' + String(journey.steps.length).padStart(2, '0');
     $('chapter-kicker').textContent = String(state.stepIndex + 1).padStart(2, '0');
     $('step-title').textContent = lesson ? lesson.title : step.title;
     $('step-body').textContent = lesson ? lesson.body : '独立概念实验：' + step.body;
@@ -299,11 +331,18 @@
     $('timeline-title').textContent = TITLES[state.journey];
     $('phase-gloss').textContent = S.currentStepChip(state)?.gloss || '';
     $('progress-fill').style.width = (state.stepIndex + 1) / journey.steps.length * 100 + '%';
-    $('interaction-hint').textContent = ui.level === 'sm' ? 'SM 功能布局示意 · 间距不代表真实物理距离' : ui.mode === 'learn' ? '转动、拆解可自由探索；点「跟着算一次」回到此步' : '自由探索 · 点「跟着算一次」返回当前计算步骤';
+    $('interaction-hint').textContent = ui.mode === 'learn' ? '自由转动或切换视角，计算继续' : ui.level === 'sm' ? 'SM 功能布局示意 · 间距不代表真实物理距离' : '拖动旋转 · 双击进入部件';
+    const info = VIEW_INFO[ui.level];
+    $('explore-title').textContent = info.title;
+    $('explore-description').textContent = info.body;
+    document.querySelectorAll('#explore-content .explore-feature').forEach((feature, i) => {
+      feature.querySelector('h3').textContent = info.features[i][0];
+      feature.querySelector('p').textContent = info.features[i][1];
+    });
     const key = state.journey + ':' + state.stepIndex + ':' + state.model;
     window.GpuExplorerLab?.render($('journey-lab'), state, step, ui.progress);
     if (key !== lastContentKey) { $('code-panel').textContent = step.code.join('\n'); renderPrediction(); lastContentKey = key; }
-    renderCrumb(); renderTree(); renderSelection(); renderBlocks(); renderCompare(); renderTimeline(); renderPlayback(); syncHash();
+    renderCrumb(); renderTree(); renderSelection(); renderBlocks(); renderCompare(); renderTimeline(); renderGuideStatus(); renderPlayback(); syncHash();
   }
 
   function focusSelected() {
@@ -337,9 +376,10 @@
     S.selectNext(state, dir); const id = state.selected;
     exploreAction({ type: 'SELECT', id }); S.select(state, id);
   };
-  window.addEventListener('gpu-user-navigate', () => {
+  window.addEventListener('gpu-user-navigate', event => {
     if (applyingScene) return;
-    transition({ type: 'NAVIGATE' }); applied.camera = 'free'; render();
+    transition({ type: event.detail?.action === 'orbit' ? 'NAVIGATE' : 'ENTER_EXPLORE' });
+    applied.camera = 'free'; render();
   });
   window.addEventListener('gpu-component-select', event => {
     if (applyingScene) return;
@@ -367,7 +407,7 @@
   document.querySelectorAll('[data-level]').forEach(b => b.onclick = () => { applied.level = undefined; state.selected = null; exploreAction({ type: 'LEVEL', level: b.dataset.level }); });
   document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => b.dataset.mode === 'learn' ? enterGuide() : exploreAction({ type: 'ENTER_EXPLORE' }));
   document.querySelectorAll('[data-journey]').forEach(b => b.onclick = () => enterGuide({ journey: b.dataset.journey, index: 0 }));
-  document.querySelectorAll('[data-cam]').forEach(b => b.onclick = () => { applied.camera = undefined; exploreAction({ type: 'CAMERA', preset: b.dataset.cam }); });
+  document.querySelectorAll('[data-cam]').forEach(b => b.onclick = () => { applied.camera = undefined; transition({ type: 'CAMERA', preset: b.dataset.cam }); render(); });
   $('model-select').onchange = e => changeModel(e.target.value);
   $('compare-select').onchange = e => {
     if (e.target.value === state.model) { toast('请选择另一颗 GPU 进行对照。'); e.target.value = state.compareModel || ''; return; }
