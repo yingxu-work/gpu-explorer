@@ -61,9 +61,9 @@ test('encode/decode round-trips state and rejects bad values', function () {
 test('pixel journey walks from a pixel to the framebuffer', function () {
   var s = S.createState({});
   S.setJourney(s, 'pixel');
-  eq(S.currentJourney(s).title, '一个像素是怎么画出来的');
+  eq(S.currentJourney(s).title, '像素着色：单个像素的计算路径');
   while (!S.isAtEnd(s)) S.next(s);
-  eq(S.currentStep(s).title, '显示与倒查');
+  eq(S.currentStep(s).title, '显示与反向追溯');
   eq(S.currentJourney(s).steps.length, 8);
 });
 test('goto jumps and clamps', function () {
@@ -75,7 +75,7 @@ test('goto jumps and clamps', function () {
 test('diagram geometry, flows, verdict and trace are consistent', function () {
   Object.keys(S.JOURNEYS).forEach(function (key) {
     var j = S.JOURNEYS[key];
-    assert.ok(j.verdict && j.verdict.length > 10, key + ' needs a verdict');
+    assert.ok(j.gloss && j.gloss.length > 5, key + ' needs a journey gloss');
     var ids = {};
     j.nodes.forEach(function (n) {
       ids[n.id] = true;
@@ -122,7 +122,7 @@ test('stacking journey shows layers top-to-bottom and a disabled tier block', fu
   var ys = j.nodes.filter(function (n) { return !n.disabled && n.x < 850; }).map(function (n) { return n.y; });
   assert.ok(ys.length >= 6, 'stacking needs >=6 layers');
   while (!S.isAtEnd(s)) S.next(s);
-  eq(S.currentStep(s).title, '热与代价：叠起来不是免费的');
+  eq(S.currentStep(s).title, '热与代价：堆叠的约束条件');
 });
 test('all journeys have steps, nodes, code and view text', function () {
   Object.keys(S.JOURNEYS).forEach(function (key) {
@@ -187,6 +187,42 @@ test('compare mode round-trips in URL hash', function () {
   eq(bad.compareModel, null); // compare equal to primary is dropped
   var plain = S.decodeState('#j=gemm&m=h100&s=2');
   eq(plain.compareModel, null);
+});
+
+
+test('text economy: timeline phases <=6, labels 1-2 words, gloss <=6 words', function () {
+  Object.keys(S.PHASES).forEach(function (key) {
+    var ph = S.PHASES[key];
+    assert.ok(ph.length >= 1 && ph.length <= 6, key + ' phases must be <=6, got ' + ph.length);
+    ph.forEach(function (p, i) {
+      assert.ok(p.label.length <= 4, key + ' phase label too long: ' + p.label);
+      assert.ok(p.gloss.length <= 14, key + ' phase gloss too long: ' + p.gloss);
+      if (i) assert.ok(p.step > ph[i - 1].step, key + ' phases must advance');
+    });
+  });
+  var s = S.createState({}); S.goto(s, 4);
+  assert.strictEqual(S.currentPhase(s).label, '计算');
+});
+test('text economy: step definitions fit 2 lines, traces are formulas only', function () {
+  function width(t) {
+    var w = 0;
+    for (var i = 0; i < t.length; i++) {
+      var c = t.charCodeAt(i);
+      w += (c >= 0x4e00 && c <= 0x9fff) ? 14 : 7;
+    }
+    return w;
+  }
+  Object.keys(S.JOURNEYS).forEach(function (key) {
+    var j = S.JOURNEYS[key];
+    j.steps.forEach(function (step) {
+      assert.ok(width(step.body) <= 648, key + ' body exceeds 2 lines: ' + step.body);
+      assert.ok(step.trace.length <= 40 && step.trace.indexOf('。') < 0, key + ' trace must be a short formula: ' + step.trace);
+      assert.ok(step.code.length <= 10, key + ' code must be <=10 lines');
+      if (step.modelNotes) Object.keys(step.modelNotes).forEach(function (m) {
+        assert.ok(width(step.modelNotes[m]) <= 648, key + ' model note exceeds 2 lines');
+      });
+    });
+  });
 });
 
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');

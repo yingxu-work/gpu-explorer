@@ -5,21 +5,27 @@
 // testable without a GPU. All numbers are teaching geometry, not a real
 // die floorplan and not measured performance.
 //
-// Round 8 layout: the old mapping projected scattered SVG coordinates
-// straight into 3D, which read as random boxes. Each journey now has an
-// explicit layout table below, so a die reads as one coherent chip:
-// inputs on the left, a central block, compute in a regular grid, output
-// at the end of the pipeline; chains run left-to-right with a clean
-// return lane; the stacking journey is one centred vertical column with
-// side blocks flanking it at logic-layer height. Node coordinates in
-// state.js are untouched — only this 3D presentation changes.
+// Round 9 layout: Round 8's coherent-chip tables, re-tinted to the
+// research manual's fixed hardware legend and sharpened to its
+// component dictionary where the node set allows it. GEMM: the warp
+// block is now a narrow dispatch strip, Shared Memory a wide central
+// block, and the SM carries subpartition detail (see smDetails) —
+// 4 subpartitions, each with a tensor tile, a narrow scheduler strip
+// and a register strip, plus a shared-memory strip at the SM front.
+// No L2 or HBM node exists in any journey, so no L2 band or HBM tower
+// is invented in this mapping; the HBM towers flanking the GEMM die
+// are scenery built in scene3d.js, not selectable nodes, and are
+// labelled as package context there. Stacking stays one centred
+// column; TSV hints between its layers are drawn in scene3d.js.
 //
-// Palette (GEX-inspired, muted; amber is reserved for the active block):
-//   memory  sage green  0x93ad8d, compute warm tan 0xc4a173,
-//   data    slate blue  0x7e93ad, control slate grey 0x66707e,
-//   substrate charcoal, pins muted gold. No saturated rainbow colours.
+// Fixed hardware palette (one colour per family, every zoom level):
+//   compute blue 0x89b4fa, memory teal 0x94e2d5, data sand 0xfab387,
+//   control grey 0x9b9ba4. Data-movement lines share the data hue
+//   0xfab387, and the single chrome accent 0x5e6ad2 marks
+//   selection/active only, so the legend needs just 3 items.
 (function (root) {
-  var KIND_COLOR = { data: 0x7e93ad, compute: 0xc4a173, memory: 0x93ad8d, control: 0x66707e };
+  var KIND_COLOR = { data: 0xfab387, compute: 0x89b4fa, memory: 0x94e2d5, control: 0x9b9ba4 };
+  var TENSOR_COLOR = 0x6d8fd0; // tensor tile: same compute hue, darker, larger block motif
   function clamp01(t) {
     if (isNaN(t)) return 0;
     return Math.max(0, Math.min(1, t));
@@ -36,8 +42,8 @@
       // output at the end of the pipeline.
       'a-tile': { x: -7.4, z: -2.6, w: 4.2, d: 2.0, h: 0.85 },
       'b-tile': { x: -7.4, z: 2.6, w: 4.2, d: 2.0, h: 0.85 },
-      smem:     { x: -1.6, z: 0,    w: 4.4, d: 3.6, h: 1.15 },
-      warp:     { x: 3.6,  z: -2.6, w: 3.6, d: 2.0, h: 1.05 },
+      smem:     { x: -1.6, z: 0,    w: 4.8, d: 3.2, h: 1.15 },
+      warp:     { x: 3.6,  z: -2.6, w: 3.6, d: 0.9, h: 0.6 },
       sm:       { x: 3.6,  z: 2.6,  w: 3.6, d: 2.0, h: 1.05 },
       'c-out':  { x: 8.3,  z: 0,    w: 3.4, d: 2.6, h: 0.85 }
     },
@@ -140,6 +146,32 @@
       explode: [x / llen * 1.7, 0.45, z / llen * 1.7], labelDy: 0.55
     };
   }
+  // SM internal detail (GEMM only, pure geometry, no DOM/WebGL).
+  // Returns small boxes relative to the SM box centre, so scene3d.js
+  // can draw them as non-pickable detail that follows the SM on
+  // explode. 4 subpartitions in a 2x2 grid; each carries one tensor
+  // tile (same compute hue, darker), one narrow scheduler strip at
+  // its front edge and one register strip at its back edge; one
+  // shared-memory strip runs along the SM front face (the SM
+  // diagram's "L1/shared strip at the bottom", front = bottom in
+  // this top-down reading). Front is +z (toward the default camera).
+  function smDetails(box) {
+    var out = [];
+    var qw = box.w / 2 - 0.12, qd = box.d / 2 - 0.12;
+    var qx = [-box.w / 4, box.w / 4], qz = [-box.d / 4, box.d / 4];
+    var i, j;
+    for (i = 0; i < 2; i++) {
+      for (j = 0; j < 2; j++) {
+        var dx = qx[i], dz = qz[j];
+        out.push({ role: 'subpartition', dx: dx, dy: box.h / 2 + 0.04, dz: dz, w: qw, h: 0.08, d: qd, color: KIND_COLOR.compute });
+        out.push({ role: 'tensor', dx: dx, dy: box.h / 2 + 0.14, dz: dz, w: 0.55, h: 0.12, d: 0.55, color: TENSOR_COLOR });
+        out.push({ role: 'scheduler', dx: dx, dy: box.h / 2 + 0.10, dz: dz + qd / 2 - 0.09, w: qw - 0.2, h: 0.06, d: 0.18, color: KIND_COLOR.control });
+        out.push({ role: 'register', dx: dx, dy: box.h / 2 + 0.10, dz: dz - qd / 2 + 0.09, w: qw - 0.2, h: 0.06, d: 0.18, color: KIND_COLOR.memory });
+      }
+    }
+    out.push({ role: 'shared-strip', dx: 0, dy: 0, dz: box.d / 2 + 0.10, w: box.w, h: 0.5, d: 0.2, color: KIND_COLOR.memory });
+    return out;
+  }
   function explodePos(box, t) {
     t = clamp01(t);
     return {
@@ -159,7 +191,7 @@
     active.forEach(function (b) { sx += b.x; sy += b.y; sz += b.z; });
     return { x: sx / active.length, y: sy / active.length, z: sz / active.length };
   }
-  var api = { KIND_COLOR: KIND_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid };
+  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerSceneMap = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

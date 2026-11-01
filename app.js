@@ -10,24 +10,30 @@
   let explodeAuto = null;
   const $ = function (id) { return document.getElementById(id); };
 
+  const JOURNEY_SHORT = { gemm: '矩阵乘法', pagetable: '页表遍历', pixel: '像素着色', stacking: '芯片堆叠' };
+  const MODEL_SHORT = { h100: 'H100', a100: 'A100', rtx5090: 'RTX 5090', mi300x: 'MI300X', a20pro: 'A20 Pro', snapdragon: 'Snapdragon' };
   function render() {
     $('tooltip').style.display = 'none';
     const journey = S.currentJourney(state);
     const step = S.currentStep(state);
-    $('journey-title').textContent = journey.title;
-    $('verdict').textContent = journey.verdict || '';
-    $('model-note').textContent = S.MODELS[state.model].name + ' · ' + S.MODELS[state.model].kind + ' — ' + S.MODELS[state.model].note;
+    // Breadcrumb, <=6 tokens: 探索 › 旅程 › 型号 › 第 N 步.
+    $('crumb').textContent = '探索 › ' + (JOURNEY_SHORT[state.journey] || state.journey) + ' › ' + (MODEL_SHORT[state.model] || state.model) + ' › 第' + (state.stepIndex + 1) + '步';
+    // Gloss only for the active journey (text-economy rule).
+    $('journey-gloss').textContent = journey.gloss || '';
     $('step-counter').textContent = '第 ' + (state.stepIndex + 1) + ' / ' + journey.steps.length + ' 步';
     $('step-title').textContent = step.title;
     $('step-body').textContent = S.getStepNote(step, state.model);
-    $('trace').textContent = '追踪：' + (step.trace || '');
-    $('view-note').textContent = journey.views[state.view];
+    // Fact row: the step's formula trace. No separate trace panel.
+    $('fact').textContent = step.trace || '';
     $('play-btn').textContent = state.playing ? '暂停' : '播放';
     $('prev-btn').disabled = S.isAtStart(state);
     $('next-btn').disabled = S.isAtEnd(state);
     $('progress-fill').style.width = Math.round((state.stepIndex + 1) / journey.steps.length * 100) + '%';
 
-    document.querySelectorAll('[data-view]').forEach(function (b) {
+    document.querySelectorAll('[data-cam]').forEach(function (b) {
+    b.onclick = function () { if (window.GpuExplorer3D) window.GpuExplorer3D.setCamera(b.dataset.cam); };
+  });
+  document.querySelectorAll('[data-view]').forEach(function (b) {
       b.classList.toggle('active', b.dataset.view === state.view);
     });
     document.querySelectorAll('[data-journey]').forEach(function (b) {
@@ -36,27 +42,31 @@
     document.querySelectorAll('[data-model]').forEach(function (b) {
       b.classList.toggle('active', b.dataset.model === state.model);
     });
-    $('journey-select').value = state.journey;
     $('model-select').value = state.model;
     $('compare-select').value = state.compareModel || '';
 
+    // Timeline = phases (<=6 nodes, 1-2 words each). The timeline IS
+    // the trace; only the selected phase's gloss is printed.
     const ov = $('overview');
     ov.innerHTML = '';
-    journey.steps.forEach(function (s, i) {
+    const phases = S.PHASES[state.journey] || [];
+    const curPhase = S.currentPhase(state);
+    phases.forEach(function (p) {
       const b = document.createElement('button');
-      b.className = 'ov-step' + (i === state.stepIndex ? ' active' : '') + (i < state.stepIndex ? ' done' : '');
-      b.textContent = (i + 1) + ' ' + s.title;
-      b.setAttribute('aria-label', '跳到第 ' + (i + 1) + ' 步：' + s.title);
-      b.onclick = function () { state.playing = false; stopTimer(); S.goto(state, i); render(); };
+      b.className = 'ov-step' + (curPhase === p ? ' active' : '') + (p.step < state.stepIndex ? ' done' : '');
+      b.textContent = p.label;
+      b.setAttribute('aria-label', p.label + '：' + p.gloss);
+      b.onclick = function () { state.playing = false; stopTimer(); S.goto(state, p.step); render(); };
       ov.appendChild(b);
     });
+    $('phase-gloss').textContent = curPhase ? curPhase.gloss : '';
 
     const predBox = $('predict');
     predBox.innerHTML = '';
     const pred = S.getPredict(state.journey, state.stepIndex);
     if (pred) {
       const h = document.createElement('h4');
-      h.textContent = '先预测：' + pred.q;
+      h.textContent = '预测：' + pred.q;
       predBox.appendChild(h);
       const made = S.predictionMade(state);
       pred.options.forEach(function (opt, i) {
@@ -68,7 +78,7 @@
           const r = S.predict(state, i);
           render();
           if (r && !r.correct) {
-            $('predict-feedback').textContent = '不对，再想想：' + r.explain.replace(/^对：/, '');
+            $('predict-feedback').textContent = '未命中：' + r.explain.replace(/^正确：/, '');
           }
         };
         predBox.appendChild(b);
@@ -77,7 +87,7 @@
       fb.id = 'predict-feedback';
       fb.className = 'pred-feedback';
       if (made === pred.answer) fb.textContent = pred.explain;
-      else if (made !== undefined && made !== null) fb.textContent = '已选一项，还没答对——可以再选一次。';
+      else if (made !== undefined && made !== null) fb.textContent = '已选择一项，尚未命中正确答案，可再次选择。';
       predBox.appendChild(fb);
     }
 
@@ -118,9 +128,6 @@
       l.textContent = line;
       code.appendChild(l);
     });
-    $('selected-note').textContent = state.selected
-      ? '已选：' + (journey.nodes.find(function (n) { return n.id === state.selected; }) || {}).label + '（切换视图时保留；拖动可旋转场景，点击 3D 方块或下方部件列表可改选）'
-      : '拖动可旋转 3D 场景，滚轮缩放；点一下 3D 方块或下方部件列表，选中一个部件；切换视图时选中状态保留。';
     if (window.location.hash !== '#' + S.encodeState(state)) {
       history.replaceState(null, '', '#' + S.encodeState(state));
     }
@@ -160,9 +167,8 @@
     if (state.playing) { if (S.isAtEnd(state)) state.stepIndex = 0; startTimer(); } else stopTimer();
     render();
   };
-  $('journey-select').onchange = function (e) { state.playing = false; stopTimer(); S.setJourney(state, e.target.value); render(); };
   document.querySelectorAll('[data-journey]').forEach(function (b) {
-    b.onclick = function () { $('journey-select').value = b.dataset.journey; $('journey-select').dispatchEvent(new Event('change', { bubbles: true })); };
+    b.onclick = function () { state.playing = false; stopTimer(); S.setJourney(state, b.dataset.journey); render(); };
   });
   $('model-select').onchange = function (e) { S.setModel(state, e.target.value); render(); };
   document.querySelectorAll('[data-model]').forEach(function (b) {

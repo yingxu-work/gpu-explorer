@@ -104,5 +104,33 @@ test('chain journeys run in regular left-to-right rows', function () {
   assert.ok(pxId['pixel'].x === pxId['fb'].x, 'target pixel must sit under the frame buffer');
 });
 
+
+test('Round 9 palette: one fixed colour per hardware family', function () {
+  eq(M.KIND_COLOR.compute, 0x89b4fa);
+  eq(M.KIND_COLOR.memory, 0x94e2d5);
+  eq(M.KIND_COLOR.data, 0xfab387);
+  eq(M.KIND_COLOR.control, 0x9b9ba4);
+  assert.ok(M.TENSOR_COLOR !== M.KIND_COLOR.compute, 'tensor tile must be a darker shade, not a new hue');
+});
+test('Round 9 SM detail: 4 subpartitions, tensor + scheduler + register each, shared strip at front', function () {
+  var box = M.boxFor('gemm', S.JOURNEYS.gemm.nodes.filter(function (n) { return n.id === 'sm'; })[0]);
+  var d = M.smDetails(box);
+  function byRole(r) { return d.filter(function (x) { return x.role === r; }); }
+  eq(byRole('subpartition').length, 4);
+  eq(byRole('tensor').length, 4);
+  eq(byRole('scheduler').length, 4);
+  eq(byRole('register').length, 4);
+  eq(byRole('shared-strip').length, 1);
+  byRole('scheduler').forEach(function (x) { assert.ok(x.d < 0.5, 'scheduler must be a narrow strip, not a block'); });
+  assert.ok(byRole('shared-strip')[0].dz > box.d / 2, 'shared strip must sit at the SM front face');
+  assert.ok(byRole('tensor')[0].color !== M.KIND_COLOR.compute, 'tensor uses the darker compute shade');
+});
+test('Round 9 GEMM: warp is a narrow dispatch strip, smem the wide central block', function () {
+  var boxes = M.boxesFor('gemm', S.JOURNEYS.gemm);
+  var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+  assert.ok(byId['warp'].d < byId['sm'].d, 'warp strip must be narrower than the SM block');
+  assert.ok(byId['smem'].w > byId['warp'].w, 'smem must stay the wide central block');
+});
+
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);

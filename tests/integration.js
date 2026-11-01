@@ -30,7 +30,7 @@ server.listen(0, '127.0.0.1', async () => {
   try {
     const index = await get(port, '/');
     assert.equal(index.status, 200);
-    for (const marker of ['GPU Explorer', 'journey-select', 'model-select', 'compare-select', 'compare-diagram', 'diagram', 'scene3d', 'scene3d.js', 'scene-map.js', 'three.module.js', 'explode-slider', 'explode-auto-btn', 'block-list', 'overview', 'verdict', 'play-btn', 'state.js', 'app.js', 'sidebar', 'inspector', 'bottombar', 'data-journey', 'data-model']) {
+    for (const marker of ['GPU Explorer', 'model-select', 'compare-select', 'compare-diagram', 'diagram', 'scene3d', 'scene3d.js', 'scene-map.js', 'three.module.js', 'explode-slider', 'explode-auto-btn', 'block-list', 'overview', 'play-btn', 'state.js', 'app.js', 'sidebar', 'inspector', 'bottombar', 'data-journey', 'cam-bar', 'data-cam', 'crumb', 'journey-gloss', 'phase-gloss', 'predict-details', 'code-details', 'legend-row']) {
       assert.ok(index.body.includes(marker), 'index missing: ' + marker);
     }
     for (const asset of ['/state.js', '/app.js', '/scene-map.js', '/scene3d.js', '/three/three.module.js', '/three/addons/controls/OrbitControls.js', '/styles.css']) {
@@ -50,7 +50,7 @@ server.listen(0, '127.0.0.1', async () => {
     S.setView(s, 'data'); assert.equal(s.stepIndex, S.currentJourney(s).steps.length - 1);
     S.setJourney(s, 'pagetable');
     while (!S.isAtEnd(s)) S.next(s);
-    assert.equal(S.currentStep(s).title, '访问内存 / 装入缓存');
+    assert.equal(S.currentStep(s).title, '内存访问与缓存装入');
     S.setModel(s, 'a20pro'); assert.equal(s.journey, 'pagetable'); assert.equal(S.isAtEnd(s), true);
     console.log('INTEGRATION OK: http serve + full user flow passed (port ' + port + ')');
     server.close(); process.exit(0);
