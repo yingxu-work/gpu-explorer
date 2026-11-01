@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createHardwareModel, isolateHardwareSubtree } from './hardware-model.js?v=20261102d';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102e';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -200,17 +200,11 @@ class HardwareScene {
     else bounds=new THREE.Box3().setFromObject(hw.smRoot);
     hw.setExplode(this.explode);hw.root.updateMatrixWorld(true);
     if(bounds.isEmpty())return;
-    const target=bounds.getCenter(new THREE.Vector3());
     const direction=preserveDirection?this.camera.position.clone().sub(this.controls.target).normalize():new THREE.Vector3(.62,.83,1).normalize();
-    const right=new THREE.Vector3(0,1,0).cross(direction).normalize();if(right.lengthSq()<.01)right.set(1,0,0);
-    const up=direction.clone().cross(right).normalize();
-    const tangent=Math.tan(THREE.MathUtils.degToRad(this.camera.fov/2));
-    const margin=Math.max(this.camera.aspect<1.1?1.10:1,{board:1.025,package:1.11,die:1.22,sm:1.10}[this.level]);let distance=3.5;
-    for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
-      const relative=new THREE.Vector3(x,y,z).sub(target),near=relative.dot(direction);
-      distance=Math.max(distance,near+Math.abs(relative.dot(right))*margin/(tangent*this.camera.aspect),near+Math.abs(relative.dot(up))*margin/tangent);
-    }
-    this.moveCamera(target.clone().addScaledVector(direction,distance+.2),target,duration);
+    const margin=Math.max(this.camera.aspect<1.1?1.10:1,{board:1.025,package:1.11,die:1.22,sm:1.10}[this.level]);
+    const fit=calculateCameraFit(THREE,bounds,direction,this.camera.fov,this.camera.aspect,margin);
+    this.controls.maxDistance=fit.maxDistance;this.camera.far=fit.far;this.camera.updateProjectionMatrix();
+    this.moveCamera(fit.position,fit.target,duration);
   }
 
   setCamera(name) {
@@ -222,9 +216,9 @@ class HardwareScene {
   focusSelected() {
     const key=this.canonical(this.selected||(this.state?.journey==='gemm'?this.step?.active?.[0]:null)||'gpu-die');const component=this.hardware.components[key];if(!component)return;
     this.hardware.root.updateMatrixWorld(true);const bounds=new THREE.Box3().setFromObject(component.group);if(bounds.isEmpty())return;
-    const size=bounds.getSize(new THREE.Vector3()),centre=bounds.getCenter(new THREE.Vector3());
-    const distance=Math.max(size.x,size.z,size.y*1.5)*1.65;
-    const direction=this.camera.position.clone().sub(this.controls.target).normalize();this.moveCamera(centre.clone().addScaledVector(direction,Math.max(3.2,distance)),centre);
+    const direction=this.camera.position.clone().sub(this.controls.target).normalize();
+    const fit=calculateCameraFit(THREE,bounds,direction,this.camera.fov,this.camera.aspect,1.15);
+    this.controls.maxDistance=fit.maxDistance;this.camera.far=fit.far;this.camera.updateProjectionMatrix();this.moveCamera(fit.position,fit.target);
   }
 
   isolateSelected(value) {

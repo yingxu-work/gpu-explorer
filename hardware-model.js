@@ -15,6 +15,22 @@ export function isolateHardwareSubtree(root, selected) {
   prune(root);return hidden;
 }
 
+// Fit all eight bounds corners in camera space. Returning orbit/far limits
+// with the position prevents OrbitControls from clamping a valid narrow fit.
+export function calculateCameraFit(T,bounds,viewDirection,fov,aspect,margin=1.1) {
+  const target=bounds.getCenter(new T.Vector3()),direction=viewDirection.clone().normalize();
+  const right=new T.Vector3(0,1,0).cross(direction).normalize();if(right.lengthSq()<.01)right.set(1,0,0);
+  const up=direction.clone().cross(right).normalize(),tangent=Math.tan(T.MathUtils.degToRad(fov/2));
+  let distance=3.5;
+  for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
+    const point=new T.Vector3(x,y,z).sub(target),near=point.dot(direction);
+    distance=Math.max(distance,near+Math.abs(point.dot(right))*margin/(tangent*aspect),near+Math.abs(point.dot(up))*margin/tangent);
+  }
+  distance+=.2;
+  const maxDistance=Math.max(52,distance*1.8),far=Math.max(180,maxDistance+bounds.getSize(new T.Vector3()).length()*2);
+  return {position:target.clone().addScaledVector(direction,distance),target,distance,maxDistance,far};
+}
+
 // Procedural SXM anatomy. Package/board geometry is a recognizable physical
 // reconstruction, not a vendor CAD model. The etched logical floorplan is
 // schematic; its active SM and HBM counts match the selected shipping product.
