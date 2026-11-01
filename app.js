@@ -45,21 +45,24 @@
     $('model-select').value = state.model;
     $('compare-select').value = state.compareModel || '';
 
-    // Timeline = phases (<=6 nodes, 1-2 words each). The timeline IS
-    // the trace; only the selected phase's gloss is printed.
+    // Timeline = one chip per step (Piece 3), 1-2 words each. The
+    // timeline IS the trace; only the selected step's gloss is printed
+    // (the #phase-gloss element id is retained for compatibility).
+    // Clicking a chip jumps directly to that step; prev/next/play are
+    // unchanged and still reach every step.
     const ov = $('overview');
     ov.innerHTML = '';
-    const phases = S.PHASES[state.journey] || [];
-    const curPhase = S.currentPhase(state);
-    phases.forEach(function (p) {
+    const chips = S.STEP_CHIPS[state.journey] || [];
+    const curChip = S.currentStepChip(state);
+    chips.forEach(function (c, i) {
       const b = document.createElement('button');
-      b.className = 'ov-step' + (curPhase === p ? ' active' : '') + (p.step < state.stepIndex ? ' done' : '');
-      b.textContent = p.label;
-      b.setAttribute('aria-label', p.label + '：' + p.gloss);
-      b.onclick = function () { state.playing = false; stopTimer(); S.goto(state, p.step); render(); };
+      b.className = 'ov-step' + (i === state.stepIndex ? ' active' : '') + (i < state.stepIndex ? ' done' : '');
+      b.textContent = c.label;
+      b.setAttribute('aria-label', '第' + (i + 1) + '步：' + c.label + '：' + c.gloss);
+      b.onclick = function () { state.playing = false; stopTimer(); S.goto(state, i); render(); };
       ov.appendChild(b);
     });
-    $('phase-gloss').textContent = curPhase ? curPhase.gloss : '';
+    $('phase-gloss').textContent = curChip ? curChip.gloss : '';
 
     const predBox = $('predict');
     predBox.innerHTML = '';

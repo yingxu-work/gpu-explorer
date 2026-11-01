@@ -30,9 +30,13 @@ server.listen(0, '127.0.0.1', async () => {
   try {
     const index = await get(port, '/');
     assert.equal(index.status, 200);
-    for (const marker of ['GPU Explorer', 'model-select', 'compare-select', 'compare-diagram', 'diagram', 'scene3d', 'scene3d.js', 'scene-map.js', 'three.module.js', 'explode-slider', 'explode-auto-btn', 'block-list', 'overview', 'play-btn', 'state.js', 'app.js', 'sidebar', 'inspector', 'bottombar', 'data-journey', 'cam-bar', 'data-cam', 'crumb', 'journey-gloss', 'phase-gloss', 'predict-details', 'code-details', 'legend-row']) {
+    for (const marker of ['GPU Explorer', 'model-select', 'compare-select', 'compare-diagram', 'diagram', 'scene3d', 'scene3d.js', 'scene-map.js', 'three.module.js', 'explode-slider', 'explode-auto-btn', 'block-list', 'overview', 'play-btn', 'state.js', 'app.js', 'sidebar', 'inspector', 'bottombar', 'data-journey', 'cam-bar', 'data-cam', 'crumb', 'journey-gloss', 'phase-gloss', 'predict-details', 'code-details', 'legend-row', '步骤（点击可跳转）']) {
       assert.ok(index.body.includes(marker), 'index missing: ' + marker);
     }
+    const app = await get(port, '/app.js');
+    assert.equal(app.status, 200);
+    assert.ok(app.body.includes('STEP_CHIPS'), 'app must render per-step chips from STEP_CHIPS');
+    assert.ok(app.body.includes('currentStepChip'), 'app must show only the selected step gloss');
     for (const asset of ['/state.js', '/app.js', '/scene-map.js', '/scene3d.js', '/three/three.module.js', '/three/addons/controls/OrbitControls.js', '/styles.css']) {
       const r = await get(port, asset);
       assert.equal(r.status, 200, asset + ' should serve');

@@ -216,6 +216,59 @@
     return cur;
   }
 
+  // Bottom timeline step chips (Piece 3): one chip per step, NOT per
+  // phase. Each label is 1-2 words, each gloss is short, and only the
+  // selected step's gloss is printed — the same text-economy rule the
+  // phase timeline used, with direct selection restored for every step.
+  // Labels/glosses are timeline metadata only: step titles, bodies,
+  // traces, code and predictions are unchanged. PHASES is kept above
+  // for backward compatibility (older tests reference it).
+  const STEP_CHIPS = {
+    gemm: [
+      { label: '选定', gloss: '确定单个输出目标。' },
+      { label: '依赖', gloss: '仅依赖一行一列。' },
+      { label: '分块', gloss: '块负责输出 tile。' },
+      { label: '载入', gloss: '小块载入共享存储。' },
+      { label: '分工', gloss: '同指令，不同数据。' },
+      { label: '乘加', gloss: '乘加并累加。' },
+      { label: '同步', gloss: '同步后载入下一块。' },
+      { label: '写回', gloss: '结果写回输出。' },
+    ],
+    pagetable: [
+      { label: '发出', gloss: 'CPU 发出虚拟地址。' },
+      { label: 'TLB', gloss: '翻译缓存未命中。' },
+      { label: 'PGD', gloss: '高位索引第一级。' },
+      { label: 'PUD', gloss: '下段索引第二级。' },
+      { label: 'PMD', gloss: '继续缩小范围。' },
+      { label: 'PTE', gloss: '页号加页内偏移。' },
+      { label: '访问', gloss: '经缓存返回 CPU。' },
+    ],
+    pixel: [
+      { label: '选定', gloss: '确定目标像素。' },
+      { label: '覆盖', gloss: '命中覆盖三角形。' },
+      { label: '插值', gloss: '顶点属性重心插值。' },
+      { label: '着色', gloss: '着色器计算颜色。' },
+      { label: '采样', gloss: '纹理采样结合光照。' },
+      { label: '深度', gloss: '遮挡丢弃判定。' },
+      { label: '写入', gloss: '写入帧缓冲。' },
+      { label: '显示', gloss: '帧缓冲送至屏幕。' },
+    ],
+    stacking: [
+      { label: '剖面', gloss: '两层逻辑堆叠。' },
+      { label: '分档', gloss: '关闭单元即低档。' },
+      { label: '分层', gloss: '自上而下六层。' },
+      { label: '上层', gloss: '超大核距盖最近。' },
+      { label: '键合', gloss: '键合层垂直连接。' },
+      { label: '内存', gloss: '下层靠近内存层。' },
+      { label: '距离', gloss: '垂直短于横向。' },
+      { label: '代价', gloss: '短距离与散热代价。' },
+    ],
+  };
+  function currentStepChip(state) {
+    var chips = STEP_CHIPS[state.journey] || [];
+    return chips[state.stepIndex] || null;
+  }
+
   const VIEWS = ['structure', 'work', 'data', 'timeline'];
 
   function createState(overrides) {
@@ -321,7 +374,7 @@
     return out;
   }
 
-  const api = { MODELS, JOURNEYS, VIEWS, PREDICTS, PHASES, currentPhase, createState, currentJourney, currentStep, getStepNote, setCompare, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, playStep, encodeState, decodeState, getPredict, predict, predictionMade };
+  const api = { MODELS, JOURNEYS, VIEWS, PREDICTS, PHASES, STEP_CHIPS, currentPhase, currentStepChip, createState, currentJourney, currentStep, getStepNote, setCompare, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, playStep, encodeState, decodeState, getPredict, predict, predictionMade };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerState = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

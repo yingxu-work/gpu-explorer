@@ -225,5 +225,54 @@ test('text economy: step definitions fit 2 lines, traces are formulas only', fun
   });
 });
 
+test('Piece 3: one timeline chip per step, labels 1-2 words, gloss only on selected', function () {
+  Object.keys(S.JOURNEYS).forEach(function (key) {
+    var chips = S.STEP_CHIPS[key];
+    var steps = S.JOURNEYS[key].steps;
+    assert.ok(chips, key + ' needs STEP_CHIPS');
+    eq(chips.length, steps.length, key + ' chips must cover every step, got ' + chips.length + ' for ' + steps.length);
+    var seen = {};
+    chips.forEach(function (c, i) {
+      assert.ok(c.label && c.label.length <= 4, key + ' chip ' + i + ' label too long: ' + c.label);
+      assert.ok(c.label.indexOf(' ') < 0, key + ' chip ' + i + ' label must be one token');
+      assert.ok(!seen[c.label], key + ' chip labels must be distinct: ' + c.label);
+      seen[c.label] = true;
+      assert.ok(c.gloss && c.gloss.length <= 14, key + ' chip ' + i + ' gloss too long: ' + c.gloss);
+    });
+  });
+  // Spot checks: chip order maps 1:1 to step order.
+  eq(S.STEP_CHIPS.gemm[4].label, '分工');
+  eq(S.STEP_CHIPS.pagetable[2].label, 'PGD');
+  eq(S.STEP_CHIPS.pixel[4].label, '采样');
+  eq(S.STEP_CHIPS.stacking[6].label, '距离');
+  // currentStepChip follows goto, including a mid-journey jump.
+  var s = S.createState({});
+  eq(S.currentStepChip(s).label, '选定');
+  S.goto(s, 4);
+  eq(S.currentStepChip(s).label, '分工');
+  eq(S.currentStep(s).title, 'Warp 分工');
+  S.setJourney(s, 'pagetable'); S.goto(s, 5);
+  eq(S.currentStepChip(s).label, 'PTE');
+  // Phases are retained (backward compat) but are no longer the timeline.
+  assert.ok(S.PHASES.gemm.length <= 6);
+});
+test('Piece 3: step titles, bodies, traces and predictions are unchanged', function () {
+  var titles = {
+    gemm: ['选定输出 C[3,7]', 'A 行与 B 列的依赖关系', 'Tile 与 Block 的划分', '数据载入 Shared Memory', 'Warp 分工', 'SM 上的乘加运算', '同步与下一块', '写回 C[3,7]'],
+    pagetable: ['CPU 发出虚拟地址', 'TLB 查询', 'PGD 查询', 'PUD 查询', 'PMD 查询', 'PTE 查询与物理页', '内存访问与缓存装入'],
+    pixel: ['选定目标像素', '覆盖该像素的三角形', '光栅化：插值计算', '片元着色：颜色计算', '纹理采样', '深度测试：遮挡丢弃', '写入帧缓冲', '显示与反向追溯'],
+    stacking: ['堆叠芯片的剖面结构', '同一芯片的分档', '剖面分层', '上层逻辑：超大核的位置', '混合键合：上下层的连接', '下层逻辑与内存', '信号距离：垂直路径与横向路径', '热与代价：堆叠的约束条件'],
+  };
+  Object.keys(titles).forEach(function (key) {
+    var got = S.JOURNEYS[key].steps.map(function (st) { return st.title; });
+    assert.deepStrictEqual(got, titles[key], key + ' step titles must be unchanged');
+  });
+  // Prediction keys/answers unchanged (spot checks from the pre-Piece-3 set).
+  eq(S.getPredict('gemm', 1).answer, 1);
+  eq(S.getPredict('pagetable', 5).answer, 1);
+  eq(S.getPredict('pixel', 5).answer, 1);
+  eq(S.getPredict('stacking', 4).answer, 1);
+});
+
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);
