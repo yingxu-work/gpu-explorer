@@ -64,7 +64,7 @@
 .lab-root * {box-sizing:border-box}.lab-root button{font:inherit}.lab-matrices{display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 12px minmax(0,1fr);gap:4px;align-items:center;padding:12px 0 14px}
 .lab-matrix{min-width:0}.lab-matrix-title{display:flex;align-items:baseline;gap:5px;margin-bottom:7px;font:600 12px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--lab-a)}.lab-matrix-title small{font-size:9px;color:var(--lab-dim);font-weight:400;white-space:nowrap}.lab-matrix-b .lab-matrix-title{color:var(--lab-b)}.lab-matrix-c .lab-matrix-title{color:var(--lab-c)}
 .lab-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:2px}.lab-cell{display:flex;align-items:center;justify-content:center;min-width:0;height:13px;border-radius:1px;background:rgba(140,159,176,.045);color:#53616c;font:9px/1 ui-monospace,SFMono-Regular,Consolas,monospace;transition:background .2s,color .2s,box-shadow .2s}.lab-cell.lab-a{background:rgba(116,214,194,.19);color:var(--lab-a)}.lab-cell.lab-b{background:rgba(233,183,125,.19);color:var(--lab-b)}.lab-cell.lab-c{background:rgba(145,181,236,.14);color:var(--lab-c)}.lab-cell.lab-output{box-shadow:0 0 0 1px var(--lab-c);color:var(--lab-c);background:rgba(145,181,236,.24);font-weight:700}.lab-cell.lab-k-focus{box-shadow:0 0 0 1px currentColor;filter:brightness(1.45)}.lab-cell.lab-computed{background:rgba(145,181,236,.7);color:#09131e}.lab-operator{text-align:center;font:16px Georgia,serif;color:var(--lab-dim)}
-.lab-caption{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--lab-line);padding-top:9px;margin-bottom:9px;color:var(--lab-dim);font-size:10px}.lab-caption strong{font:500 11px ui-monospace,SFMono-Regular,Consolas,monospace;color:#d9e1e7}.lab-kicker{font:9px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.11em;text-transform:uppercase;color:var(--lab-dim)}
+.lab-vectors{display:grid;gap:5px;padding:10px 0 12px}.lab-vector-row{display:grid;grid-template-columns:52px repeat(8,minmax(0,1fr));align-items:center;gap:3px}.lab-vector-label{font:10px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--lab-a)}.lab-vector-row:last-child .lab-vector-label{color:var(--lab-b)}.lab-vector-row .lab-cell{height:19px;font-size:11px}.lab-final-result{display:flex;align-items:center;justify-content:space-between;padding:7px 0 0;color:var(--lab-c);font:13px ui-monospace,SFMono-Regular,Consolas,monospace}.lab-final-result strong{font-size:34px;font-weight:500;line-height:1}.lab-root[data-step="5"] .lab-equation-status strong,.lab-root[data-step="6"] .lab-equation-status strong{font-size:30px;line-height:1.1}.lab-root[data-step="5"] .lab-expression,.lab-root[data-step="6"] .lab-expression{font-size:14px;min-height:28px;padding-top:6px}.lab-caption{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--lab-line);padding-top:9px;margin-bottom:9px;color:var(--lab-dim);font-size:10px}.lab-caption strong{font:500 11px ui-monospace,SFMono-Regular,Consolas,monospace;color:#d9e1e7}.lab-kicker{font:9px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.11em;text-transform:uppercase;color:var(--lab-dim)}
 .lab-stage{position:relative;padding:12px;border:1px solid var(--lab-line);border-radius:6px;background:rgba(6,12,18,.24);min-height:97px}.lab-formula{display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap;font:21px/1.5 Georgia,'Times New Roman',serif;min-height:42px;letter-spacing:.01em}.lab-formula .lab-acolor{color:var(--lab-a)}.lab-formula .lab-bcolor{color:var(--lab-b)}.lab-formula .lab-ccolor{color:var(--lab-c)}.lab-formula sub{font-size:.56em}.lab-sigma{display:inline-flex;align-items:center;justify-content:center;flex-direction:column;line-height:1;font-size:26px;margin:0 4px}.lab-sigma sup,.lab-sigma sub{font:9px ui-monospace,SFMono-Regular,Consolas,monospace}.lab-note{font-size:10px;color:var(--lab-dim);margin:7px 0 0;line-height:1.55}.lab-note em{font-style:normal;color:#b2bdc8}.lab-small-note{color:var(--lab-dim);font-size:9px;margin:8px 0 0;line-height:1.5}
 .lab-products{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;margin-top:10px}.lab-product{display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;padding:5px 0;border:1px solid transparent;border-radius:3px;background:rgba(255,255,255,.035);color:#9ca8b3;cursor:pointer;font:10px ui-monospace,SFMono-Regular,Consolas,monospace!important}.lab-product .lab-product-k{font-size:8px;color:#65747f}.lab-product .lab-product-number{font-size:13px;color:#b4c5d7}.lab-product:hover,.lab-product:focus-visible,.lab-product.lab-product-on{background:rgba(145,181,236,.1);border-color:rgba(145,181,236,.55);outline:none}.lab-product .lab-av{color:var(--lab-a)}.lab-product .lab-bv{color:var(--lab-b)}.lab-product.lab-product-done{background:rgba(116,214,194,.08)}.lab-product.lab-product-done .lab-product-number{color:var(--lab-a)}
 .lab-equation-status{display:flex;justify-content:space-between;align-items:center;gap:5px;color:var(--lab-dim);font:10px ui-monospace,SFMono-Regular,Consolas,monospace}.lab-equation-status strong{color:var(--lab-c);font-size:20px;font-weight:500}.lab-expression{font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:#b5c0ca;margin-top:4px;min-height:20px}.lab-expression .lab-av{color:var(--lab-a)}.lab-expression .lab-bv{color:var(--lab-b)}.lab-expression .lab-cv{color:var(--lab-c)}
@@ -102,6 +102,13 @@
   function matrices(step) {
     return '<div class="lab-matrices">' + matrix(A, 'A', 'a', step) + '<div class="lab-operator">×</div>' + matrix(B, 'B', 'b', step) + '<div class="lab-operator">=</div>' + matrix(C, 'C', 'c', step) + '</div>';
   }
+  function vectors() {
+    return '<div class="lab-vectors" aria-label="目标输出使用的 A 行与 B 列">' + ['a','b'].map(function(which) {
+      return '<div class="lab-vector-row"><span class="lab-vector-label">' + (which === 'a' ? 'A[3,:]' : 'B[:,7]') + '</span>' + TRACE.map(function(t) {
+        return '<span class="lab-cell lab-' + which + '" data-matrix-k="' + t.k + '" title="' + (which === 'a' ? 'A[3,' + t.k + ']' : 'B[' + t.k + ',7]') + ' = ' + t[which] + '">' + t[which] + '</span>';
+      }).join('') + '</div>';
+    }).join('') + '</div>';
+  }
   function products(step) {
     return '<div class="lab-products">' + TRACE.map(function (t) {
       return '<button type="button" class="lab-product" data-lab-k="' + t.k + '" aria-label="k=' + t.k + '：' + t.a + ' 乘 ' + t.b + ' 等于 ' + t.product + '" title="A[3,' + t.k + '] × B[' + t.k + ',7] = ' + t.product + '"><span class="lab-product-k">k' + t.k + '</span><span><span class="lab-av">' + t.a + '</span>·<span class="lab-bv">' + t.b + '</span></span><span class="lab-product-number">' + t.product + '</span></button>';
@@ -118,7 +125,7 @@
     return '<div class="lab-transfer">' + bank(false) + '<span class="lab-transfer-arrow">→</span>' + bank(true) + '</div><div class="lab-copy-progress"><i></i></div>';
   }
   function gemm(step) {
-    var html = matrices(step), body;
+    var html = step >= 3 && step <= 6 ? vectors() : (step === 7 ? '<div class="lab-final-result" role="status" aria-label="目标输出 C 第 3 行第 7 列等于 37"><span>C[3,7] = 19 + 18</span><strong>37</strong></div>' : '') + matrices(step), body;
     var captions = ['选择一个输出', '追踪输入依赖', '一个 CTA 负责一个输出块', '载入第 1 个 K-tile', '32 个 lane 协同工作', '累加第 1 个 K-tile', '同步 · 复用 · 下一块', '结果写回显存'];
     var locations = ['C[3,7]', 'A[3,:] · B[:,7]', 'tile → CTA → SM', 'k = 0…3', 'warp = 32 threads', 'acc = 0 → 19', 'acc = 19 → 37', 'C[3,7] = 37'];
     html += '<div class="lab-caption"><span>' + captions[step] + '</span><strong>' + locations[step] + '</strong></div>';
@@ -133,9 +140,9 @@
     } else if (step === 4) {
       body = '<div class="lab-kicker">一条指令 · 32 个 lane · 分布式数据片段</div><div class="lab-lanes">' + Array.from({length:32}, function (_, i) { return '<span class="lab-lane" style="--i:' + i + '">' + i + '</span>'; }).join('') + '</div><p class="lab-note">Tensor Core MMA 由线程协同提供矩阵片段。<em>下方标量内积用于解释数学，不是 lane 到元素的映射。</em></p>';
     } else if (step === 5 || step === 6) {
-      body = '<div class="lab-equation-status"><span>' + (step === 5 ? 'K-tile 01 / 02' : 'K-tile 02 / 02 · 同步完成后继续') + '</span><span>acc <strong data-lab-acc>' + (step === 5 ? '0' : '19') + '</strong></span></div><div class="lab-expression" data-lab-expression></div>' + products(step);
+      body = '<div class="lab-equation-status"><span>' + (step === 5 ? 'K-tile 01 / 02' : 'K-tile 02 / 02 · 同步完成后继续') + '</span><span>acc <strong data-lab-acc role="status" aria-label="当前累加值">' + (step === 5 ? '0' : '19') + '</strong></span></div><div class="lab-expression" data-lab-expression></div>' + products(step);
     } else {
-      body = '<div class="lab-equation-status"><span>8 项乘积 · 2 个 K-tile</span><span class="lab-output-badge">37</span></div><div class="lab-output-path"><span>累加结果</span>→<span>Store</span>→<span>C[3,7]</span></div><p class="lab-note">19 + 18 = 37。仅在所有 K-tile 累加完成后写回。</p>';
+      body = '<div class="lab-kicker">8 项乘积 · 2 个 K-tile · 累加完成</div><div class="lab-output-path"><span>累加结果</span>→<span>Store</span>→<span>C[3,7]</span></div><p class="lab-note">19 + 18 = 37。仅在所有 K-tile 累加完成后写回。</p>';
     }
     return html + '<div class="lab-stage">' + body + '</div><p class="lab-small-note">4 × 8 微型数值例；索引从 0 开始。硬件动画不代表真实周期或 Tensor Core 指令时序。</p>';
   }
@@ -162,8 +169,8 @@
   }
   function focusK(cache, k) {
     cache.k = k;
-    cache.container.querySelectorAll('[data-matrix-k]').forEach(function (node) { node.classList.toggle('lab-k-focus', Number(node.dataset.matrixK) === k); });
-    cache.container.querySelectorAll('[data-lab-k]').forEach(function (node) { node.classList.toggle('lab-product-on', Number(node.dataset.labK) === k); });
+    cache.matrixCells.forEach(function (node) { node.classList.toggle('lab-k-focus', Number(node.dataset.matrixK) === k); });
+    cache.products.forEach(function (node) { node.classList.toggle('lab-product-on', Number(node.dataset.labK) === k); });
   }
   function setProgress(container, progress) {
     if (!container || !caches) return;
@@ -187,7 +194,7 @@
           ? '<span class="lab-cv">19 + 18 = 37</span> · 累加完成'
           : String(acc.value) + ' + <span class="lab-av">' + t.a + '</span> × <span class="lab-bv">' + t.b + '</span> → <span class="lab-cv">' + t.acc + '</span>';
         cache.products.forEach(function (node) { node.classList.toggle('lab-product-done', Number(node.dataset.labK) < acc.count); });
-        focusK(cache, acc.currentK);
+        if (cache.playing || cache.manualK === null) focusK(cache, acc.currentK);
       }
     }
   }
@@ -201,15 +208,18 @@
       var builder = ({ gemm:gemm, pagetable:pagetable, pixel:pixel, stacking:stacking })[journey] || gemm;
       var max = journey === 'pagetable' ? 6 : 7; i = Math.min(i,max);
       container.innerHTML = '<div class="lab-root" data-journey="' + escapeHTML(journey) + '" data-step="' + i + '" data-animate="' + (state.playing ? 'true' : 'false') + '">' + builder(i) + '</div>';
-      cache = { key:key, container:container, root:container.firstElementChild, journey:journey, step:i, accCount:-1,
+      cache = { key:key, container:container, root:container.firstElementChild, journey:journey, step:i, accCount:-1, playing:!!state.playing, manualK:null,
+        matrixCells:Array.from(container.querySelectorAll('[data-matrix-k]')),
         packets:Array.from(container.querySelectorAll('[data-packet]')), lanes:Array.from(container.querySelectorAll('.lab-lane')),
         products:Array.from(container.querySelectorAll('[data-lab-k]')), acc:container.querySelector('[data-lab-acc]'), expression:container.querySelector('[data-lab-expression]') };
       if (caches) caches.set(container,cache);
       cache.products.forEach(function(node){
-        function selectPair() { focusK(cache, Number(node.dataset.labK)); }
+        function selectPair() { cache.manualK = Number(node.dataset.labK); focusK(cache, cache.manualK); }
         node.addEventListener('click',selectPair); node.addEventListener('focus',selectPair);
       });
     }
+    if (state.playing && !cache.playing) cache.manualK = null;
+    cache.playing = !!state.playing;
     cache.root.dataset.animate = state.playing ? 'true' : 'false';
     setProgress(container, progress === undefined ? 0 : progress);
   }

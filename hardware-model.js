@@ -104,6 +104,22 @@ export function createHardwareModel(T, model = 'h100') {
     const texture = new T.CanvasTexture(canvas); texture.colorSpace = T.SRGBColorSpace;
     texture.anisotropy = 8; return texture;
   }
+  function siliconCoverTexture() {
+    const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=1536;
+    const c=canvas.getContext('2d');c.fillStyle='#263b43';c.fillRect(0,0,1024,1536);
+    // On a physical naked die the metallization is microscopic. Retain its
+    // dark optical sheen and faint etching; the raised logical floorplan is
+    // only revealed by the explicitly educational Die hierarchy level.
+    c.strokeStyle='rgba(155,183,181,.055)';c.lineWidth=1;
+    for(let x=24;x<1024;x+=32){c.beginPath();c.moveTo(x,20);c.lineTo(x,1516);c.stroke();}
+    for(let z=24;z<1536;z+=32){c.beginPath();c.moveTo(20,z);c.lineTo(1004,z);c.stroke();}
+    c.strokeStyle='rgba(176,184,162,.25)';c.lineWidth=3;c.strokeRect(13,13,998,1510);
+    c.strokeStyle='rgba(176,184,162,.10)';c.lineWidth=1;c.strokeRect(24,24,976,1488);
+    c.fillStyle='rgba(187,205,202,.68)';c.font='500 104px monospace';c.textAlign='center';c.fillText(specification.die,512,700);
+    c.fillStyle='rgba(177,196,192,.34)';c.font='26px monospace';c.fillText(specification.name+'  ·  SXM 80GB',512,762);
+    c.font='19px monospace';c.fillText('SILICON SURFACE',512,819);
+    const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=8;return texture;
+  }
   const pcb = component('pcb', 'SXM 模组电路板', '承载 GPU 封装、供电与高速连接器的多层 PCB。走线和元件布局为可交互重建。', 'board');
   const outline = new T.Shape(); const s = 8.5, r = .38;
   outline.moveTo(-s + r, -s); outline.lineTo(s - r, -s); outline.quadraticCurveTo(s, -s, s, -s + r);
@@ -250,6 +266,11 @@ export function createHardwareModel(T, model = 'h100') {
   instances(sm,smBanks,mats.darkMetal); instances(sm,smPartitionLines,mats.trace);
   surfaceText(die,`${specification.die}   /   ${specification.sm} SM`,0,.45,3.55,3.5,.28,'#b4c1ae','600 42px monospace');
   surfaceText(die,'PCIe  ·  GIGATHREAD ENGINE',0,.451,-3.54,4.0,.21,'#aebbac','500 34px monospace');
+  const siliconCover=new T.Mesh(unitBox,new T.MeshPhysicalMaterial({
+    color:0x8aa0a5,map:siliconCoverTexture(),roughness:.19,metalness:.92,
+    clearcoat:1,clearcoatRoughness:.13,iridescence:.62,iridescenceIOR:1.33,iridescenceThicknessRange:[100,270]
+  }));
+  siliconCover.position.set(0,.486,0);siliconCover.scale.set(5.255,.105,7.605);siliconCover.castShadow=true;siliconCover.receiveShadow=true;die.add(siliconCover);
   // Functional SM close-up. Physical silicon does not have raised blocks:
   // the enlarged relief makes the on-die logical arrangement inspectable.
   const smRoot = new T.Group(); smRoot.visible=false; root.add(smRoot);
@@ -291,5 +312,6 @@ export function createHardwareModel(T, model = 'h100') {
     for(const layer of layers) layer.group.position.y=t*layer.factor;
     for(const slice of hbmSlices) slice.mesh.position.y=slice.y+slice.index*t*.12;
   }
-  return { root, components, layers, smRoot, pcb, serial, anchors, specification, materials:mats, setExplode, surfaceText };
+  function setLevel(level){siliconCover.visible=level==='board'||level==='package';}
+  return { root, components, layers, smRoot, pcb, serial, anchors, specification, materials:mats, setExplode, setLevel, surfaceText };
 }

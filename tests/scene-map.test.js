@@ -422,7 +422,7 @@ test('Round 16 A100 micro-proportions: package, L2, HBM, NVLink, top strips', fu
   assert.ok(tiles.every(function (tl) { return tl.w > tl.d; }), 'SM tiles must stay wider than deep (Fig.5 tile aspect)');
 });
 
-test('Piece 2 H100 (GH100/Hopper, official): 8 GPC groups, L2 2 partitions, HBM 6 stacks, NVLink 18', function () {
+test('Piece 2 H100 (GH100/Hopper, official): 8 GPC groups, L2 2 partitions, HBM 5 active stacks, NVLink 18', function () {
   var groups = M.h100GpcGroups();
   assert.strictEqual(groups.length, 8, 'full GH100 must have 8 GPCs, all enabled');
   assert.strictEqual(groups.filter(function (g) { return g.enabled; }).length, 8, 'no disabled GPC position in full GH100');
@@ -432,9 +432,9 @@ test('Piece 2 H100 (GH100/Hopper, official): 8 GPC groups, L2 2 partitions, HBM 
   assert.strictEqual(l2.length, 2, 'L2 must be 2 partitions (official Hopper text)');
   assert.ok(l2[0].x < 0 && l2[1].x > 0, 'partitions must sit left and right of the centre seam');
   var hbm = M.h100HbmStacks();
-  assert.strictEqual(hbm.length, 6, 'H100 HBM must be 6 stacks (official full GH100; SXM5 uses 5)');
+  assert.strictEqual(hbm.length, 5, 'shipping H100 SXM uses five active HBM3 stacks');
   assert.strictEqual(hbm.filter(function (s) { return s.x < 0; }).length, 3, 'west flank 3 stacks as drawn in Figure 3');
-  assert.strictEqual(hbm.filter(function (s) { return s.x > 0; }).length, 3, 'east flank 3 stacks as drawn in Figure 3');
+  assert.strictEqual(hbm.filter(function (s) { return s.x > 0; }).length, 2, 'east flank has two active stacks in the schematic');
   hbm.forEach(function (st) {
     var outer = Math.abs(st.x) + st.w / 2;
     assert.ok(outer < 12.6, 'HBM outer edge must sit near the die edge');
@@ -517,8 +517,8 @@ test('Piece 2 H100 colours sampled from NVIDIA Hopper Figures 3/4, note tagged, 
   assert.strictEqual(boxes.smem.color, 0x73b3dd, 'H100 Shared Memory must be Fig.4 256KB light blue');
   assert.strictEqual(boxes.warp.color, 0xf18712, 'H100 warp must be Fig.4 Warp orange');
   assert.ok(/GH100\/Hopper/.test(S.MODELS.h100.note), 'H100 note must tag GH100/Hopper');
-  assert.ok(/144/.test(S.MODELS.h100.note), 'H100 note must carry the full-GH100 SM count');
-  assert.ok(/60MB/.test(S.MODELS.h100.note), 'H100 note must carry the full-GH100 L2 size');
+  assert.ok(/132 SM/.test(S.MODELS.h100.note), 'H100 note must carry shipping SXM SM count');
+  assert.ok(/50MB/.test(S.MODELS.h100.note), 'H100 note must carry shipping SXM L2 size');
   assert.ok(/规格来源/.test(S.MODELS.h100.note), 'H100 note must say spec source, not imply this site is official');
   assert.ok(!/140/.test(S.MODELS.h100.note), 'no rumor transistor figure in the H100 note');
   var tma = M.h100TmaStrip();

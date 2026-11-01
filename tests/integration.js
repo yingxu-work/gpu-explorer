@@ -1,76 +1,85 @@
-// Integration test: serve the static app locally, fetch it, and simulate
-// a full user flow through the shared state machine.
-// Run: node tests/integration.js  (exits non-zero on any failure)
+// Static resource + public-state contract checks. Browser/WebGL QA is separate.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
 const S = require('../state.js');
-
+const L = require('../journey-lab.js');
 const root = path.join(__dirname, '..');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 const server = http.createServer((req, res) => {
-  const file = req.url === '/' ? '/index.html' : req.url.split('?')[0];
-  const p = path.join(root, file);
-  if (!p.startsWith(root) || !fs.existsSync(p)) { res.writeHead(404); res.end('not found'); return; }
-  res.writeHead(200, { 'content-type': types[path.extname(p)] || 'text/plain' });
+  const file = req.url.split('?')[0] === '/' ? '/index.html' : req.url.split('?')[0];
+  const p = path.resolve(root, '.' + file);
+  if (!p.startsWith(root + path.sep) || !fs.existsSync(p) || !fs.statSync(p).isFile()) {
+    res.writeHead(404); res.end('not found'); return;
+  }
+  res.writeHead(200, { 'content-type': types[path.extname(p)] || 'application/octet-stream' });
   fs.createReadStream(p).pipe(res);
 });
-
-function get(port, p) {
+function get(port, requestPath) {
   return new Promise((resolve, reject) => {
-    http.get({ host: '127.0.0.1', port, path: p }, (res) => {
-      let body = ''; res.on('data', c => body += c); res.on('end', () => resolve({ status: res.statusCode, body }));
+    http.get({ host: '127.0.0.1', port, path: requestPath }, res => {
+      let body = ''; res.on('data', c => body += c);
+      res.on('end', () => resolve({ status: res.statusCode, body, type: res.headers['content-type'] }));
     }).on('error', reject);
   });
 }
-
 server.listen(0, '127.0.0.1', async () => {
   const port = server.address().port;
   try {
     const index = await get(port, '/');
-    assert.equal(index.status, 200);
-    for (const marker of ['GPU Explorer', 'model-select', 'compare-select', 'compare-diagram', 'diagram', 'scene3d', 'scene3d.js', 'scene-map.js', 'three.module.js', 'explode-slider', 'explode-auto-btn', 'block-list', 'overview', 'play-btn', 'state.js', 'app.js', 'sidebar', 'inspector', 'bottombar', 'data-journey', 'cam-bar', 'data-cam', 'crumb', 'journey-gloss', 'phase-gloss', 'predict-details', 'code-details', 'legend-row', '步骤（点击可跳转）']) {
-      assert.ok(index.body.includes(marker), 'index missing: ' + marker);
+    assert.strictEqual(index.status, 200);
+    // Public UI targets the controller depends on. Behavior is verified in a browser.
+    for (const id of ['model-select','compare-select','scene3d','component-tree','journey-lab',
+      'explode-slider','explode-auto-btn','block-list','overview','play-btn','prev-btn','next-btn',
+      'focus-btn','isolate-btn','home-btn','labels-btn','follow-camera','replay-btn','motion-btn',
+      'help-dialog','sources-dialog','crumb']) {
+      assert.ok(index.body.includes('id="' + id + '"'), 'missing public control: ' + id);
     }
-    const app = await get(port, '/app.js');
-    assert.equal(app.status, 200);
-    assert.ok(app.body.includes('STEP_CHIPS'), 'app must render per-step chips from STEP_CHIPS');
-    assert.ok(app.body.includes('currentStepChip'), 'app must show only the selected step gloss');
-    // Piece 4: keyboard selection plumbing must be present in the
-    // served app: block-list focus-move handler, canvas move bridge,
-    // focus restore across re-renders, and aria-pressed on list buttons.
-    assert.ok(app.body.includes('__gpuExplorerMoveSelection'), 'app must expose the canvas arrow-selection bridge');
-    assert.ok(app.body.includes('selectNext'), 'app must move selection via state.selectNext');
-    assert.ok(app.body.includes('aria-pressed'), 'block-list buttons must carry aria-pressed');
-    assert.ok(app.body.includes('focusedBlockId'), 'block-list focus must survive re-renders');
-    assert.ok(index.body.includes('方向键移动选中'), 'index must document the canvas arrow-key contract');
-    const scene3d = await get(port, '/scene3d.js');
-    assert.ok(scene3d.body.includes('__gpuExplorerMoveSelection'), 'scene3d canvas arrows must call the selection bridge');
-    assert.ok(scene3d.body.includes('aria-label'), 'scene3d canvas must carry an aria-label');
-    for (const asset of ['/state.js', '/app.js', '/scene-map.js', '/scene3d.js', '/three/three.module.js', '/three/addons/controls/OrbitControls.js', '/styles.css']) {
-      const r = await get(port, asset);
-      assert.equal(r.status, 200, asset + ' should serve');
-      assert.ok(r.body.length > 200, asset + ' should not be empty');
+    for (const level of ['board','package','die','sm']) {
+      assert.ok(index.body.includes('data-level="' + level + '"'), 'missing anatomy level: ' + level);
     }
-    const missing = await get(port, '/nope.html');
-    assert.equal(missing.status, 404);
+    // Follow all local script/style references, then the ESM imports they use.
+    const assets = new Set(['/hardware-model.js','/three/three.module.js','/three/addons/controls/OrbitControls.js']);
+    for (const match of index.body.matchAll(/(?:src|href)="([^"#]+\.(?:js|css)(?:\?[^"#]*)?)"/g)) {
+      if (!match[1].includes('://')) assets.add('/' + match[1].replace(/^\.\//, '').split('?')[0]);
+    }
+    for (const asset of assets) {
+      const result = await get(port, asset);
+      assert.strictEqual(result.status, 200, 'asset must serve: ' + asset);
+      assert.ok(result.body.length > 100, 'empty asset: ' + asset);
+      assert.ok(result.type === (asset.endsWith('.js') ? 'text/javascript' : 'text/css'), 'correct MIME: ' + asset);
+    }
+    assert.strictEqual((await get(port, '/missing.html')).status, 404);
+    assert.ok(index.body.includes('./three/three.module.js'), 'Three.js must remain local');
+    assert.ok(index.body.includes('journey-lab.js'), 'numeric lab must load before controller');
 
-    // Full simulated user flow: GEMM -> step to end -> view switch preserves
-    // -> switch journey -> page-table flow -> model switch preserves step.
-    const s = S.createState({});
-    assert.equal(S.currentJourney(s).title.includes('矩阵乘法'), true);
-    while (!S.isAtEnd(s)) S.next(s);
-    assert.equal(S.currentStep(s).title, '写回 C[3,7]');
-    S.setView(s, 'data'); assert.equal(s.stepIndex, S.currentJourney(s).steps.length - 1);
-    S.setJourney(s, 'pagetable');
-    while (!S.isAtEnd(s)) S.next(s);
-    assert.equal(S.currentStep(s).title, '内存访问与缓存装入');
-    S.setModel(s, 'a20pro'); assert.equal(s.journey, 'pagetable'); assert.equal(S.isAtEnd(s), true);
-    console.log('INTEGRATION OK: http serve + full user flow passed (port ' + port + ')');
-    server.close(); process.exit(0);
-  } catch (e) {
-    console.error('INTEGRATION FAIL:', e);
-    server.close(); process.exit(1);
+    // Shared links retain the computation across anatomy/UI parameters.
+    const restored = S.decodeState('#j=gemm&m=a100&v=data&s=5&sel=smem&cmp=h100&level=sm&mode=learn&x=65');
+    assert.strictEqual(restored.journey,'gemm'); assert.strictEqual(restored.model,'a100');
+    assert.strictEqual(restored.stepIndex,5); assert.strictEqual(restored.selected,'smem');
+    assert.strictEqual(restored.compareModel,'h100');
+    assert.deepStrictEqual(S.decodeState('#' + S.encodeState(restored)),restored);
+    S.setModel(restored,'h100'); assert.strictEqual(restored.compareModel,null);
+    S.setView(restored,'structure'); assert.strictEqual(restored.stepIndex,5);
+    S.setJourney(restored,'pagetable'); assert.strictEqual(restored.stepIndex,0);
+    assert.strictEqual(restored.selected,null);
+    while (!S.isAtEnd(restored)) S.next(restored);
+    assert.strictEqual(S.currentStep(restored).title,'内存访问与缓存装入');
+
+    // The lesson's displayed arithmetic must agree with an independently evaluated dot product.
+    const a = L.GEMM.A[L.GEMM.row];
+    const b = L.GEMM.B.map(row => row[L.GEMM.col]);
+    const expected = a.reduce((sum, value, k) => sum + value*b[k],0);
+    assert.strictEqual(expected,37); assert.strictEqual(L.accumulation(7,1).value,expected);
+    assert.strictEqual(L.GEMM.tileSums.reduce((x,y) => x+y,0),expected);
+    const indices = L.pageIndices(L.PAGE.va);
+    assert.strictEqual(indices.offset, L.PAGE.va % 4096);
+    assert.strictEqual(L.PAGE.physical,L.PAGE.pageBase + indices.offset);
+    console.log('INTEGRATION OK: served assets, public controls, shared state and numeric lessons');
+    server.close();
+  } catch (error) {
+    console.error('INTEGRATION FAIL:',error);
+    server.close(); process.exitCode=1;
   }
 });

@@ -271,7 +271,7 @@ test('Piece 3: one timeline chip per step, labels 1-2 words, gloss only on selec
   // Phases are retained (backward compat) but are no longer the timeline.
   assert.ok(S.PHASES.gemm.length <= 6);
 });
-test('Piece 3: step titles, bodies, traces and predictions are unchanged', function () {
+test('stable step identities and prediction answers preserve existing deep links', function () {
   var titles = {
     gemm: ['选定输出 C[3,7]', 'A 行与 B 列的依赖关系', 'Tile 与 Block 的划分', '数据载入 Shared Memory', 'Warp 分工', 'SM 上的乘加运算', '同步与下一块', '写回 C[3,7]'],
     pagetable: ['CPU 发出虚拟地址', 'TLB 查询', 'PGD 查询', 'PUD 查询', 'PMD 查询', 'PTE 查询与物理页', '内存访问与缓存装入'],
@@ -287,6 +287,30 @@ test('Piece 3: step titles, bodies, traces and predictions are unchanged', funct
   eq(S.getPredict('pagetable', 5).answer, 1);
   eq(S.getPredict('pixel', 5).answer, 1);
   eq(S.getPredict('stacking', 4).answer, 1);
+});
+
+test('shipping SXM metadata distinguishes real specifications from teaching layout', function () {
+  assert.ok(/132 SM/.test(S.MODELS.h100.note));
+  assert.ok(/50MB/.test(S.MODELS.h100.note));
+  assert.ok(/80GB HBM3/.test(S.MODELS.h100.note));
+  assert.ok(!/144 SM|60MB|6 叠/.test(S.MODELS.h100.note));
+  assert.ok(/108 SM/.test(S.MODELS.a100.note));
+  assert.ok(/80GB HBM2e/.test(S.MODELS.a100.note));
+});
+test('GEMM separates scalar reference arithmetic from cooperative matrix instructions', function () {
+  var warp = S.JOURNEYS.gemm.steps[4];
+  var accumulate = S.JOURNEYS.gemm.steps[5];
+  assert.ok(warp.code.join('\n').indexOf('mma(') >= 0);
+  assert.ok(warp.body.indexOf('32') >= 0);
+  assert.ok(accumulate.code.join('\n').indexOf('不是 Tensor Core') >= 0);
+  assert.ok(accumulate.trace.indexOf('19') >= 0);
+  assert.ok(S.JOURNEYS.gemm.steps[7].trace.indexOf('37') >= 0);
+});
+test('four-level page table pseudocode masks each 9-bit index and 12-bit offset', function () {
+  var steps = S.JOURNEYS.pagetable.steps;
+  [2,3,4,5].forEach(function (i) { assert.ok(steps[i].code.join('\n').indexOf('& 0x1ff') >= 0); });
+  assert.ok(steps[5].code.join('\n').indexOf('va & 0xfff') >= 0);
+  assert.ok(steps[5].code.join('\n').indexOf('page_base + offset') >= 0);
 });
 
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');

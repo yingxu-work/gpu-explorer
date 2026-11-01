@@ -9,8 +9,8 @@
 // (from + '>' + to) that are live in that step.
 (function (root) {
   const MODELS = {
-    h100: { name: 'H100 (Hopper)', kind: 'GPU · 计算', note: 'H100（GH100/Hopper，规格来源：NVIDIA 官方文章）：全规格 8 GPC、144 SM、L2 60MB 分 2 区、HBM3 6 叠；SXM5 版 132 SM、L2 50MB；本图为教学示意。' },
-    a100: { name: 'A100 (Ampere)', kind: 'GPU · 计算', note: 'A100（GA100/Ampere，规格来源：NVIDIA 官方文章）：7 GPC、108 SM、L2 40MB 分 2 区、HBM2 5 叠；本图为教学示意。' },
+    h100: { name: 'H100 SXM 80GB (Hopper)', kind: 'GPU · 计算', note: 'H100 SXM 80GB（GH100/Hopper，规格来源：NVIDIA 官方文章）：8 GPC、132 SM、L2 50MB、80GB HBM3，五组有源堆栈；外观近似重建，内部为教学布局。' },
+    a100: { name: 'A100 SXM 80GB (Ampere)', kind: 'GPU · 计算', note: 'A100 SXM 80GB（GA100/Ampere，规格来源：NVIDIA 官方文章）：7 GPC、108 SM、L2 40MB 分 2 区、80GB HBM2e，五组有源堆栈；内部为教学布局。' },
     rtx5090: { name: 'RTX 5090', kind: 'GPU · 消费级', note: '消费级示例：图形与计算共享同一组结构、工作与数据视角（教学示意，与 Ampere/Hopper 模型区分）。' },
     mi300x: { name: 'AMD MI300X', kind: 'GPU · 芯粒/堆叠', note: '比较示例：多芯粒与堆叠组织下同一问题的另一种分工（教学示意）。' },
     a20pro: { name: 'Apple A20 Pro（示意）', kind: 'SoC · CPU/内存', note: 'CPU/SoC 示例：重点为 CPU、页表与内存层级，具体规格为教学示意，非官方数据。' },
@@ -43,12 +43,12 @@
       steps: [
         { title: '选定输出 C[3,7]', body: '计算范围限定为单个输出，确定其输入依赖。', active: ['c-out'], flows: [], trace: 'C[3,7] = Σ A[3][k] · B[k][7]', modelNotes: { h100: 'H100 视角：输出限定后，阵列规模仅决定分工。', a100: 'A100 视角：起点相同，组织方式存在差异。' }, code: ['// 目标：只算一个输出', 'C[3][7] = sum_k A[3][k] * B[k][7]'] },
         { title: 'A 行与 B 列的依赖关系', body: 'C[3,7] 仅依赖 A 第 3 行与 B 第 7 列。', active: ['a-tile', 'b-tile'], flows: [], trace: 'C[3,7] ← A[3][:] · B[:][7]', modelNotes: { h100: 'H100 视角：依赖关系不变，与型号无关。', a100: 'A100 视角：依赖关系相同，差异在后续步骤。' }, code: ['// 依赖', 'row = A[3][:]', 'col = B[:][7]'] },
-        { title: 'Tile 与 Block 的划分', body: '大矩阵划分为小块，块负责一个输出 tile。', active: ['sm'], flows: [], trace: '输出 tile ← 一个 block', modelNotes: { h100: 'H100 视角：块尺寸影响复用率与同步代价。', a100: 'A100 视角：划分思路相同，分工粒度有差异。' }, code: ['// 划分（教学示意）', 'tile = 16 x 16', 'block -> 一个输出 tile'] },
-        { title: '数据载入 Shared Memory', body: '待复用的 A、B 小块载入片上共享存储。', active: ['smem', 'a-tile', 'b-tile'], flows: ['a-tile>smem', 'b-tile>smem'], trace: 'smem ← A tile + B tile', modelNotes: { h100: 'H100 视角：TMA 异步搬运小块至共享存储。', a100: 'A100 视角：角色相同，容量与分工有差异。' }, code: ['// 搬运', 'smem_A = load(A tile)', 'smem_B = load(B tile)', '__syncthreads() // 同步：等待全部搬运完成'] },
-        { title: 'Warp 分工', body: 'warp 内线程分工：同一指令，不同数据。', active: ['warp'], flows: ['smem>warp'], trace: 'lane ← smem_A[lane] × smem_B[lane]', modelNotes: { h100: 'H100 视角：每 lane 计算各自的部分乘积。', a100: 'A100 视角：每 lane 仅计算一份部分乘积。' }, code: ['// warp 内分工', 'lane = threadIdx.x % 32', 'partial = smem_A[lane] * smem_B[lane]'] },
-        { title: 'SM 上的乘加运算', body: '计算单元执行乘加并累加，矩阵单元亦然。', active: ['sm', 'warp'], flows: ['warp>sm'], trace: 'acc ← acc + partial', modelNotes: { h100: 'H100 视角：第四代张量核承担规整乘加。', a100: 'A100 视角：矩阵单元改变组织，不改变定义。' }, code: ['// 累加', 'acc += partial'] },
-        { title: '同步与下一块', body: '当前块完成后同步，随后载入下一块。', active: ['smem', 'sm'], flows: ['smem>sm'], trace: '下一 tile ← 同步后重新载入', modelNotes: { h100: 'H100 视角：等待源于下一块未载入完成。', a100: 'A100 视角：等待为过程的组成部分。' }, code: ['// 同步后继续计算', '__syncthreads()', '// 载入下一块 tile，重复'] },
-        { title: '写回 C[3,7]', body: '累加完成，结果写回输出。', active: ['c-out'], flows: ['sm>c-out'], trace: 'C[3,7] ← acc', modelNotes: { h100: 'H100 视角：仅写入一个数值。', a100: 'A100 视角：结果相同，代价与分工可不同。' }, code: ['// 写回', 'C[3][7] = acc'] },
+        { title: 'Tile 与 Block 的划分', body: '输出 tile 分给 block；数值例子把 K=8 分两轮，每轮四项。', active: ['sm'], flows: [], trace: '输出 tile ← 一个 block', modelNotes: { h100: 'H100 视角：块尺寸影响复用率与同步代价。', a100: 'A100 视角：划分思路相同，分工粒度有差异。' }, code: ['// 输出 tile 由一个 block 负责（示例策略）', 'block -> C_tile', '// 数值内积的 K 维：8 项，每轮取 4 项', 'tile_k = 4'] },
+        { title: '数据载入 Shared Memory', body: '待复用的 A、B 小块载入片上共享存储。', active: ['smem', 'a-tile', 'b-tile'], flows: ['a-tile>smem', 'b-tile>smem'], trace: 'smem ← A tile + B tile', modelNotes: { h100: 'H100 可用 TMA 异步搬运；消费者须等待搬运完成。', a100: 'A100 可用 cp.async；完成与同步需按实际内核实现。' }, code: ['// 同步加载的教学伪代码，不代表 TMA API', 'smem_A = load(A tile)', 'smem_B = load(B tile)', '__syncthreads() // 等待 block 内同步加载', '// 异步 TMA/cp.async 还需对应的完成等待'] },
+        { title: 'Warp 分工', body: 'warp 含 32 线程，协作加载与处理片段；lane 图只表示组织。', active: ['warp'], flows: ['smem>warp'], trace: 'warp = 32 threads; Cfrag += Afrag·Bfrag', modelNotes: { h100: 'H100：线程协作执行矩阵指令；lane 图不是寄存器映射。', a100: 'A100：线程协作处理矩阵片段；不是逐 lane 标量归约。' }, code: ['// warp 是 32 线程的执行组织', 'lane = threadIdx.x % 32', '// 实际 MMA 的寄存器布局依指令而异', 'C_fragment = mma(A_fragment, B_fragment, C_fragment)', '// lane 图不模拟上述指令的线程映射'] },
+        { title: 'SM 上的乘加运算', body: '标量内积展示乘加数学；真实 Tensor Core 更新整个矩阵片段。', active: ['sm', 'warp'], flows: ['warp>sm'], trace: 'acc = 2 + 3 + 6 + 8 = 19', modelNotes: { h100: 'H100 第四代 Tensor Core 执行矩阵乘加，不是标量逐项循环。', a100: 'A100 第三代 Tensor Core 执行矩阵乘加；内积定义相同。' }, code: ['// 标量参考数学；不是 Tensor Core 内核', 'acc = 0', 'for k in range(0, 4):', '    acc += A[3][k] * B[k][7]', '// 第一轮 acc = 19'] },
+        { title: '同步与下一块', body: '当前块完成后同步，随后载入下一块。', active: ['smem', 'sm'], flows: ['smem>sm'], trace: 'acc = 19 + (4 + 2 + 6 + 6) = 37', modelNotes: { h100: 'H100 视角：等待源于下一块未载入完成。', a100: 'A100 视角：等待为过程的组成部分。' }, code: ['// 真实 block 在复用共享存储前同步', '__syncthreads()', '// 第二轮的标量参考数学', 'for k in range(4, 8):', '    acc += A[3][k] * B[k][7]', '// 最终 acc = 37'] },
+        { title: '写回 C[3,7]', body: '累加完成，结果写回输出。', active: ['c-out'], flows: ['sm>c-out'], trace: 'C[3,7] ← acc = 37', modelNotes: { h100: 'H100 视角：仅写入一个数值。', a100: 'A100 视角：结果相同，代价与分工可不同。' }, code: ['// 写回', 'C[3][7] = acc'] },
       ],
     },
     pagetable: {
@@ -79,10 +79,10 @@
       steps: [
         { title: 'CPU 发出虚拟地址', body: '程序可见虚拟地址，翻译自此开始。', active: ['cpu'], flows: [], trace: 'va = 0x0000_7f00_1234', code: ['// 虚拟地址（教学示意）', 'va = 0x0000_7f00_1234'] },
         { title: 'TLB 查询', body: 'TLB 为翻译缓存；本例采用未命中路径。', active: ['tlb'], flows: ['cpu>tlb'], trace: 'TLB(va) → MISS', code: ['// TLB', 'lookup(va) -> MISS  // 本例采用未命中路径'] },
-        { title: 'PGD 查询', body: '以虚拟地址高位索引第一级页表。', active: ['pgd'], flows: ['tlb>pgd'], trace: 'PGD[va >> 39]', code: ['// 第 1 级', 'pgd_entry = PGD[va >> 39]'] },
-        { title: 'PUD 查询', body: '上一级给出基址，再以下一段索引。', active: ['pud'], flows: ['pgd>pud'], trace: 'PUD[va >> 30]', code: ['// 第 2 级', 'pud_entry = PUD[va >> 30]'] },
-        { title: 'PMD 查询', body: '逐级向下遍历，每级缩小范围。', active: ['pmd'], flows: ['pud>pmd'], trace: 'PMD[va >> 21]', code: ['// 第 3 级', 'pmd_entry = PMD[va >> 21]'] },
-        { title: 'PTE 查询与物理页', body: '末级给出物理页号，与页内偏移组合。', active: ['pte', 'tlb'], flows: ['pmd>pte'], trace: 'phys_addr = 页号 + 页内偏移', code: ['// 第 4 级', 'phys_page = PTE[va >> 12]', 'phys_addr = phys_page + offset'] },
+        { title: 'PGD 查询', body: '以虚拟地址高位索引第一级页表。', active: ['pgd'], flows: ['tlb>pgd'], trace: 'PGD[(va >> 39) & 0x1ff]', code: ['// 第 1 级', 'pgd_entry = PGD[(va >> 39) & 0x1ff]'] },
+        { title: 'PUD 查询', body: '上一级给出基址，再以下一段索引。', active: ['pud'], flows: ['pgd>pud'], trace: 'PUD[(va >> 30) & 0x1ff]', code: ['// 第 2 级', 'pud_entry = PUD[(va >> 30) & 0x1ff]'] },
+        { title: 'PMD 查询', body: '逐级向下遍历，每级缩小范围。', active: ['pmd'], flows: ['pud>pmd'], trace: 'PMD[(va >> 21) & 0x1ff]', code: ['// 第 3 级', 'pmd_entry = PMD[(va >> 21) & 0x1ff]'] },
+        { title: 'PTE 查询与物理页', body: '末级给出物理页号，与页内偏移组合。', active: ['pte', 'tlb'], flows: ['pmd>pte'], trace: 'PA = page_base + (va & 0xfff)', code: ['// x86-64 四级页表，4KB 页，无大页/缺页', 'pte = PTE[(va >> 12) & 0x1ff]', 'page_base = pte & physical_page_mask', 'offset = va & 0xfff', 'phys_addr = page_base + offset', '// 以上为宽整数伪代码，不是 JS 位运算'] },
         { title: '内存访问与缓存装入', body: '经缓存层级，数据返回 CPU。', active: ['ram', 'cache', 'cpu'], flows: ['pte>ram', 'ram>cache', 'cache>cpu'], trace: 'data = memory[phys_addr]', code: ['// 访问', 'data = memory[phys_addr]', '// 并经过缓存'] },
       ],
     },

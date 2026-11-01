@@ -1,4 +1,6 @@
-// GPU Explorer — pure 3D mapping, no DOM, no WebGL.
+// GPU Explorer — legacy schematic mapping, no DOM, no WebGL.
+// The current physical renderer uses hardware-model.js; these pure geometry
+// helpers remain for older conceptual diagrams and compatibility tests.
 // Maps the teaching-model nodes in state.js (1100x520 SVG coordinates) to
 // low-poly 3D boxes. Shared by the browser Three.js scene and the Node
 // tests, so step -> active blocks, explode positions and camera focus are
@@ -325,9 +327,9 @@
   // Teaching simplifications, labelled here and in the report, NOT
   // as official specs: (a) the SM region shows 8 GPC groups, each
   // with 2x2 = 4 SM tiles (32 tiles), NOT 144 SMs — 144 individual
-  // tiles would be unreadable dots; the 3D follows the full-GH100
-  // count (144 SMs, 60MB L2, 6 stacks) and the SXM5 variant
-  // (132 SMs, 50MB L2, 5 stacks) is carried in the model note;
+  // tiles are schematic representatives. Current hardware-model.js instead
+  // draws 132 active SM cells, 50MB L2 and five HBM3 stacks for the
+  // shipping H100 SXM 80GB product; legacy helper positions are not CAD;
   // (b) Shared Memory is shown as one die-level strip for step
   // tracing — in Figure 4 it is 256KB per SM at the foot of each
   // SM; (c) the 8 LD/ST foot cells per subpartition are compressed
@@ -418,7 +420,7 @@
   // Figure 3 scenery, H100 only: L2 in 2 partitions across the
   // central band (same band geometry as A100 — the band separates
   // the top and bottom GPC rows, with a seam in the middle);
-  // HBM 6 stacks (3 west / 3 east, as drawn in Figure 3);
+  // Shipping H100 SXM has five active HBM3 stacks; positions schematic;
   // HBM controllers on both flanks; NVLink 18 segments on the
   // south edge; PCIe Gen5 (dark grey) + GigaThread (orange)
   // strips on the north edge; TMA strip in the gap between the
@@ -433,7 +435,7 @@
   function h100HbmStacks() {
     return [
       { x: -11.35, z: -2.7, w: 1.95, d: 1.7 }, { x: -11.35, z: 0, w: 1.95, d: 1.7 }, { x: -11.35, z: 2.7, w: 1.95, d: 1.7 },
-      { x: 11.35, z: -2.7, w: 1.95, d: 1.7 }, { x: 11.35, z: 0, w: 1.95, d: 1.7 }, { x: 11.35, z: 2.7, w: 1.95, d: 1.7 }
+      { x: 11.35, z: -2.7, w: 1.95, d: 1.7 }, { x: 11.35, z: 0, w: 1.95, d: 1.7 }
     ];
   }
   function h100HbmControllers() {
