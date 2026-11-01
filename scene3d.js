@@ -3,28 +3,26 @@
 // stays interactive in SwiftShader headless Chrome as well as on a
 // normal laptop GPU. Server side stays CPU-only; WebGL runs on the client.
 //
-// Round 9 look: the research manual's fixed hardware legend
-// (compute blue, memory teal, data sand, control grey; movement lines
-// pale yellow; single accent indigo for selection/active only), canvas
-// #161618, matte MeshStandardMaterial (silicon roughness 0.6 /
-// metalness 0.2, substrate rougher at 0.8 / 0), a three-light rig with
-// NO coloured lights and no bloom/post-processing, thin dark edge
-// lines on every block, and rectangular caption labels (no pills).
-// The die reads as a package: substrate slab, interposer slab, die
-// slab; the GEMM die is flanked by tall layered HBM towers on the
-// interposer as package context (scenery, not selectable nodes).
-// Stacking layers carry sparse TSV hint lines between layers, which
-// stretch as the stack explodes. Shadows: one small 1024px map on the
-// key light only.
+// Round 10 look (reference-first, from r10 screenshots in
+// ref-screenshots/ROUND10-REF-NOTES.md): GEX/PC Anatomy read as ONE
+// framed die — flat stepped slabs, constant gaps, clean solid
+// background, no grid floor, memory as FLAT slabs, 2-3 labels max.
+// So: no GridHelper; a die slab with a raised rim frame; every block
+// gets a darker plinth under it and a lighter inset top plate (the
+// stepped-slab profile); GEMM HBM is two flat flanking slabs with a
+// fine gold edge strip, not towers; die-journey labels show only for
+// the active / selected / hovered block, larger; active = amber
+// emissive, selected = indigo. Shell copy and text budgets are
+// unchanged from Round 9.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 var S = window.GpuExplorerState;
 var M = window.GpuExplorerSceneMap;
-var ACTIVE_EMISSIVE = 0x5e6ad2;
-var SELECT_EMISSIVE = 0x5e6ad2;
+var ACTIVE_EMISSIVE = 0xe8a33d; // one warm amber pop per step (Round 8 amber, not indigo-over-teal)
+var SELECT_EMISSIVE = 0x5e6ad2; // explicit click selection keeps the chrome accent
 var FLOW_HOT = 0xfab387; // flow lines share the data hue, so the 3-item legend stays honest
-var FLOW_IDLE = 0x4a4a4e;
+var FLOW_IDLE = 0x2f2f31;
 var DIM_FACTOR = 0.78;
 // One matte material recipe for all silicon: roughness 0.6,
 // metalness 0.2. Colour, not finish, carries the hardware meaning.
@@ -87,8 +85,8 @@ function SceneView(container, isCompare) {
   this.controls.minDistance = 6;
   this.controls.maxDistance = 45;
   this.controls.maxPolarAngle = Math.PI * 0.49;
-  this.scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-  var key = new THREE.DirectionalLight(0xffffff, 1.0); key.position.set(8, 14, 6);
+  this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  var key = new THREE.DirectionalLight(0xffffff, 0.95); key.position.set(8, 14, 6);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
   key.shadow.camera.left = -13; key.shadow.camera.right = 13;
@@ -158,56 +156,78 @@ SceneView.prototype.build = function (journeyId, journey) {
   var boxes = M.boxesFor(journeyId, journey);
   var isStack = journeyId === 'stacking';
   // Package stack, contiguous, die slab top at -0.30 (where die
-  // boxes ground): substrate, interposer, die slab. No pin fringe,
-  // no spine: the palette allows no extra hue, and the slabs plus
-  // edge lines already read as a package.
-  var slabW = isStack ? 20 : 23, slabD = isStack ? 12 : 12;
-  var interW = isStack ? 21 : 30, interD = isStack ? 13 : 16;
-  var subW = isStack ? 22 : 31, subD = isStack ? 14 : 17;
+  // boxes ground): substrate, interposer, die slab. Round 10: the
+  // substrate is only slightly larger than the die (GEX: the package
+  // frames the die, it does not dwarf it), and a raised rim frame
+  // around the die slab makes the die read as one object. NO grid
+  // floor — no reference has one; the background is solid #161618.
+  var slabW = isStack ? 20 : (journeyId === 'gemm' ? 20.8 : 22), slabD = isStack ? 12 : 9.6;
+  var interW = isStack ? 21 : (journeyId === 'gemm' ? 28 : 23.5), interD = isStack ? 13 : 11.5;
+  var subW = isStack ? 22 : (journeyId === 'gemm' ? 29 : 24.5), subD = isStack ? 14 : 12.5;
+  var slabZ = isStack ? 1 : 0;
   var dieSlab = new THREE.Mesh(
     new THREE.BoxGeometry(slabW, 0.5, slabD),
-    new THREE.MeshStandardMaterial({ color: 0x1f1f21, roughness: 0.6, metalness: 0.2 }));
-  dieSlab.position.set(0, -0.55, isStack ? 1 : 0);
+    new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.6, metalness: 0.2 }));
+  dieSlab.position.set(0, -0.55, slabZ);
   dieSlab.receiveShadow = true;
   this.group.add(dieSlab);
+  // Raised rim frame (4 thin bars, GEX-style): the die's edge, so the
+  // blocks inside it read as one chip even at overview zoom.
+  var self = this;
+  if (!isStack) {
+    var rimMat = new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.6, metalness: 0.2 });
+    [-(slabD / 2 + 0.18), slabD / 2 + 0.18].forEach(function (rz) {
+      var bar = new THREE.Mesh(new THREE.BoxGeometry(slabW, 0.16, 0.35), rimMat);
+      bar.position.set(0, -0.22, slabZ + rz); bar.receiveShadow = true; self.group.add(bar);
+    });
+    [-(slabW / 2 + 0.18), slabW / 2 + 0.18].forEach(function (rx) {
+      var bar = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.16, slabD), rimMat);
+      bar.position.set(rx, -0.22, slabZ); bar.receiveShadow = true; self.group.add(bar);
+    });
+  }
   var interposer = new THREE.Mesh(
     new THREE.BoxGeometry(interW, 0.3, interD),
     new THREE.MeshStandardMaterial({ color: 0x2a2a2c, roughness: 0.8, metalness: 0 }));
-  interposer.position.set(0, -0.95, isStack ? 1 : 0);
+  interposer.position.set(0, -0.95, slabZ);
   interposer.receiveShadow = true;
   this.group.add(interposer);
   var substrate = new THREE.Mesh(
     new THREE.BoxGeometry(subW, 0.4, subD),
     new THREE.MeshStandardMaterial({ color: 0x232326, roughness: 0.8, metalness: 0 }));
-  substrate.position.set(0, -1.3, isStack ? 1 : 0);
+  substrate.position.set(0, -1.3, slabZ);
   substrate.receiveShadow = true;
   this.group.add(substrate);
-  var grid = new THREE.GridHelper(26, 26, 0x2f2f31, 0x1f1f21);
-  grid.position.y = -0.28; this.group.add(grid);
+  // Front pin bar (GEX): one fine gold line along the package front
+  // edge, so the near-black package has a defined edge against the
+  // near-black background instead of dissolving into it.
+  var pinBar = new THREE.Mesh(
+    new THREE.BoxGeometry(subW - 1.5, 0.08, 0.15),
+    new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 0.4, metalness: 0.6 }));
+  pinBar.position.set(0, -1.12, slabZ + subD / 2 - 0.3);
+  this.group.add(pinBar);
   var self = this;
   if (journeyId === 'gemm') {
-    // HBM package context (scenery, not selectable nodes): tall
-    // layered towers flanking the die on the interposer slab. Five
-    // layers each, sand hue = off-die memory, so height reads as
-    // "stacked" against the flat die. One caption label per tower.
-    [-13.5, 13.5].forEach(function (tx) {
-      var layerGeo = new THREE.BoxGeometry(2.8, 0.5, 5.0);
-      var baseGeo = new THREE.BoxGeometry(3.0, 0.35, 5.2);
-      for (var li = 0; li < 5; li++) {
-        var lm = new THREE.MeshStandardMaterial({ color: 0xfab387, roughness: 0.6, metalness: 0.2 });
-        var layer = new THREE.Mesh(li === 0 ? baseGeo : layerGeo, lm);
-        layer.position.set(tx, -0.55 + li * 0.62, 0);
-        layer.receiveShadow = true;
-        var ledges = new THREE.LineSegments(
-          new THREE.EdgesGeometry(layer.geometry),
-          new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.5 }));
-        layer.add(ledges);
-        self.group.add(layer);
-      }
-      var hbmLabel = makeLabelSprite('HBM', '#fab387');
-      hbmLabel.scale.set(2.0, 0.4, 1);
-      hbmLabel.position.set(tx, 2.9, 0);
-      self.group.add(hbmLabel);
+    // HBM package context (scenery, not selectable nodes): FLAT slabs
+    // flanking the die, same height as die blocks (GEX global memory),
+    // dark base + fine gold strip on the outer edge. No towers: in a
+    // top view, height must not be the thing that says "memory".
+    [-11.9, 11.9].forEach(function (tx) {
+      var base = new THREE.Mesh(
+        new THREE.BoxGeometry(2.9, 0.15, 7.5),
+        new THREE.MeshStandardMaterial({ color: 0x1f1f21, roughness: 0.8, metalness: 0 }));
+      base.position.set(tx, -0.18, 0); base.receiveShadow = true; self.group.add(base);
+      var slab = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 0.6, 7.2),
+        new THREE.MeshStandardMaterial({ color: 0x94e2d5, roughness: 0.7, metalness: 0.1 }));
+      slab.position.set(tx, 0.05, 0); slab.castShadow = true; slab.receiveShadow = true;
+      var ledges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(slab.geometry),
+        new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.5 }));
+      slab.add(ledges); self.group.add(slab);
+      var gold = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.1, 7.2),
+        new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 0.4, metalness: 0.6 }));
+      gold.position.set(tx + (tx < 0 ? -1.4 : 1.4), -0.05, 0); self.group.add(gold);
     });
   }
   boxes.forEach(function (box) {
@@ -222,10 +242,22 @@ SceneView.prototype.build = function (journeyId, journey) {
       new THREE.EdgesGeometry(mesh.geometry),
       new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.5 }));
     mesh.add(edges);
+    // Stepped-slab profile (GEX): a darker plinth under the block and a
+    // lighter inset top plate. Children of the mesh, so they follow it
+    // on explode and on raycast-free rendering; their colours dim with
+    // the parent in applyHighlight via userData.plinthMat/topMat.
+    var plinthMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(box.color).multiplyScalar(0.55), roughness: 0.7, metalness: 0.1, transparent: !!box.disabled, opacity: box.disabled ? 0.45 : 1 });
+    var plinth = new THREE.Mesh(new THREE.BoxGeometry(box.w + 0.28, 0.14, box.d + 0.28), plinthMat);
+    plinth.position.set(0, -box.h / 2 + 0.07, 0); plinth.receiveShadow = true; mesh.add(plinth);
+    var topMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(box.color).multiplyScalar(1.12), roughness: 0.55, metalness: 0.2, transparent: !!box.disabled, opacity: box.disabled ? 0.45 : 1 });
+    var topPlate = new THREE.Mesh(new THREE.BoxGeometry(Math.max(box.w - 0.45, 0.5), 0.1, Math.max(box.d - 0.45, 0.5)), topMat);
+    topPlate.position.set(0, box.h / 2 - 0.06, 0); mesh.add(topPlate);
+    mesh.userData.plinthMat = plinthMat; mesh.userData.topMat = topMat;
+    mesh.userData.plinthBase = plinthMat.color.clone(); mesh.userData.topBase = topMat.color.clone();
     self.group.add(mesh); self.meshes[box.id] = mesh;
     var sprite = makeLabelSprite(box.label + (box.disabled ? ' ×' : ''), colorHex(box.color));
-    var lw = Math.min(Math.max(box.w + 0.5, 1.7), 2.7);
-    sprite.scale.set(lw, lw * 0.20, 1);
+    var lw = Math.min(Math.max(box.w + 0.5, 2.0), 3.4);
+    sprite.scale.set(lw, lw * 0.22, 1);
     sprite.position.set(box.x, box.y + box.h / 2 + (box.labelDy || 0.55), box.z + (box.labelZ || 0));
     self.group.add(sprite); self.labels[box.id] = sprite;
   });
@@ -287,12 +319,18 @@ SceneView.prototype.build = function (journeyId, journey) {
   // whole die and cuts edge blocks out of frame (verified bug in the
   // first 3D screenshots).
   if (isStack) { this.camera.position.set(4, 12, 20); this.target.set(0, 2.6, 0.5); }
-  else if (journeyId === 'gemm') { this.camera.position.set(10, 15, 24); this.target.set(0, 0.6, 0); }
-  else { this.camera.position.set(11, 13, 18); this.target.set(0, 0.4, 0); }
+  else if (journeyId === 'gemm') { this.camera.position.set(8, 20, 19); this.target.set(0, 0.3, 0); }
+  else { this.camera.position.set(9, 18, 17); this.target.set(0, 0.4, 0); }
   this.controls.target.copy(this.target); this.stepKey = null;
 };
 SceneView.prototype.applyHighlight = function (step, selectedId) {
   var self = this;
+  // Hover calls applyHighlight() with no args; keep the last step and
+  // selection so a hover does not wipe the step highlight or the
+  // selected label.
+  if (step) this.lastStep = step;
+  if (selectedId !== undefined) this.lastSelected = selectedId;
+  step = this.lastStep; selectedId = this.lastSelected;
   var active = {};
   if (step) (step.active || []).forEach(function (id) { active[id] = true; });
   Object.keys(this.meshes).forEach(function (id) {
@@ -300,20 +338,26 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     var isActive = !!active[id]; var isSel = selectedId === id; var isHover = self.hovered === id;
     mesh.material.color.copy(base);
     // Gentle dim for non-active blocks; active pops via full colour
-    // + the single accent emissive only.
-    if (!isActive && !isSel) mesh.material.color.multiplyScalar(isHover ? 0.92 : DIM_FACTOR);
-    mesh.material.emissive = new THREE.Color((isSel || isActive) ? ACTIVE_EMISSIVE : 0x000000);
-    mesh.material.emissiveIntensity = isSel ? 1.0 : (isActive ? 0.7 : 0);
+    // + amber emissive only (indigo is reserved for explicit selection,
+    // so active never turns into muddy lavender over teal/blue).
+    var dim = (!isActive && !isSel) ? (isHover ? 0.92 : DIM_FACTOR) : 1;
+    if (dim !== 1) mesh.material.color.multiplyScalar(dim);
+    if (mesh.userData.plinthMat) { mesh.userData.plinthMat.color.copy(mesh.userData.plinthBase); if (dim !== 1) mesh.userData.plinthMat.color.multiplyScalar(dim); }
+    if (mesh.userData.topMat) { mesh.userData.topMat.color.copy(mesh.userData.topBase); if (dim !== 1) mesh.userData.topMat.color.multiplyScalar(dim); }
+    mesh.material.emissive = new THREE.Color(isSel ? SELECT_EMISSIVE : (isActive ? ACTIVE_EMISSIVE : 0x000000));
+    mesh.material.emissiveIntensity = isSel ? 1.0 : (isActive ? 0.45 : 0);
     mesh.scale.setScalar((isSel || isHover) ? 1.05 : 1);
-    // The active block's label grows slightly, so the eye finds it
-    // even where the block itself is small on screen. Labels stay
-    // white: colour in this scene means hardware family, not emphasis.
+    // Round 10 label rule (GEX/PC Anatomy): die journeys show a label
+    // ONLY for the active / selected / hovered block, larger than
+    // before, so the frame is not 40% label rectangles. Stacking keeps
+    // all front callouts: a cross-section's layer names are its content.
     var spr = self.labels[id];
     if (spr) {
-      var bw = Math.min(Math.max(mesh.userData.box.w + 0.5, 1.7), 2.7);
+      var bw = Math.min(Math.max(mesh.userData.box.w + 0.5, 2.0), 3.4);
       var ls = (isSel || isActive) ? 1.12 : 1;
-      spr.scale.set(bw * ls, bw * ls * 0.20, 1);
+      spr.scale.set(bw * ls, bw * ls * 0.22, 1);
       spr.material.color.setHex(0xffffff);
+      if (self.journeyId !== 'stacking') spr.visible = !!(isSel || isActive || isHover);
     }
   });
   // SM detail dims with its parent block; it is never a separate
@@ -331,7 +375,7 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     this.flowLines.forEach(function (line) {
       var hot = !!live[line.userData.key];
       line.material.color.setHex(hot ? FLOW_HOT : FLOW_IDLE);
-      line.material.opacity = hot ? 1 : 0.5;
+      line.material.opacity = hot ? 1 : 0.3;
     });
   }
 };
@@ -367,8 +411,8 @@ SceneView.prototype.setCameraPreset = function (name) {
   else if (name === 'side') { this.camera.position.set(0, t.y + 0.8, 26); }
   else { // three-quarter: journey default framing
     if (this.journeyId === 'stacking') { this.camera.position.set(4, 12, 20); }
-    else if (this.journeyId === 'gemm') { this.camera.position.set(10, 15, 24); }
-    else { this.camera.position.set(11, 13, 18); }
+    else if (this.journeyId === 'gemm') { this.camera.position.set(8, 20, 19); }
+    else { this.camera.position.set(9, 18, 17); }
   }
   this.controls.target.copy(t);
   this.controls.update();

@@ -125,6 +125,18 @@ test('Round 9 SM detail: 4 subpartitions, tensor + scheduler + register each, sh
   assert.ok(byRole('shared-strip')[0].dz > box.d / 2, 'shared strip must sit at the SM front face');
   assert.ok(byRole('tensor')[0].color !== M.KIND_COLOR.compute, 'tensor uses the darker compute shade');
 });
+test('Round 10 GEMM: one framed die — flat blocks inside 20.8 x 9.6, constant pipeline order', function () {
+  var boxes = M.boxesFor('gemm', S.JOURNEYS.gemm);
+  var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+  boxes.forEach(function (b) {
+    assert.ok(b.h <= 0.85, b.id + ' must be flat, not a tall box (h=' + b.h + ')');
+    assert.ok(Math.abs(b.x) + b.w / 2 <= 10.5, b.id + ' must fit inside the die frame in x');
+    assert.ok(Math.abs(b.z) + b.d / 2 <= 4.9, b.id + ' must fit inside the die frame in z');
+  });
+  assert.ok(byId['smem'].d > byId['sm'].d, 'smem spine must be deeper than the SM block');
+  assert.ok(byId['c-out'].x - byId['c-out'].w / 2 > byId['sm'].x + byId['sm'].w / 2, 'output must sit right of compute with a gap');
+});
+
 test('Round 9 GEMM: warp is a narrow dispatch strip, smem the wide central block', function () {
   var boxes = M.boxesFor('gemm', S.JOURNEYS.gemm);
   var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });

@@ -37,38 +37,40 @@
   // logic band height (y 3.15) with cut-core forward (z 1.8 > 0).
   var LAYOUT = {
     gemm: {
-      // Pipeline left -> right: A row / B column (symmetric about z 0),
-      // one distinct central Shared Memory, compute as a 2-row grid,
-      // output at the end of the pipeline.
-      'a-tile': { x: -7.4, z: -2.6, w: 4.2, d: 2.0, h: 0.85 },
-      'b-tile': { x: -7.4, z: 2.6, w: 4.2, d: 2.0, h: 0.85 },
-      smem:     { x: -1.6, z: 0,    w: 4.8, d: 3.2, h: 1.15 },
-      warp:     { x: 3.6,  z: -2.6, w: 3.6, d: 0.9, h: 0.6 },
-      sm:       { x: 3.6,  z: 2.6,  w: 3.6, d: 2.0, h: 1.05 },
-      'c-out':  { x: 8.3,  z: 0,    w: 3.4, d: 2.6, h: 0.85 }
+      // Round 10: one framed die, not a sprawl. Pipeline left -> right
+      // with constant ~0.9 gaps, all blocks flat (h <= 0.85, GEX/PC
+      // Anatomy: height ~15-20% of footprint). Shared Memory is the
+      // central spine block: tall in depth, spanning both input rows.
+      // Total span x -9.9..8.1, z -3.7..3.7, inside a 20.8 x 9.6 die.
+      'a-tile': { x: -8.0, z: -2.6, w: 3.8, d: 2.2, h: 0.7 },
+      'b-tile': { x: -8.0, z: 2.6, w: 3.8, d: 2.2, h: 0.7 },
+      smem:     { x: -3.2, z: 0,    w: 4.0, d: 5.6, h: 0.8 },
+      warp:     { x: 1.8,  z: -2.6, w: 3.6, d: 1.8, h: 0.55 },
+      sm:       { x: 1.8,  z: 2.6,  w: 3.6, d: 2.2, h: 0.85 },
+      'c-out':  { x: 6.6,  z: 0,    w: 3.0, d: 3.0, h: 0.75 }
     },
     pagetable: {
       // Top row, evenly spaced left -> right; bottom row returns under
       // the right column, with a long clean return lane (cache -> cpu).
-      cpu:   { x: -8.6,  z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
-      tlb:   { x: -5.16, z: -2.7, w: 2.9, d: 2.0, h: 1.0 },
+      cpu:   { x: -8.6,  z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
+      tlb:   { x: -5.16, z: -2.7, w: 2.9, d: 2.0, h: 0.8 },
       pgd:   { x: -1.72, z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
       pud:   { x: 1.72,  z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
       pmd:   { x: 5.16,  z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
       pte:   { x: 8.6,   z: -2.7, w: 2.9, d: 2.0, h: 0.85 },
       ram:   { x: 8.6,   z: 2.7,  w: 2.9, d: 2.0, h: 0.85 },
-      cache: { x: 1.72,  z: 2.7,  w: 2.9, d: 2.0, h: 1.0 }
+      cache: { x: 1.72,  z: 2.7,  w: 2.9, d: 2.0, h: 0.8 }
     },
     pixel: {
       // Top row, evenly spaced left -> right; texture sits under the
       // shader (its sampling loop is vertical), target pixel under the
       // frame buffer (its write is vertical).
       tri:    { x: -8.4, z: -2.7, w: 3.0, d: 2.0, h: 0.85 },
-      raster: { x: -4.2, z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
-      shader: { x: 0,    z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
+      raster: { x: -4.2, z: -2.7, w: 3.0, d: 2.0, h: 0.85 },
+      shader: { x: 0,    z: -2.7, w: 3.0, d: 2.0, h: 0.85 },
       depth:  { x: 4.2,  z: -2.7, w: 3.0, d: 2.0, h: 0.85 },
-      fb:     { x: 8.4,  z: -2.7, w: 3.0, d: 2.0, h: 1.0 },
-      tex:    { x: 0,    z: 2.7,  w: 3.0, d: 2.0, h: 1.0 },
+      fb:     { x: 8.4,  z: -2.7, w: 3.0, d: 2.0, h: 0.8 },
+      tex:    { x: 0,    z: 2.7,  w: 3.0, d: 2.0, h: 0.8 },
       pixel:  { x: 8.4,  z: 2.7,  w: 3.0, d: 2.0, h: 0.85 }
     },
     stacking: {
