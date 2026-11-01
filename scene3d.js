@@ -268,7 +268,11 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   this.journeyId = journeyId;
   this.model = model || 'h100';
   var isA100 = journeyId === 'gemm' && this.model === 'a100';
-  this.renderer.toneMapping = isA100 ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+  // Piece 2: H100 uses the same NoToneMapping + frame-only marking
+  // as A100 (see applyHighlight noDim below), so the colours
+  // sampled from the Hopper figures survive unshifted.
+  var isH100 = journeyId === 'gemm' && this.model === 'h100';
+  this.renderer.toneMapping = (isA100 || isH100) ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
   var boxes = M.boxesFor(journeyId, journey, this.model);
   var isStack = journeyId === 'stacking';
   // Package stack, contiguous, die slab top at -0.30 (where die
@@ -278,8 +282,8 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   // around the die slab makes the die read as one object. NO grid
   // floor — no reference has one; the background is solid #161618.
   var slabW = isStack ? 20 : (journeyId === 'gemm' ? 20.8 : 22), slabD = isStack ? 12 : 9.6;
-  var interW = isStack ? 21 : (journeyId === 'gemm' ? (isA100 ? 25.0 : 28) : 23.5), interD = isStack ? 13 : (isA100 ? 11.2 : 11.5);
-  var subW = isStack ? 22 : (journeyId === 'gemm' ? (isA100 ? 25.8 : 29) : 24.5), subD = isStack ? 14 : (isA100 ? 12.0 : 12.5);
+  var interW = isStack ? 21 : (journeyId === 'gemm' ? ((isA100 || isH100) ? 25.0 : 28) : 23.5), interD = isStack ? 13 : ((isA100 || isH100) ? 11.2 : 11.5);
+  var subW = isStack ? 22 : (journeyId === 'gemm' ? ((isA100 || isH100) ? 25.8 : 29) : 24.5), subD = isStack ? 14 : ((isA100 || isH100) ? 12.0 : 12.5);
   var slabZ = isStack ? 1 : 0;
   var dieSlab = new THREE.Mesh(
     new THREE.BoxGeometry(slabW, 0.5, slabD),
@@ -321,7 +325,10 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   interposer.position.set(0, -0.95, slabZ);
   interposer.receiveShadow = true;
   this.group.add(interposer);
-  if (isA100) {
+  // Piece 2: H100 shares the A100 stepped-package treatment
+  // (same tightened package, same top plate); only the die
+  // scenery differs.
+  if (isA100 || isH100) {
     var interTop = new THREE.Mesh(
       new THREE.BoxGeometry(interW - 0.6, 0.08, interD - 0.6),
       new THREE.MeshStandardMaterial({ color: 0x35353a, roughness: 0.6, metalness: 0.3 }));
@@ -434,7 +441,71 @@ SceneView.prototype.build = function (journeyId, journey, model) {
     });
     nvIm.castShadow = true; nvIm.receiveShadow = true; self.group.add(nvIm);
   }
-  if (journeyId === 'gemm' && !isA100) {
+  // Piece 2 (H100 only): HBM as 6 stacks (official full-GH100
+  // count, 3 west / 3 east as drawn in Hopper Figure 3), same
+  // flat-slab + 2 inset layers construction as A100. Slab colour
+  // is the sampled Hopper HBM grey #404040 (A100's was #313131);
+  // inset layers are one shade lighter (#505050, a shade step for
+  // readability, not a figure sample — see scene-map.js).
+  if (isH100) {
+    // HBM stack layers are one InstancedMesh per layer level
+    // (2 draw calls for 12 layers), not 12 meshes.
+    var h100HbmStacks = M.h100HbmStacks();
+    var h100HbmLayersByLevel = [[], []];
+    h100HbmStacks.forEach(function (st) {
+      var h100Base = new THREE.Mesh(
+        new THREE.BoxGeometry(st.w + 0.3, 0.15, st.d + 0.3),
+        new THREE.MeshStandardMaterial({ color: 0x1f1f21, roughness: 0.8, metalness: 0 }));
+      h100Base.position.set(st.x, -0.18, st.z); h100Base.receiveShadow = true; self.group.add(h100Base);
+      var h100Slab = new THREE.Mesh(
+        new THREE.BoxGeometry(st.w, 0.6, st.d),
+        new THREE.MeshStandardMaterial({ color: 0x404040, roughness: 0.7, metalness: 0.1 }));
+      h100Slab.position.set(st.x, 0.05, st.z); h100Slab.castShadow = true; h100Slab.receiveShadow = true;
+      h100Slab.add(new THREE.LineSegments(new THREE.EdgesGeometry(h100Slab.geometry),
+        new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.6 })));
+      self.group.add(h100Slab);
+      var h100li;
+      for (h100li = 0; h100li < 2; h100li++) h100HbmLayersByLevel[h100li].push({ x: st.x, z: st.z, w: st.w - 0.15 * (h100li + 1), d: st.d - 0.15 * (h100li + 1), y: 0.35 + h100li * 0.14 });
+    });
+    h100HbmLayersByLevel.forEach(function (level) {
+      var h100Im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.14, 1),
+        new THREE.MeshStandardMaterial({ color: 0x505050, roughness: 0.45, metalness: 0.30 }), level.length);
+      var h100Dd = new THREE.Object3D();
+      level.forEach(function (ly, li) {
+        h100Dd.position.set(ly.x, ly.y, ly.z); h100Dd.scale.set(ly.w, 1, ly.d); h100Dd.updateMatrix(); h100Im.setMatrixAt(li, h100Dd.matrix);
+      });
+      h100Im.castShadow = true; h100Im.receiveShadow = true; self.group.add(h100Im);
+    });
+    // Figure 3 flanks: HBM3 Memory Controller strips, dark, both sides.
+    M.h100HbmControllers().forEach(function (ct) {
+      var h100Strip = new THREE.Mesh(
+        new THREE.BoxGeometry(ct.w, 0.6, ct.d),
+        new THREE.MeshStandardMaterial({ color: 0x404040, roughness: 0.5, metalness: 0.5 }));
+      h100Strip.position.set(ct.x, 0.05, ct.z); h100Strip.castShadow = true; h100Strip.receiveShadow = true;
+      self.group.add(h100Strip);
+    });
+    // Figure 3 north edge: PCIe Gen5 Host Interface (dark grey,
+    // sampled — A100's north strips were both orange) + GigaThread
+    // Engine with MIG Control (orange). South edge: NVLink strip,
+    // 18 segments (counted from Figure 3 by code).
+    M.h100TopStrips().forEach(function (ts) {
+      var h100Strip2 = new THREE.Mesh(
+        new THREE.BoxGeometry(ts.w, 0.5, ts.d),
+        new THREE.MeshStandardMaterial({ color: ts.color, roughness: 0.6, metalness: 0.2 }));
+      h100Strip2.position.set(0, 0, ts.z); h100Strip2.castShadow = true; h100Strip2.receiveShadow = true;
+      self.group.add(h100Strip2);
+    });
+    // NVLink: 18 segments as one InstancedMesh (1 draw call).
+    var h100NvSegs = M.h100Nvlink();
+    var h100NvIm = new THREE.InstancedMesh(new THREE.BoxGeometry(h100NvSegs[0].w, 0.5, h100NvSegs[0].d),
+      new THREE.MeshStandardMaterial({ color: 0x00cc00, roughness: 0.6, metalness: 0.2 }), h100NvSegs.length);
+    var h100NvD = new THREE.Object3D();
+    h100NvSegs.forEach(function (nv, ni) {
+      h100NvD.position.set(nv.x, 0, nv.z); h100NvD.updateMatrix(); h100NvIm.setMatrixAt(ni, h100NvD.matrix);
+    });
+    h100NvIm.castShadow = true; h100NvIm.receiveShadow = true; self.group.add(h100NvIm);
+  }
+  if (journeyId === 'gemm' && !isA100 && !isH100) {
     // HBM package context (scenery, not selectable nodes): FLAT slabs
     // flanking the die, same height as die blocks (GEX global memory),
     // dark base + fine gold strip on the outer edge. No towers: in a
@@ -501,12 +572,51 @@ SceneView.prototype.build = function (journeyId, journey, model) {
       self.group.add(frame);
     });
   }
+  // Piece 2 (H100 only): L2 as 2 partitions across the central
+  // band (Figure 3: the band separates the top and bottom GPC
+  // rows, with a seam in the middle), plus a small L2 caption.
+  // GPC group outlines (scenery): thin frames around each of the
+  // 8 enabled GPC groups, so the GPC -> TPC -> SM hierarchy reads
+  // at overview; there is no disabled position in full GH100.
+  // TMA strip (scenery): the Hopper-new Tensor Memory Accelerator
+  // band in Figure 4 order — SM array, then TMA, then the Shared
+  // Memory strip — sitting in the gap between the SM region's
+  // south edge and the smem strip, so it never overlaps a node.
+  if (isH100) {
+    M.h100L2Partitions().forEach(function (pt) {
+      var h100Part = new THREE.Mesh(
+        new THREE.BoxGeometry(pt.w, pt.h, pt.d),
+        new THREE.MeshStandardMaterial({ color: pt.color, roughness: 0.40, metalness: 0.50 }));
+      h100Part.position.set(pt.x, 0.75, pt.z); h100Part.castShadow = true; h100Part.receiveShadow = true;
+      h100Part.add(new THREE.LineSegments(new THREE.EdgesGeometry(h100Part.geometry),
+        new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.6 })));
+      self.group.add(h100Part);
+    });
+    var h100L2Sprite = makeLabelSprite('L2', '#9b9ba4');
+    h100L2Sprite.scale.set(2.6, 0.57, 1);
+    h100L2Sprite.position.set(0, 1.55, 0);
+    self.group.add(h100L2Sprite);
+    M.h100GpcGroups().forEach(function (g) {
+      var h100FrameGeo = new THREE.BoxGeometry(g.w, 0.06, g.d);
+      var h100FrameMat = new THREE.LineBasicMaterial({ color: 0x8a8a96, transparent: true, opacity: 0.9 });
+      var h100Frame = new THREE.LineSegments(new THREE.EdgesGeometry(h100FrameGeo), h100FrameMat);
+      h100Frame.position.set(g.x, 1.10, g.z);
+      self.group.add(h100Frame);
+    });
+    var h100Tma = M.h100TmaStrip();
+    var h100TmaMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(h100Tma.w, h100Tma.h, h100Tma.d),
+      new THREE.MeshStandardMaterial({ color: h100Tma.color, roughness: 0.40, metalness: 0.50 }));
+    h100TmaMesh.position.set(h100Tma.x, h100Tma.h / 2 - 0.25, h100Tma.z);
+    h100TmaMesh.castShadow = true; h100TmaMesh.receiveShadow = true;
+    self.group.add(h100TmaMesh);
+  }
   // Round 13 (GEMM only): L2 as 6 banks, not one band, plus
   // a varying-width interconnect bus to the SM grid, plus an
   // engraved front-face label. PC Anatomy: repetition + width
   // variation + engraved text are what make a region read as
   // hardware instead of one solid brick.
-  if (journeyId === 'gemm' && !isA100) {
+  if (journeyId === 'gemm' && !isA100 && !isH100) {
     var l2b = M.l2Banks();
     var bankGeo = new THREE.BoxGeometry(l2b[0].w, l2b[0].h, l2b[0].d);
     var bankMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.40, metalness: 0.50 });
@@ -623,7 +733,11 @@ SceneView.prototype.build = function (journeyId, journey, model) {
       // the Figure 5 bands (L0 / scheduler / dispatch / register /
       // datapath / tensor / LD-ST / SFU), grouped by role into
       // one InstancedMesh each, exactly as the generic path does.
-      var tiles = isA100 ? M.a100SmTiles(smBox) : M.smGridTiles(smBox);
+      // Piece 2 (H100 only): tiles are the 32 GPC-group tiles
+      // (8 groups x 2x2); sub-cells are the Hopper Figure 4 bands
+      // (same band order, Hopper datapath columns + sampled
+      // Hopper colours), grouped by role the same way.
+      var tiles = isA100 ? M.a100SmTiles(smBox) : (isH100 ? M.h100SmTiles(smBox) : M.smGridTiles(smBox));
       var tileGeo = new THREE.BoxGeometry(tiles[0].w, 0.22, tiles[0].d);
       var tileMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.25 });
       var grid = new THREE.InstancedMesh(tileGeo, tileMat, tiles.length);
@@ -632,7 +746,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
         gd.position.set(smBox.x + t.dx, smBox.y + smBox.h / 2 + 0.11, smBox.z + t.dz);
         gd.updateMatrix(); grid.setMatrixAt(ti, gd.matrix);
         var v = 0.92 + ((ti * 37) % 5) * 0.03;
-        grid.setColorAt(ti, gc.setHex(isA100 ? 0x598b00 : 0x89b4fa).multiplyScalar(isA100 ? 1 : v));
+        grid.setColorAt(ti, gc.setHex((isA100 || isH100) ? 0x598b00 : 0x89b4fa).multiplyScalar((isA100 || isH100) ? 1 : v));
       });
       grid.castShadow = true; grid.receiveShadow = true;
       self.group.add(grid);
@@ -644,14 +758,14 @@ SceneView.prototype.build = function (journeyId, journey, model) {
       // PC-Anatomy subpart colours from scene-map.js. They ride
       // the SM box on explode (see update) and dim with it (see
       // applyHighlight); they are never separate selections.
-      var subCells = isA100 ? M.a100SmSubCells(smBox) : M.smTileSubCells(smBox);
+      var subCells = isA100 ? M.a100SmSubCells(smBox) : (isH100 ? M.h100SmSubCells(smBox) : M.smTileSubCells(smBox));
       var subMeshes = {};
       var subRoles = [];
       subCells.forEach(function (c) { if (subRoles.indexOf(c.role) < 0) subRoles.push(c.role); });
       subRoles.forEach(function (role) {
         var cells = subCells.filter(function (c) { return c.role === role; });
         var rm = { l0: [0.50, 0.30], scheduler: [0.50, 0.30], dispatch: [0.55, 0.25], register: [0.45, 0.40], int32: [0.35, 0.55], fp32: [0.35, 0.55], fp64: [0.35, 0.55], tensor: [0.30, 0.65], ldst: [0.50, 0.35], sfu: [0.50, 0.35] }[role];
-        var mat = isA100 && rm
+        var mat = (isA100 || isH100) && rm
           ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: rm[0], metalness: rm[1] })
           : new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.55 });
         var im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, cells.length);
@@ -660,7 +774,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
           d2.position.set(smBox.x + c.dx, smBox.y + smBox.h / 2 + 0.22 + c.h / 2, smBox.z + c.dz);
           d2.scale.set(c.w, c.h, c.d); d2.updateMatrix(); im.setMatrixAt(ci, d2.matrix);
           var v = 0.92 + ((ci * 37) % 5) * 0.03;
-          im.setColorAt(ci, cc.setHex(c.color).multiplyScalar(isA100 ? 1 : v));
+          im.setColorAt(ci, cc.setHex(c.color).multiplyScalar((isA100 || isH100) ? 1 : v));
         });
         im.castShadow = true; im.receiveShadow = true;
         self.group.add(im);
@@ -671,7 +785,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   }
   // Round 17 detail cells (pagetable, pixel, stacking only;
   // GEMM keeps its SM grid/sub-cells above, A100 keeps its
-  // Figure 5 bands): one InstancedMesh per role, cells sitting
+  // Figure 5 bands, H100 keeps its Figure 4 bands): one InstancedMesh per role, cells sitting
   // on their parent block's top plate (parent top = box.y +
   // box.h/2 + 0.01, the top plate's top face). Non-pickable,
   // like the SM detail: they are relief, never selections.
@@ -760,7 +874,7 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
   step = this.lastStep; selectedId = this.lastSelected;
   var active = {};
   if (step) (step.active || []).forEach(function (id) { active[id] = true; });
-  var noDim = this.journeyId === 'gemm' && this.model === 'a100';
+  var noDim = this.journeyId === 'gemm' && (this.model === 'a100' || this.model === 'h100');
   Object.keys(this.meshes).forEach(function (id) {
     var mesh = self.meshes[id]; var base = new THREE.Color(mesh.userData.baseColor);
     var isActive = !!active[id]; var isSel = selectedId === id; var isHover = self.hovered === id;

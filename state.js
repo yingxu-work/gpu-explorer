@@ -9,7 +9,7 @@
 // (from + '>' + to) that are live in that step.
 (function (root) {
   const MODELS = {
-    h100: { name: 'H100 (Hopper)', kind: 'GPU · 计算', note: 'H100（GH100/Hopper，教学变体）：与 A100 模型区分；具体规格以 NVIDIA Hopper 官方文章为准，本图为教学示意。' },
+    h100: { name: 'H100 (Hopper)', kind: 'GPU · 计算', note: 'H100（GH100/Hopper，规格来源：NVIDIA 官方文章）：全规格 8 GPC、144 SM、L2 60MB 分 2 区、HBM3 6 叠；SXM5 版 132 SM、L2 50MB；本图为教学示意。' },
     a100: { name: 'A100 (Ampere)', kind: 'GPU · 计算', note: 'A100（GA100/Ampere，规格来源：NVIDIA 官方文章）：7 GPC、108 SM、L2 40MB 分 2 区、HBM2 5 叠；本图为教学示意。' },
     rtx5090: { name: 'RTX 5090', kind: 'GPU · 消费级', note: '消费级示例：图形与计算共享同一组结构、工作与数据视角（教学示意，与 Ampere/Hopper 模型区分）。' },
     mi300x: { name: 'AMD MI300X', kind: 'GPU · 芯粒/堆叠', note: '比较示例：多芯粒与堆叠组织下同一问题的另一种分工（教学示意）。' },
@@ -44,9 +44,9 @@
         { title: '选定输出 C[3,7]', body: '计算范围限定为单个输出，确定其输入依赖。', active: ['c-out'], flows: [], trace: 'C[3,7] = Σ A[3][k] · B[k][7]', modelNotes: { h100: 'H100 视角：输出限定后，阵列规模仅决定分工。', a100: 'A100 视角：起点相同，组织方式存在差异。' }, code: ['// 目标：只算一个输出', 'C[3][7] = sum_k A[3][k] * B[k][7]'] },
         { title: 'A 行与 B 列的依赖关系', body: 'C[3,7] 仅依赖 A 第 3 行与 B 第 7 列。', active: ['a-tile', 'b-tile'], flows: [], trace: 'C[3,7] ← A[3][:] · B[:][7]', modelNotes: { h100: 'H100 视角：依赖关系不变，与型号无关。', a100: 'A100 视角：依赖关系相同，差异在后续步骤。' }, code: ['// 依赖', 'row = A[3][:]', 'col = B[:][7]'] },
         { title: 'Tile 与 Block 的划分', body: '大矩阵划分为小块，块负责一个输出 tile。', active: ['sm'], flows: [], trace: '输出 tile ← 一个 block', modelNotes: { h100: 'H100 视角：块尺寸影响复用率与同步代价。', a100: 'A100 视角：划分思路相同，分工粒度有差异。' }, code: ['// 划分（教学示意）', 'tile = 16 x 16', 'block -> 一个输出 tile'] },
-        { title: '数据载入 Shared Memory', body: '待复用的 A、B 小块载入片上共享存储。', active: ['smem', 'a-tile', 'b-tile'], flows: ['a-tile>smem', 'b-tile>smem'], trace: 'smem ← A tile + B tile', modelNotes: { h100: 'H100 视角：载入一次，后续乘加反复读取。', a100: 'A100 视角：角色相同，容量与分工有差异。' }, code: ['// 搬运', 'smem_A = load(A tile)', 'smem_B = load(B tile)', '__syncthreads() // 同步：等待全部搬运完成'] },
+        { title: '数据载入 Shared Memory', body: '待复用的 A、B 小块载入片上共享存储。', active: ['smem', 'a-tile', 'b-tile'], flows: ['a-tile>smem', 'b-tile>smem'], trace: 'smem ← A tile + B tile', modelNotes: { h100: 'H100 视角：TMA 异步搬运小块至共享存储。', a100: 'A100 视角：角色相同，容量与分工有差异。' }, code: ['// 搬运', 'smem_A = load(A tile)', 'smem_B = load(B tile)', '__syncthreads() // 同步：等待全部搬运完成'] },
         { title: 'Warp 分工', body: 'warp 内线程分工：同一指令，不同数据。', active: ['warp'], flows: ['smem>warp'], trace: 'lane ← smem_A[lane] × smem_B[lane]', modelNotes: { h100: 'H100 视角：每 lane 计算各自的部分乘积。', a100: 'A100 视角：每 lane 仅计算一份部分乘积。' }, code: ['// warp 内分工', 'lane = threadIdx.x % 32', 'partial = smem_A[lane] * smem_B[lane]'] },
-        { title: 'SM 上的乘加运算', body: '计算单元执行乘加并累加，矩阵单元亦然。', active: ['sm', 'warp'], flows: ['warp>sm'], trace: 'acc ← acc + partial', modelNotes: { h100: 'H100 视角：矩阵单元承担规整的乘加。', a100: 'A100 视角：矩阵单元改变组织，不改变定义。' }, code: ['// 累加', 'acc += partial'] },
+        { title: 'SM 上的乘加运算', body: '计算单元执行乘加并累加，矩阵单元亦然。', active: ['sm', 'warp'], flows: ['warp>sm'], trace: 'acc ← acc + partial', modelNotes: { h100: 'H100 视角：第四代张量核承担规整乘加。', a100: 'A100 视角：矩阵单元改变组织，不改变定义。' }, code: ['// 累加', 'acc += partial'] },
         { title: '同步与下一块', body: '当前块完成后同步，随后载入下一块。', active: ['smem', 'sm'], flows: ['smem>sm'], trace: '下一 tile ← 同步后重新载入', modelNotes: { h100: 'H100 视角：等待源于下一块未载入完成。', a100: 'A100 视角：等待为过程的组成部分。' }, code: ['// 同步后继续计算', '__syncthreads()', '// 载入下一块 tile，重复'] },
         { title: '写回 C[3,7]', body: '累加完成，结果写回输出。', active: ['c-out'], flows: ['sm>c-out'], trace: 'C[3,7] ← acc', modelNotes: { h100: 'H100 视角：仅写入一个数值。', a100: 'A100 视角：结果相同，代价与分工可不同。' }, code: ['// 写回', 'C[3][7] = acc'] },
       ],

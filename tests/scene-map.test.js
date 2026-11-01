@@ -422,5 +422,108 @@ test('Round 16 A100 micro-proportions: package, L2, HBM, NVLink, top strips', fu
   assert.ok(tiles.every(function (tl) { return tl.w > tl.d; }), 'SM tiles must stay wider than deep (Fig.5 tile aspect)');
 });
 
+test('Piece 2 H100 (GH100/Hopper, official): 8 GPC groups, L2 2 partitions, HBM 6 stacks, NVLink 18', function () {
+  var groups = M.h100GpcGroups();
+  assert.strictEqual(groups.length, 8, 'full GH100 must have 8 GPCs, all enabled');
+  assert.strictEqual(groups.filter(function (g) { return g.enabled; }).length, 8, 'no disabled GPC position in full GH100');
+  assert.strictEqual(groups.filter(function (g) { return g.z < 0; }).length, 4, 'north row 4 GPCs');
+  assert.strictEqual(groups.filter(function (g) { return g.z > 0; }).length, 4, 'south row 4 GPCs');
+  var l2 = M.h100L2Partitions();
+  assert.strictEqual(l2.length, 2, 'L2 must be 2 partitions (official Hopper text)');
+  assert.ok(l2[0].x < 0 && l2[1].x > 0, 'partitions must sit left and right of the centre seam');
+  var hbm = M.h100HbmStacks();
+  assert.strictEqual(hbm.length, 6, 'H100 HBM must be 6 stacks (official full GH100; SXM5 uses 5)');
+  assert.strictEqual(hbm.filter(function (s) { return s.x < 0; }).length, 3, 'west flank 3 stacks as drawn in Figure 3');
+  assert.strictEqual(hbm.filter(function (s) { return s.x > 0; }).length, 3, 'east flank 3 stacks as drawn in Figure 3');
+  hbm.forEach(function (st) {
+    var outer = Math.abs(st.x) + st.w / 2;
+    assert.ok(outer < 12.6, 'HBM outer edge must sit near the die edge');
+  });
+  var nv = M.h100Nvlink();
+  assert.strictEqual(nv.length, 18, 'H100 NVLink strip must be 18 segments (counted from Figure 3)');
+  assert.ok(nv[1].x - nv[0].x - nv[0].w < 0.25, 'NVLink gaps must be small, segments wide');
+  assert.ok(nv[0].x < -9 && nv[17].x > 9, 'NVLink must span the die width symmetrically');
+  var tops = M.h100TopStrips();
+  assert.strictEqual(tops.length, 2, 'north edge must carry PCIe + GigaThread strips');
+  assert.strictEqual(tops[0].color, 0x404040, 'Hopper PCIe strip must be sampled dark grey, not A100 orange');
+  assert.strictEqual(tops[1].color, 0xf3913f, 'Hopper GigaThread strip must be sampled orange');
+  var tma = M.h100TmaStrip();
+  assert.strictEqual(tma.color, 0x76b900, 'TMA strip must be sampled Hopper bright green');
+  var tiles = M.h100SmTiles(M.boxFor('gemm', S.JOURNEYS.gemm.nodes.filter(function (n) { return n.id === 'sm'; })[0], 'h100'));
+  assert.strictEqual(tiles.length, 32, '8 enabled GPCs x 2x2 tiles = 32 tiles (teaching count, NOT 144 SMs)');
+  assert.ok(tiles.every(function (tl) { return tl.w > tl.d; }), 'SM tiles must stay wider than deep');
+});
+test('Piece 2 H100 SM sub-cells: Figure 4 band order, Hopper datapath columns, inside tile', function () {
+  var box = M.boxFor('gemm', S.JOURNEYS.gemm.nodes.filter(function (n) { return n.id === 'sm'; })[0], 'h100');
+  var cells = M.h100SmSubCells(box);
+  assert.strictEqual(cells.length, 448, '32 tiles x 14 sub-cells = 448');
+  function byRole(r) { return cells.filter(function (c) { return c.role === r; }); }
+  assert.strictEqual(byRole('l0').length, 32, 'one L0 strip per tile');
+  assert.strictEqual(byRole('scheduler').length, 32, 'one warp scheduler per tile');
+  assert.strictEqual(byRole('dispatch').length, 32, 'one dispatch unit per tile');
+  assert.strictEqual(byRole('register').length, 32, 'one register file per tile');
+  assert.strictEqual(byRole('int32').length, 32, 'one INT32 column cell per tile');
+  assert.strictEqual(byRole('fp32').length, 64, 'two FP32 column cells per tile (Figure 4 columns)');
+  assert.strictEqual(byRole('fp64').length, 32, 'one FP64 column cell per tile');
+  assert.strictEqual(byRole('tensor').length, 32, 'one tensor core per tile (4 per SM in the article; one per tile here)');
+  assert.strictEqual(byRole('ldst').length, 128, '4 LD/ST per tile (Figure 4 has 8, compressed as in A100 tiles)');
+  assert.strictEqual(byRole('sfu').length, 32, 'one SFU per tile');
+  var t0 = cells.filter(function (c) { return c.tile === 0; });
+  function band(role) { var cs = t0.filter(function (c) { return c.role === role; }); return { lo: Math.min.apply(null, cs.map(function (c) { return c.dz - c.d / 2; })), hi: Math.max.apply(null, cs.map(function (c) { return c.dz + c.d / 2; })) }; }
+  assert.ok(band('l0').hi < band('scheduler').lo, 'L0 must sit north of the scheduler');
+  assert.ok(band('scheduler').hi < band('dispatch').lo, 'scheduler must sit north of dispatch');
+  assert.ok(band('dispatch').hi < band('register').lo, 'dispatch must sit north of the register file');
+  assert.ok(band('register').hi < band('int32').lo, 'register file must sit north of the datapath row');
+  assert.ok(band('int32').hi < band('ldst').lo, 'datapath row must sit north of the LD/ST+SFU foot row');
+  cells.forEach(function (c) {
+    assert.ok(Math.abs(c.dx) + c.w / 2 <= box.w / 2 + 0.001, c.role + ' must fit inside the SM region in x');
+    assert.ok(Math.abs(c.dz) + c.d / 2 <= box.d / 2 + 0.001, c.role + ' must fit inside the SM region in z');
+  });
+});
+test('Piece 2 H100 layout differs from generic default, A100 untouched', function () {
+  var h = {}, d = {}, a = {};
+  M.boxesFor('gemm', S.JOURNEYS.gemm, 'h100').forEach(function (b) { h[b.id] = b; });
+  M.boxesFor('gemm', S.JOURNEYS.gemm).forEach(function (b) { d[b.id] = b; });
+  M.boxesFor('gemm', S.JOURNEYS.gemm, 'a100').forEach(function (b) { a[b.id] = b; });
+  assert.ok(h['sm'].z === 0 && h['smem'].z > h['sm'].z, 'H100 smem must sit south of the SM region');
+  assert.ok(h['warp'].z < h['sm'].z, 'H100 warp must sit north of the SM region');
+  assert.ok(h['a-tile'].x < d['a-tile'].x, 'H100 inputs must sit further west (HBM controller gap)');
+  assert.ok(d['sm'].x === 2.5 && d['sm'].z === -0.9, 'generic default layout must be untouched by Piece 2');
+  assert.ok(d['smem'].z === 3.6, 'generic default smem position must be untouched');
+  assert.strictEqual(M.a100SmTiles(a['sm']).length, 28, 'A100 tiles must stay 28');
+  assert.strictEqual(M.a100HbmStacks().length, 5, 'A100 HBM must stay 5 stacks');
+  assert.strictEqual(M.a100Nvlink().length, 12, 'A100 NVLink must stay 12 segments');
+  assert.strictEqual(M.a100GpcGroups().filter(function (g) { return g.enabled; }).length, 7, 'A100 enabled GPCs must stay 7');
+});
+test('Piece 2 H100 colours sampled from NVIDIA Hopper Figures 3/4, note tagged, no rumor figure', function () {
+  var box = M.boxFor('gemm', S.JOURNEYS.gemm.nodes.filter(function (n) { return n.id === 'sm'; })[0], 'h100');
+  var cells = M.h100SmSubCells(box);
+  var byRole = {};
+  cells.forEach(function (c) { byRole[c.role] = c.color; });
+  assert.strictEqual(byRole.l0, 0x73b3dd, 'L0 must be sampled Fig.4 light blue');
+  assert.strictEqual(byRole.scheduler, 0xf18712, 'Warp Scheduler must be sampled Fig.4 orange');
+  assert.strictEqual(byRole.dispatch, 0x9c4a09, 'Dispatch must be sampled Fig.4 brown');
+  assert.strictEqual(byRole.register, 0x205867, 'Register File must be sampled Fig.4 dark teal');
+  assert.strictEqual(byRole.int32, 0x597800, 'INT32 must be sampled Fig.4 datapath olive');
+  assert.strictEqual(byRole.fp32, 0x597800, 'Hopper FP32 must be sampled Fig.4 datapath olive, NOT A100 lime');
+  assert.strictEqual(byRole.fp64, 0x3b5d00, 'FP64 must be sampled Fig.4 dark green');
+  assert.strictEqual(byRole.tensor, 0x598b00, 'Tensor Core must be sampled Fig.4 olive');
+  assert.strictEqual(byRole.ldst, 0x612621, 'LD/ST must be sampled Fig.4 dark red');
+  assert.strictEqual(byRole.sfu, 0x923931, 'SFU must be sampled Fig.4 red');
+  var l2 = M.h100L2Partitions();
+  assert.ok(l2.every(function (p) { return p.color === 0x73b3dd; }), 'L2 partitions must be sampled Fig.3 light blue');
+  var boxes = {}; M.boxesFor('gemm', S.JOURNEYS.gemm, 'h100').forEach(function (b) { boxes[b.id] = b; });
+  assert.strictEqual(boxes.sm.color, 0x598b00, 'H100 SM region must be Fig.3 SM green');
+  assert.strictEqual(boxes.smem.color, 0x73b3dd, 'H100 Shared Memory must be Fig.4 256KB light blue');
+  assert.strictEqual(boxes.warp.color, 0xf18712, 'H100 warp must be Fig.4 Warp orange');
+  assert.ok(/GH100\/Hopper/.test(S.MODELS.h100.note), 'H100 note must tag GH100/Hopper');
+  assert.ok(/144/.test(S.MODELS.h100.note), 'H100 note must carry the full-GH100 SM count');
+  assert.ok(/60MB/.test(S.MODELS.h100.note), 'H100 note must carry the full-GH100 L2 size');
+  assert.ok(/规格来源/.test(S.MODELS.h100.note), 'H100 note must say spec source, not imply this site is official');
+  assert.ok(!/140/.test(S.MODELS.h100.note), 'no rumor transistor figure in the H100 note');
+  var tma = M.h100TmaStrip();
+  assert.ok(tma.z > box.d / 2 - 0.5 && tma.z < boxes.smem.z - boxes.smem.d / 2 + 0.5, 'TMA strip must sit between the SM region and the smem strip');
+});
+
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);
