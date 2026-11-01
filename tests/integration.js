@@ -30,10 +30,10 @@ server.listen(0, '127.0.0.1', async () => {
   try {
     const index = await get(port, '/');
     assert.equal(index.status, 200);
-    for (const marker of ['GPU Explorer', 'journey-select', 'model-select', 'compare-select', 'compare-diagram', 'diagram', 'diagram-svg', 'overview', 'verdict', 'play-btn', 'state.js', 'app.js', 'sidebar', 'inspector', 'bottombar', 'data-journey', 'data-model']) {
+    for (const marker of ['GPU Explorer', 'journey-select', 'model-select', 'compare-select', 'compare-diagram', 'diagram', 'scene3d', 'scene3d.js', 'scene-map.js', 'three.module.js', 'explode-slider', 'explode-auto-btn', 'block-list', 'overview', 'verdict', 'play-btn', 'state.js', 'app.js', 'sidebar', 'inspector', 'bottombar', 'data-journey', 'data-model']) {
       assert.ok(index.body.includes(marker), 'index missing: ' + marker);
     }
-    for (const asset of ['/state.js', '/app.js', '/styles.css']) {
+    for (const asset of ['/state.js', '/app.js', '/scene-map.js', '/scene3d.js', '/three/three.module.js', '/three/addons/controls/OrbitControls.js', '/styles.css']) {
       const r = await get(port, asset);
       assert.equal(r.status, 200, asset + ' should serve');
       assert.ok(r.body.length > 200, asset + ' should not be empty');

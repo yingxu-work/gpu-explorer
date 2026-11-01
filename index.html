@@ -4,12 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GPU Explorer — 透明的 CPU / GPU</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{ "imports": { "three": "./three/three.module.js", "three/addons/": "./three/addons/" } }
+</script>
 </head>
 <body>
 <header class="topbar">
   <div class="brand"><span class="logo" aria-hidden="true">◈</span><h1>GPU Explorer</h1><span class="tag">教学模型</span></div>
-  <p class="top-hint">点画布里的方块看详情 · ← → 单步 · 空格 播放/暂停</p>
+  <p class="top-hint">拖动旋转 · 滚轮缩放 · 点 3D 方块看详情 · ← → 单步 · 空格 播放/暂停</p>
 </header>
 
 <div class="shell">
@@ -100,14 +104,16 @@
       <p id="view-note" class="note"></p>
     </div>
     <div class="diagrams">
-      <div id="diagram" class="diagram" aria-label="过程示意图">
+      <div id="diagram" class="diagram" aria-label="3D 过程示意图">
         <h3 id="main-model-name" class="diagram-model"></h3>
-        <svg id="diagram-svg" viewBox="0 0 1100 520" role="img" aria-label="结构示意图"></svg>
+        <div id="scene3d" class="scene3d" aria-label="可交互 3D 场景：拖动旋转，滚轮缩放，点击方块选中"></div>
+        <p class="scene-hint">拖动旋转 · 滚轮缩放 · 点击 3D 方块选中它（键盘可用下方部件列表）</p>
+        <nav id="block-list" class="block-list" aria-label="部件列表（键盘可选）"></nav>
       </div>
-      <div id="compare-diagram" class="diagram" aria-label="对比型号示意图" style="display:none">
+      <div id="compare-diagram" class="diagram" aria-label="对比型号 3D 示意图" style="display:none">
         <h3 id="compare-model-name" class="diagram-model"></h3>
         <p id="compare-model-note" class="note"></p>
-        <svg id="compare-svg" viewBox="0 0 1100 520" role="img" aria-label="对比结构示意图"></svg>
+        <div id="scene3d-compare" class="scene3d" aria-label="对比型号 3D 场景"></div>
         <p id="compare-step-note" class="trace"></p>
       </div>
     </div>
@@ -133,13 +139,20 @@
     <button id="next-btn">下一步</button>
     <button id="reset-btn">回到开头</button>
     <span class="hint">键盘：← → 单步，空格 播放/暂停</span>
+    <label class="explode-field">拆开
+      <input id="explode-slider" type="range" min="0" max="100" value="0" aria-label="拆开程度">
+      <span id="explode-value">0%</span>
+    </label>
+    <button id="explode-auto-btn">拆开 AUTO</button>
   </div>
   <div class="progress" aria-label="旅程进度"><div id="progress-fill"></div></div>
   <nav id="overview" class="overview" aria-label="全部步骤（点一下可跳转）"></nav>
-  <p class="foot">四个旅程、六个型号（均为教学模型）、四种视图、单步/播放/暂停、先预测再播放、同一旅程同一步的双型号对比。3D 仅在确实有助于表达空间堆叠时再引入；本版用轻量 2D 图，避免重型渲染。</p>
+  <p class="foot">四个旅程、六个型号（均为教学模型）、四种视图、单步/播放/暂停、先预测再播放、同一旅程同一步的双型号对比。中间是可交互 3D 场景（低多边形方块、无贴图、无后期处理），教学几何、不是真实芯片版图；数字为教学简化，非实测性能。</p>
 </div>
 <div id="tooltip" class="tooltip" style="display:none"></div>
 <script src="state.js"></script>
+<script src="scene-map.js"></script>
 <script src="app.js"></script>
+<script type="module" src="scene3d.js"></script>
 </body>
 </html>
