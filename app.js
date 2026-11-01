@@ -5,8 +5,10 @@
   let timer = null;
   const $ = function (id) { return document.getElementById(id); };
   const NS = 'http://www.w3.org/2000/svg';
-  const KIND_FILL = { data: '#dcfce7', compute: '#dbeafe', memory: '#fef3c7', control: '#e2e8f0' };
-  const KIND_STROKE = { data: '#15803d', compute: '#1d4ed8', memory: '#b45309', control: '#475569' };
+  // Dark-canvas fills: deep hardware-like tiles with light text; the active
+  // step stays amber with dark text so it is readable on the dark canvas.
+  const KIND_FILL = { data: '#14532d', compute: '#1e3a8a', memory: '#78350f', control: '#334155' };
+  const KIND_STROKE = { data: '#4ade80', compute: '#60a5fa', memory: '#fbbf24', control: '#94a3b8' };
 
   function el(tag, attrs, text) {
     const e = document.createElementNS(NS, tag);
@@ -41,7 +43,7 @@
     marker.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: '#64748b' }));
     defs.appendChild(marker);
     const markerHot = el('marker', { id: 'arr-hot' + suffix, viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '8', markerHeight: '8', orient: 'auto-start-reverse' });
-    markerHot.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: '#b45309' }));
+    markerHot.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: '#f59e0b' }));
     defs.appendChild(markerHot);
     svg.appendChild(defs);
     const live = {};
@@ -52,7 +54,7 @@
       const a = byId[f.from], b = byId[f.to];
       if (!a || !b) return;
       const hot = live[f.from + '>' + f.to];
-      const stroke = hot ? '#b45309' : '#94a3b8';
+      const stroke = hot ? '#f59e0b' : '#94a3b8';
       if (f.route === 'return') {
         // Return lane: down below the diagram, across, then up into the
         // target from below — no long diagonal crossing the whole diagram.
@@ -81,8 +83,8 @@
       const isSel = state.selected === node.id;
       const rect = el('rect', {
         x: node.x, y: node.y, width: node.w, height: node.h, rx: '12',
-        fill: isActive ? '#fde68a' : (KIND_FILL[node.kind] || '#f1f5f9'),
-        stroke: isSel ? '#1a56db' : (KIND_STROKE[node.kind] || '#64748b'),
+        fill: isActive ? '#f59e0b' : (KIND_FILL[node.kind] || '#334155'),
+        stroke: isSel ? '#22d3ee' : (KIND_STROKE[node.kind] || '#94a3b8'),
         'stroke-width': isSel ? '4' : '2',
         opacity: node.disabled ? '0.45' : '1',
       });
@@ -92,10 +94,10 @@
         g.appendChild(el('text', {
           x: center(node).x, y: center(node).y + (lines.length > 1 ? (i === 0 ? -6 : 14) : 5),
           'text-anchor': 'middle', 'font-size': '17', 'font-weight': isActive ? '700' : '600',
-          fill: '#111827', 'text-decoration': node.disabled ? 'line-through' : 'none',
+          fill: isActive ? '#111827' : '#f8fafc', 'text-decoration': node.disabled ? 'line-through' : 'none',
         }, ln));
       });
-      const kind = el('text', { x: node.x + 10, y: node.y + 20, 'font-size': '12', fill: '#475569' },
+      const kind = el('text', { x: node.x + 10, y: node.y + 20, 'font-size': '12', fill: isActive ? '#451a03' : '#cbd5e1' },
         node.kind === 'data' ? '数据' : node.kind === 'compute' ? '计算' : node.kind === 'memory' ? '存储' : '控制');
       g.appendChild(kind);
       g.addEventListener('click', function () { S.select(state, node.id); syncHash(); render(); });
@@ -142,6 +144,12 @@
 
     document.querySelectorAll('[data-view]').forEach(function (b) {
       b.classList.toggle('active', b.dataset.view === state.view);
+    });
+    document.querySelectorAll('[data-journey]').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.journey === state.journey);
+    });
+    document.querySelectorAll('[data-model]').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.model === state.model);
     });
     $('journey-select').value = state.journey;
     $('model-select').value = state.model;
@@ -240,7 +248,13 @@
     render();
   };
   $('journey-select').onchange = function (e) { state.playing = false; stopTimer(); S.setJourney(state, e.target.value); render(); };
+  document.querySelectorAll('[data-journey]').forEach(function (b) {
+    b.onclick = function () { $('journey-select').value = b.dataset.journey; $('journey-select').dispatchEvent(new Event('change', { bubbles: true })); };
+  });
   $('model-select').onchange = function (e) { S.setModel(state, e.target.value); render(); };
+  document.querySelectorAll('[data-model]').forEach(function (b) {
+    b.onclick = function () { $('model-select').value = b.dataset.model; $('model-select').dispatchEvent(new Event('change', { bubbles: true })); };
+  });
   $('compare-select').onchange = function (e) { S.setCompare(state, e.target.value || null); render(); };
   $('speed-select').onchange = function () { if (state.playing) startTimer(); };
   document.querySelectorAll('[data-view]').forEach(function (b) {

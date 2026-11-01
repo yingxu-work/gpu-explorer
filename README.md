@@ -7,6 +7,8 @@ GPU Explorer 的目标是一部可以操作的 GPU 教科书：从板卡与封�
 **当前状态：已有可运行的轻量 2D 教学应用（见仓库根目录），全部数字均为教学示意，不是数据表或实测性能。**  
 首次记录：2026-11-01（Asia/Singapore）。
 
+**界面方向（2026-11-01 修正）：** 深色全屏应用壳——顶部栏、左侧章节/型号导航、中间画布、右侧步骤检查器、底部时间轴，参考了在 gpuserver 无头 Chrome 里实际打开的 PC Anatomy、GEX 与 Accelerator Visualizer 的布局（未复制其代码，未用重型 3D）。
+
 ## 可运行版本（仓库根目录布局）
 
 - `index.html` / `app.js` / `state.js` / `styles.css`：静态应用本体，无后端、无 GPU 计算。
