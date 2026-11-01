@@ -1,137 +1,65 @@
 <!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GPU Explorer — 透明的 CPU / GPU</title>
-<link rel="icon" href="data:,">
-<link rel="stylesheet" href="styles.css">
-<script type="importmap">
-{ "imports": { "three": "./three/three.module.js", "three/addons/": "./three/addons/" } }
-</script>
-</head>
+<html lang="zh-CN"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0b1014">
+<meta name="description" content="拆开一颗 GPU，跟着数据走完一次计算。可交互硬件解剖、逐步动画与数值实验。"><title>GPU Explorer — 走进一颗 GPU</title>
+<link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css">
+<script type="importmap">{"imports":{"three":"./three/three.module.js","three/addons/":"./three/addons/"}}</script></head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="logo" aria-hidden="true">◈</span><h1>GPU Explorer</h1><span class="tag">教学模型</span></div>
+ <a class="brand" href="./" aria-label="GPU Explorer 首页"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="7" width="18" height="18" rx="3"/><rect x="12" y="12" width="8" height="8" rx="1"/><path d="M11 3v4m5-4v4m5-4v4M11 25v4m5-4v4m5-4v4M3 11h4m-4 5h4m-4 5h4m18-10h4m-4 5h4m-4 5h4"/></svg><span><strong>GPU Explorer</strong><small>THE COMPUTE ATLAS</small></span></a>
+ <nav class="mode-switch" aria-label="探索模式"><button data-mode="explore">解剖硬件</button><button class="active" data-mode="learn">跟着算一次 <span>↗</span></button></nav>
+ <div class="top-actions"><span class="live-dot">INTERACTIVE EDITION</span><a href="https://github.com/yingxu-work/gpu-explorer" target="_blank" rel="noopener">GitHub ↗</a><button id="help-btn" aria-label="操作帮助">?</button></div>
 </header>
-
 <div class="shell">
-  <aside class="sidebar" aria-label="导航">
-    <section>
-      <h3>旅程</h3>
-      <nav class="nav-list" aria-label="旅程">
-        <button class="nav-item" data-journey="gemm"><span class="nav-num">01</span>矩阵乘法 C[3,7]</button>
-        <button class="nav-item" data-journey="pagetable"><span class="nav-num">02</span>页表遍历</button>
-        <button class="nav-item" data-journey="pixel"><span class="nav-num">03</span>像素着色</button>
-        <button class="nav-item" data-journey="stacking"><span class="nav-num">04</span>芯片堆叠</button>
-      </nav>
-      <p id="journey-gloss" class="gloss"></p>
-    </section>
-    <section>
-      <h3>型号</h3>
-      <label class="field">型号
-        <select id="model-select">
-          <option value="h100">H100</option>
-          <option value="a100">A100</option>
-          <option value="rtx5090">RTX 5090</option>
-          <option value="mi300x">AMD MI300X</option>
-          <option value="a20pro">Apple A20 Pro（示意）</option>
-          <option value="snapdragon">Snapdragon 移动 SoC（示意）</option>
-        </select>
-      </label>
-      <label class="field">对比型号
-        <select id="compare-select">
-          <option value="">不对比</option>
-          <option value="h100">H100</option>
-          <option value="a100">A100</option>
-          <option value="rtx5090">RTX 5090</option>
-          <option value="mi300x">AMD MI300X</option>
-          <option value="a20pro">Apple A20 Pro（示意）</option>
-          <option value="snapdragon">Snapdragon 移动 SoC（示意）</option>
-        </select>
-      </label>
-      <label class="field">速度
-        <select id="speed-select">
-          <option value="0.5">0.5×</option>
-          <option value="1" selected>1×</option>
-          <option value="2">2×</option>
-        </select>
-      </label>
-    </section>
-  </aside>
-
-  <main class="canvas-panel">
-    <div class="canvas-head">
-      <nav id="crumb" class="crumb" aria-label="当前位置"></nav>
-      <nav class="views" aria-label="视图">
-        <button data-view="structure">结构</button>
-        <button data-view="work">工作</button>
-        <button data-view="data">数据</button>
-        <button data-view="timeline">时间</button>
-      </nav>
-    </div>
-    <div class="diagrams">
-      <div id="diagram" class="diagram" aria-label="3D 过程示意图">
-        <h3 id="main-model-name" class="diagram-model"></h3>
-        <div id="scene3d" class="scene3d" aria-label="可交互 3D 场景：拖动旋转，滚轮缩放，点击方块选中；聚焦后方向键移动选中部件"></div>
-        <p class="scene-hint">拖动旋转 · 滚轮缩放 · 点击选中 · 方向键移动选中</p>
-        <nav class="cam-bar" aria-label="视角预设"><span class="cam-label">视角</span><button data-cam="three-quarter">四分之三</button><button data-cam="top">顶视</button><button data-cam="side">侧视</button></nav>
-        <div class="legend-row" aria-label="图例">
-          <span><span class="swatch sw-compute"></span>计算</span>
-          <span><span class="swatch sw-memory"></span>存储</span>
-          <span><span class="swatch sw-data"></span>数据</span>
-        </div>
-        <nav id="block-list" class="block-list" aria-label="部件列表（键盘可选：方向键移动，回车或空格选中）"></nav>
-      </div>
-      <div id="compare-diagram" class="diagram" aria-label="对比型号 3D 示意图" style="display:none">
-        <h3 id="compare-model-name" class="diagram-model"></h3>
-        <p id="compare-model-note" class="note"></p>
-        <div id="scene3d-compare" class="scene3d" aria-label="对比型号 3D 场景：聚焦后方向键移动选中部件"></div>
-        <p id="compare-step-note" class="fact"></p>
-      </div>
-    </div>
-  </main>
-
-  <aside class="inspector" aria-label="当前步骤详情">
-    <p class="section-label">当前步骤</p>
-    <span id="step-counter" class="step-counter"></span>
-    <h3 id="step-title"></h3>
-    <p id="step-body"></p>
-    <p id="fact" class="fact"></p>
-    <p class="caveat">本模型为教学示意，数值经简化，非实测性能；内部几何非真实晶体管版图。</p>
-    <details id="predict-details">
-      <summary>预测</summary>
-      <section id="predict" class="predict" aria-label="预测"></section>
-    </details>
-    <details id="code-details">
-      <summary>代码</summary>
-      <pre id="code-panel" aria-label="相关代码"></pre>
-    </details>
-  </aside>
-</div>
-
-<div class="bottombar">
-  <div class="playback">
-    <button id="prev-btn">上一步</button>
-    <button id="play-btn" class="play-main">▶ 播放</button>
-    <button id="next-btn">下一步</button>
-    <button id="reset-btn">回到开头</button>
-    <span class="hint">键盘：← → 单步（画布或部件列表聚焦时移动选中），空格 播放/暂停</span>
-    <label class="explode-field">拆开
-      <input id="explode-slider" type="range" min="0" max="100" value="0" aria-label="拆开程度">
-      <span id="explode-value">0%</span>
-    </label>
-    <button id="explode-auto-btn">拆开 AUTO</button>
+ <aside class="sidebar" aria-label="导航">
+  <section class="specimen-section"><div class="section-heading"><h2>当前标本</h2><span>01 / 02</span></div><label class="sr-only" for="model-select">型号</label><select id="model-select"><option value="h100">H100 · SXM 80GB</option><option value="a100">A100 · SXM 80GB</option></select><p class="specimen-meta" id="model-meta">NVIDIA HOPPER · 2022</p><div class="specimen-stats"><div><strong id="stat-sm">132</strong><span>SM 单元</span></div><div><strong>80<small>GB</small></strong><span id="stat-memory-type">HBM3 显存</span></div></div></section>
+  <section class="hierarchy-section"><div class="section-heading"><h2>探索尺度</h2><span>4 LEVELS</span></div><nav class="scale-nav" aria-label="硬件层级">
+   <button data-level="board" class="active"><span>01</span><div><strong>SXM 模组</strong><small>板卡、供电与互连</small></div><i>↗</i></button>
+   <button data-level="package"><span>02</span><div><strong>芯片封装</strong><small>GPU、HBM 与中介层</small></div><i>↗</i></button>
+   <button data-level="die"><span>03</span><div><strong>GPU Die</strong><small>计算阵列与 L2 缓存</small></div><i>↗</i></button>
+   <button data-level="sm"><span>04</span><div><strong>Streaming Multiprocessor</strong><small>线程、寄存器与 Tensor Core</small></div><i>↗</i></button>
+  </nav></section>
+  <section class="journey-section"><div class="section-heading"><h2>跟着数据走</h2><span>WALKTHROUGHS</span></div><nav class="nav-list" aria-label="旅程">
+   <button class="nav-item active" data-journey="gemm"><b>×</b><div><strong>一次矩阵乘法</strong><small>从 A、B 到 C[3,7]</small></div><span>08</span></button>
+   <button class="nav-item" data-journey="pagetable"><b>⇄</b><div><strong>一次地址翻译</strong><small>虚拟地址如何找到数据</small></div><span>07</span></button>
+   <button class="nav-item" data-journey="pixel"><b>▧</b><div><strong>一个像素的旅程</strong><small>几何到屏幕的图形管线</small></div><span>08</span></button>
+   <button class="nav-item" data-journey="stacking"><b>▱</b><div><strong>芯片为什么堆起来</strong><small>封装与垂直连接的示意</small></div><span>08</span></button>
+  </nav><p id="journey-gloss" class="sr-only"></p></section>
+  <section class="components-section"><div class="section-heading"><h2>部件目录</h2><span>SELECT</span></div><nav id="component-tree" aria-label="实体部件"></nav></section>
+  <div class="sidebar-bottom"><label for="compare-select">规格对照</label><select id="compare-select"><option value="">选择另一颗 GPU…</option><option value="h100">H100 SXM 80GB</option><option value="a100">A100 SXM 80GB</option></select><button id="sources-btn">模型口径与来源 <span>↗</span></button></div>
+ </aside>
+ <main class="canvas-panel">
+  <div class="canvas-head"><nav id="crumb" class="crumb" aria-label="当前位置"></nav><span class="scene-status"><i></i> LIVE 3D</span></div>
+  <div class="diagrams"><div id="diagram" class="diagram" aria-label="3D 过程示意图">
+   <div id="scene3d" class="scene3d" aria-label="可交互 3D 场景：拖动旋转，滚轮缩放，双击聚焦，方向键移动选中部件"></div>
+   <div class="specimen-title"><p id="main-model-name">NVIDIA · HOPPER ARCHITECTURE</p><h1 id="hero-title">H100</h1><em>Inside the machine.</em><p id="hero-subtitle">从一块模组，走进一次计算。</p></div>
+   <div class="stage-toolbar" aria-label="场景控制"><button id="labels-btn" class="active" aria-label="切换部件标签" aria-pressed="true">Aa<small>标签</small></button><button id="focus-btn" aria-label="聚焦选中部件">⌖<small>聚焦</small></button><button id="isolate-btn" aria-label="隔离选中部件" aria-pressed="false">◇<small>隔离</small></button><button id="home-btn" aria-label="重置相机和拆解">↺<small>复位</small></button></div>
+   <div id="selection-card" class="selection-card" hidden><span class="section-label">SELECTED COMPONENT</span><strong id="component-name"></strong><p id="component-detail"></p><button id="selection-close" aria-label="关闭部件说明">×</button></div>
+   <div id="compare-diagram" class="compare-panel" hidden><div class="section-heading"><h2>同一问题，不同硬件</h2><button id="compare-close" aria-label="关闭对照">×</button></div><h3 id="compare-model-name"></h3><p id="compare-model-note"></p><div id="compare-facts"></div><p id="compare-step-note"></p></div>
+   <div class="stage-bottom"><nav class="cam-bar" aria-label="视角预设"><button class="active" data-cam="three-quarter">3D</button><button data-cam="top">TOP</button><button data-cam="side">SIDE</button></nav><p class="scene-hint">拖动旋转 · 滚轮缩放 · 双击聚焦</p><button id="fullscreen-btn" aria-label="全屏场景">⛶</button></div>
+   <div id="scene-loading" class="scene-loading">正在准备硬件模型<span></span></div>
+  </div></div>
+  <section class="dissection-controls" aria-label="拆解控制"><button id="explode-auto-btn" aria-label="自动拆解模组">▷</button><div class="explode-caption"><strong>拆开它</strong><span>ASSEMBLY → ANATOMY</span></div><div class="explode-track"><div><span>完整</span><span>拆解</span></div><input id="explode-slider" type="range" min="0" max="100" value="0" aria-label="拆开程度"></div><output id="explode-value" for="explode-slider">0<span>%</span></output></section>
+  <nav id="block-list" class="block-list" aria-label="计算部件列表（方向键移动，回车或空格选中）"></nav>
+ </main>
+ <aside class="inspector" aria-label="当前步骤详情">
+  <div class="inspector-head"><span class="section-label" id="inspector-label">GUIDED WALKTHROUGH</span><span id="step-counter">01 / 08</span></div>
+  <div id="learn-content"><div class="chapter-heading"><span id="chapter-kicker">01 — THE OUTPUT</span><h2 id="step-title"></h2><p id="step-body"></p></div>
+   <div id="journey-lab" aria-label="数值计算动画"></div>
+   <div class="step-animation-control"><button id="replay-btn" aria-label="重新演示当前步骤">↻ 重新演示</button><button id="motion-btn" aria-label="暂停当前步骤动画">Ⅱ 暂停动画</button></div>
+   <div id="fact" class="fact"></div><div class="hardware-link"><span>⌖</span><div><small>此刻，硬件在做什么？</small><p id="hardware-note"></p></div></div>
+   <label class="follow-control"><input id="follow-camera" type="checkbox" checked>镜头跟随步骤</label>
+   <details id="code-details"><summary>看一下伪代码 <span>＋</span></summary><pre id="code-panel" aria-label="相关代码"></pre></details>
+   <details id="predict-details"><summary>想一想 <span>＋</span></summary><section id="predict" class="predict" aria-label="预测"></section></details>
+   <p class="caveat" id="journey-caveat">数学使用可验证的小矩阵；硬件内部为结构示意，动画时间不代表真实延迟。</p>
   </div>
-  <div class="progress" aria-label="旅程进度"><div id="progress-fill"></div></div>
-  <nav id="overview" class="overview" aria-label="步骤（点击可跳转）"></nav>
-  <p id="phase-gloss" class="phase-gloss"></p>
+  <div id="explore-content" hidden><p class="explore-kicker">ANATOMY / 01</p><h2>一颗 GPU，<br>不止一块芯片。</h2><p>先转一转，再拆开。点选部件了解它的作用，或沿着四个尺度进入芯片内部。</p><div class="explore-feature"><span>01</span><div><h3>从实物开始</h3><p>SXM 电路板、供电元件、封装基板、HBM 堆叠与裸片。</p></div></div><div class="explore-feature"><span>02</span><div><h3>往里走一层</h3><p>选择 GPU Die 或 SM，查看计算资源如何组织。</p></div></div><div class="explore-feature"><span>03</span><div><h3>让硬件动起来</h3><p>从一个具体结果出发，追踪数据经过的每一层。</p></div></div><button id="start-walkthrough" class="primary-btn">跟着算一次矩阵乘法 <span>→</span></button><div class="model-truth"><strong>实物外形 + 结构示意</strong><p>外部为程序化硬件重建；裸片内部的彩色阵列用于说明资源组织，不是真实晶体管版图。</p></div></div>
+  <div class="inspector-footer"><div class="playback"><button id="prev-btn" aria-label="上一步">←</button><button id="next-btn" class="continue-btn">继续 <span>→</span></button></div><div class="playback-meta"><span id="phase-gloss"></span><span>← → 逐步</span></div></div>
+ </aside>
 </div>
-<footer class="disclaimer">声明：本页面为非官方教学模型，与 NVIDIA 无隶属或认可关系；型号名称仅用于标示所讲解的硬件，示意图为教学示意，非 NVIDIA 官方图稿。</footer>
-<div id="tooltip" class="tooltip" style="display:none"></div>
-<script src="state.js"></script>
-<script src="scene-map.js"></script>
-<script src="app.js"></script>
-<script type="module" src="scene3d.js"></script>
-</body>
-</html>
+<footer class="bottombar"><div class="timeline-label"><button id="play-btn" aria-label="自动播放全部步骤">▷</button><div><strong id="timeline-title">一次矩阵乘法</strong><span id="play-status">每一步，都可以停下来。</span></div></div><div class="timeline-center"><nav id="overview" class="overview" aria-label="步骤（点击可跳转）"></nav><div class="progress" aria-label="旅程进度"><div id="progress-fill"></div></div></div><div class="timeline-actions"><button id="reset-btn" aria-label="回到开头">↺</button><label class="sr-only" for="speed-select">速度</label><select id="speed-select"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select><span class="legend-row"><i></i>计算 <i></i>存储</span></div></footer>
+<div id="tooltip" class="tooltip" hidden></div><div id="toast" class="toast" role="status"></div>
+<dialog id="help-dialog"><button class="dialog-close" aria-label="关闭帮助">×</button><span class="section-label">A HANDS-ON FIELD GUIDE</span><h2>用手探索，用眼睛理解。</h2><dl><dt>拖动 / 右键拖动</dt><dd>旋转 / 平移；触屏支持单指旋转</dd><dt>滚轮 / 双指缩放</dt><dd>缩放模型</dd><dt>点击 / 双击</dt><dd>选中部件 / 聚焦部件</dd><dt>F / I / R</dt><dd>聚焦 / 隔离 / 相机与拆解复位</dd><dt>← → / 空格</dt><dd>切换步骤 / 自动播放或暂停</dd></dl><p>画布或计算部件列表聚焦时，方向键移动选中部件。输入控件与按钮保留自己的键盘行为。</p><button id="help-sources" class="text-link">查看模型口径与来源 ↗</button></dialog>
+<dialog id="sources-dialog"><button class="dialog-close" aria-label="关闭来源">×</button><span class="section-label">MODEL NOTES & SOURCES</span><h2>画得像，也要讲得准。</h2><p>外部形态是基于公开硬件外观与官方架构资料的程序化重建，没有使用厂家 CAD。被动元件与走线位置为近似排布。</p><p><b>H100 SXM 80GB：</b>132 SM、50MB L2、五组 HBM3。256KB 是每 SM 的 L1 / Shared 合计容量。完整 GH100 的 144 SM、60MB、六组 HBM 不是本标本的可用规格。</p><p><b>A100 SXM 80GB：</b>108 SM、40MB L2、五组 HBM2e。芯片内部阵列及连线为教学布局。</p><p>页表示例使用通用 x86-64 四级页表；像素旅程是通用图形管线；逻辑堆叠旅程是概念剖面。它们不表示 H100 具备 CPU 核、显示输出或上下堆叠逻辑层。</p><p>GEMM 小矩阵解释内积与分块；32 lane 图表示分工，不是 Tensor Core 的逐 lane 寄存器映射。动画时间均为教学节奏。</p><a href="https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Hopper Architecture In-Depth ↗</a><a href="https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Ampere Architecture In-Depth ↗</a><p class="caveat">独立开源教学项目，与硬件厂商无隶属或认可关系。交互设计参考 PC Anatomy 与 LLM Visualization。</p></dialog>
+<script src="state.js"></script><script src="scene-map.js"></script><script src="journey-lab.js"></script><script src="app.js"></script><script type="module" src="scene3d.js"></script>
+</body></html>
