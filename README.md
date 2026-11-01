@@ -1,6 +1,6 @@
 # GPU Explorer
 
-[在线体验](https://yingxu-work.github.io/gpu-explorer/) · [项目构想](docs/PROJECT_CONCEPT.md) · [本轮改版与验证](docs/REDESIGN_2026-11-02.md)
+[在线体验](https://yingxu-work.github.io/gpu-explorer/) · [项目构想](docs/PROJECT_CONCEPT.md) · [本轮改版与验证](docs/REDESIGN_2026-11-02.md) · [交互回归记录](docs/INTERACTION_QA_2026-11-02.md)
 
 一颗能拆开、进入、运行和解释的 GPU。实物外形的解剖模型，与逐步的动画、数学和文字讲解放在同一现场。
 
@@ -48,6 +48,12 @@ python3 -m http.server 18910 --bind 127.0.0.1
 
 `app.js` 管界面、交互与播放；`hardware-model.js` 构建程序化实物；`scene3d.js` 管 WebGL、相机和选取；`journey-lab.js` 管教学图与可测试的数学；`state.js` 管共享状态。`scene-map.js` 保留旧概念图映射与兼容测试，当前实物渲染不依赖其几何。
 
-测试覆盖状态往返、旅程控制、旧概念几何、数值计算、页表索引、三维相机投影、隔离恢复、静态资源与界面契约；它们不执行 WebGL。真实浏览器的视觉与交互验证记录在改版文档中。
+测试覆盖状态往返、旅程控制、旧概念几何、数值计算、页表索引、三维相机投影、隔离恢复、静态资源与界面契约；它们不执行 WebGL。本轮为 114 项检查与 HTTP 集成测试，另有 31 条真实 Chrome 操作序列及手机/平板布局核验，详见交互回归记录。
 
 GitHub Pages 从 `main` 根目录发布。
+
+### 探索与教学如何切换
+
+硬件层级、选中、旋转、拆解和相机预设进入自由探索，并暂停教学。顶部「跟着算一次」回到当前步骤：停止自动拆解、合拢装配、取消隔离与用户选中、恢复该步骤的标准镜头。再次点击也会重新演示该步。时间轴、前后步、旅程入口和完整播放共用这个入口，状态转换集中在 `interaction-state.js`。SM 为功能图，在该尺度拆解会进入封装。
+
+SM 布局与线路说明见 [官方来源核实](docs/SM_LAYOUT_SOURCES.md)。

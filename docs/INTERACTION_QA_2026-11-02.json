@@ -1,0 +1,1729 @@
+{
+  "finalCases": [
+    {
+      "label": "G01 首次加载",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.135",
+        "routes": "0",
+        "selected": "c-out",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "explode": "0%",
+        "isolated": "false",
+        "focusDisabled": true
+      }
+    },
+    {
+      "label": "G02 SM隔离→返回步骤",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.122",
+        "routes": "0",
+        "selected": "c-out",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "explode": "0%",
+        "userSelected": "false"
+      }
+    },
+    {
+      "label": "G03 载入步骤重建表面线路",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.106",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "package",
+        "step": "04 / 08",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G04 SM乘加步骤表面线路",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.106",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "sm",
+        "step": "06 / 08",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G05 SM隔离→HBM目录选择",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": false,
+        "isolated": "false",
+        "level": "package",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "hbm",
+        "step": "02 / 04",
+        "userSelected": "true"
+      },
+      "expected": {
+        "mode": "explore",
+        "level": "package",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "routes": "0",
+        "selected": "hbm"
+      }
+    },
+    {
+      "label": "G06 SM中机械拆解→封装",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "75%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "",
+        "step": "02 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "level": "package",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "explode": "75%",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G07 拆解后返回第6步",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.103",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "sm",
+        "step": "06 / 08",
+        "explode": "0%",
+        "isolated": "false",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G08 序列播放→硬件探索",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "die",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.359",
+        "routes": "0",
+        "selected": "",
+        "step": "03 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "playback": "paused",
+        "level": "die",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G09 探索→时间轴",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.122",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "package",
+        "step": "04 / 08",
+        "routes": "positive",
+        "explode": "0%"
+      }
+    },
+    {
+      "label": "G10 自动拆解中返回计算",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.135",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "package",
+        "step": "04 / 08",
+        "explode": "0%",
+        "isolated": "false"
+      }
+    },
+    {
+      "label": "G11 隔离H100→切换A100",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "a100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "",
+        "step": "04 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "model": "a100",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "explode": "0%",
+        "userSelected": "false"
+      }
+    },
+    {
+      "label": "G12 探索时规格对照",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": true,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "a100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "",
+        "step": "04 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "compareOpen": true,
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G13 对照→回到计算",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "a100",
+        "playback": "step",
+        "progress": "0.212",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "model": "a100",
+        "level": "package",
+        "compareOpen": false,
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G14 换旅程从头→连续前进",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "die",
+        "mode": "learn",
+        "model": "a100",
+        "playback": "step",
+        "progress": "0.122",
+        "routes": "0",
+        "selected": "sm",
+        "step": "03 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "die",
+        "step": "03 / 08",
+        "explode": "0%",
+        "isolated": "false"
+      }
+    },
+    {
+      "label": "G15 序列播放→只重播当前步",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "a100",
+        "playback": "step",
+        "progress": "0.103",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "sm",
+        "step": "06 / 08",
+        "playback": "step",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G16 当前步重播结束不跳步",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "a100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "step": "06 / 08",
+        "playback": "paused",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G17 探索链接恢复",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "75%",
+        "focusDisabled": false,
+        "isolated": "false",
+        "level": "package",
+        "mode": "explore",
+        "model": "a100",
+        "playback": "paused",
+        "progress": "0.000",
+        "routes": "0",
+        "selected": "hbm",
+        "step": "02 / 04",
+        "userSelected": "true"
+      },
+      "expected": {
+        "mode": "explore",
+        "model": "a100",
+        "level": "package",
+        "explode": "75%",
+        "selected": "hbm",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G18 教学链接忽略冲突探索状态",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.131",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "model": "h100",
+        "level": "sm",
+        "explode": "0%",
+        "isolated": "false",
+        "userSelected": "false",
+        "routes": "positive",
+        "compareOpen": false
+      }
+    },
+    {
+      "label": "G19 无效部件/对照参数",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.000",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "level": "board",
+        "selected": "",
+        "focusDisabled": true,
+        "compareOpen": false,
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G20 最后一页点击完整播放",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "sequence",
+        "progress": "0.125",
+        "routes": "0",
+        "selected": "c-out",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "step": "01 / 08",
+        "playback": "sequence",
+        "level": "board"
+      }
+    },
+    {
+      "label": "G21 画布方向键进入部件探索",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": false,
+        "isolated": "false",
+        "level": "package",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.109",
+        "routes": "0",
+        "selected": "a-tile",
+        "step": "02 / 04",
+        "userSelected": "true"
+      },
+      "expected": {
+        "mode": "explore",
+        "playback": "paused",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G22 部件按钮Space不触发播放",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": false,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.109",
+        "routes": "0",
+        "selected": "smem",
+        "step": "04 / 04",
+        "userSelected": "true"
+      },
+      "expected": {
+        "mode": "explore",
+        "playback": "paused",
+        "selected": "smem",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G23 Escape清除隔离和选中",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.109",
+        "routes": "0",
+        "selected": "",
+        "step": "04 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "focusDisabled": true,
+        "selected": ""
+      }
+    },
+    {
+      "label": "G24 关闭选中卡片退出隔离",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.109",
+        "routes": "0",
+        "selected": "",
+        "step": "04 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "focusDisabled": true,
+        "selected": ""
+      }
+    },
+    {
+      "label": "G25 标签和全屏保持教学上下文",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.792",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "package",
+        "step": "04 / 08",
+        "routes": "positive",
+        "explode": "0%"
+      }
+    },
+    {
+      "label": "G26 最后一步单独重播",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.199",
+        "routes": "2",
+        "selected": "c-out",
+        "step": "08 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "step": "08 / 08",
+        "playback": "step",
+        "level": "package",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G27 页表独立实验无GPU传输",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.103",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 07",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "step": "01 / 07",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G28 图形独立实验",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.141",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "step": "01 / 08",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G29 堆叠独立实验",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.103",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "step": "01 / 08",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G30 自动拆解完整收尾",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "explode": "0%",
+        "playback": "paused",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G31 拖动后立即返回规范镜头",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.131",
+        "routes": "0",
+        "selected": "c-out",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "explode": "0%",
+        "isolated": "false",
+        "userSelected": "false"
+      }
+    }
+  ],
+  "history": [
+    {
+      "label": "G01 首次加载",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.135",
+        "routes": "0",
+        "selected": "c-out",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "explode": "0%",
+        "isolated": "false",
+        "focusDisabled": true
+      }
+    },
+    {
+      "label": "G02 SM隔离→返回步骤",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.122",
+        "routes": "0",
+        "selected": "c-out",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "explode": "0%",
+        "userSelected": "false"
+      }
+    },
+    {
+      "label": "G03 载入步骤重建表面线路",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.106",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "package",
+        "step": "04 / 08",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G04 SM乘加步骤表面线路",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.106",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "sm",
+        "step": "06 / 08",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G05 SM隔离→HBM目录选择",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": false,
+        "isolated": "false",
+        "level": "package",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "hbm",
+        "step": "02 / 04",
+        "userSelected": "true"
+      },
+      "expected": {
+        "mode": "explore",
+        "level": "package",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "routes": "0",
+        "selected": "hbm"
+      }
+    },
+    {
+      "label": "G06 SM中机械拆解→封装",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "75%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "",
+        "step": "02 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "level": "package",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "explode": "75%",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G07 拆解后返回第6步",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.103",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "sm",
+        "step": "06 / 08",
+        "explode": "0%",
+        "isolated": "false",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G08 序列播放→硬件探索",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "die",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.359",
+        "routes": "0",
+        "selected": "",
+        "step": "03 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "playback": "paused",
+        "level": "die",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G09 探索→时间轴",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.122",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "package",
+        "step": "04 / 08",
+        "routes": "positive",
+        "explode": "0%"
+      }
+    },
+    {
+      "label": "G10 自动拆解中返回计算",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.135",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "package",
+        "step": "04 / 08",
+        "explode": "0%",
+        "isolated": "false"
+      }
+    },
+    {
+      "label": "G11 隔离H100→切换A100",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "a100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "",
+        "step": "04 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "model": "a100",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "explode": "0%",
+        "userSelected": "false"
+      }
+    },
+    {
+      "label": "G12 探索时规格对照",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": true,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "a100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "",
+        "step": "04 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "compareOpen": true,
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G13 对照→回到计算",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "a100",
+        "playback": "step",
+        "progress": "0.212",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "model": "a100",
+        "level": "package",
+        "compareOpen": false,
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G14 换旅程从头→连续前进",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "die",
+        "mode": "learn",
+        "model": "a100",
+        "playback": "step",
+        "progress": "0.122",
+        "routes": "0",
+        "selected": "sm",
+        "step": "03 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "die",
+        "step": "03 / 08",
+        "explode": "0%",
+        "isolated": "false"
+      }
+    },
+    {
+      "label": "G15 序列播放→只重播当前步",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "a100",
+        "playback": "step",
+        "progress": "0.103",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "sm",
+        "step": "06 / 08",
+        "playback": "step",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G16 当前步重播结束不跳步",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "a100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "step": "06 / 08",
+        "playback": "paused",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G17 探索链接恢复",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "75%",
+        "focusDisabled": false,
+        "isolated": "false",
+        "level": "package",
+        "mode": "explore",
+        "model": "a100",
+        "playback": "paused",
+        "progress": "0.000",
+        "routes": "0",
+        "selected": "hbm",
+        "step": "02 / 04",
+        "userSelected": "true"
+      },
+      "expected": {
+        "mode": "explore",
+        "model": "a100",
+        "level": "package",
+        "explode": "75%",
+        "selected": "hbm",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G18 教学链接忽略冲突探索状态",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.131",
+        "routes": "2",
+        "selected": "sm",
+        "step": "06 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "model": "h100",
+        "level": "sm",
+        "explode": "0%",
+        "isolated": "false",
+        "userSelected": "false",
+        "routes": "positive",
+        "compareOpen": false
+      }
+    },
+    {
+      "label": "G19 无效部件/对照参数",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.000",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "level": "board",
+        "selected": "",
+        "focusDisabled": true,
+        "compareOpen": false,
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G20 最后一页点击完整播放",
+      "pass": false,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "sequence",
+        "progress": "0.240",
+        "routes": "2",
+        "selected": "c-out",
+        "step": "08 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "step": "01 / 08",
+        "playback": "sequence",
+        "level": "board"
+      }
+    },
+    {
+      "label": "G21 画布方向键进入部件探索",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": false,
+        "isolated": "false",
+        "level": "package",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.109",
+        "routes": "0",
+        "selected": "a-tile",
+        "step": "02 / 04",
+        "userSelected": "true"
+      },
+      "expected": {
+        "mode": "explore",
+        "playback": "paused",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G22 部件按钮Space不触发播放",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": false,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.109",
+        "routes": "0",
+        "selected": "smem",
+        "step": "04 / 04",
+        "userSelected": "true"
+      },
+      "expected": {
+        "mode": "explore",
+        "playback": "paused",
+        "selected": "smem",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G23 Escape清除隔离和选中",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.109",
+        "routes": "0",
+        "selected": "",
+        "step": "04 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "focusDisabled": true,
+        "selected": ""
+      }
+    },
+    {
+      "label": "G24 关闭选中卡片退出隔离",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "sm",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.109",
+        "routes": "0",
+        "selected": "",
+        "step": "04 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "isolated": "false",
+        "buttonIsolated": "false",
+        "focusDisabled": true,
+        "selected": ""
+      }
+    },
+    {
+      "label": "G25 标签和全屏保持教学上下文",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.792",
+        "routes": "4",
+        "selected": "smem",
+        "step": "04 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "package",
+        "step": "04 / 08",
+        "routes": "positive",
+        "explode": "0%"
+      }
+    },
+    {
+      "label": "G20 最后一页点击完整播放",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "sequence",
+        "progress": "0.125",
+        "routes": "0",
+        "selected": "c-out",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "step": "01 / 08",
+        "playback": "sequence",
+        "level": "board"
+      }
+    },
+    {
+      "label": "G26 最后一步单独重播",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "package",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.199",
+        "routes": "2",
+        "selected": "c-out",
+        "step": "08 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "step": "08 / 08",
+        "playback": "step",
+        "level": "package",
+        "routes": "positive"
+      }
+    },
+    {
+      "label": "G27 页表独立实验无GPU传输",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.103",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 07",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "step": "01 / 07",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G28 图形独立实验",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.141",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "step": "01 / 08",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G29 堆叠独立实验",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.103",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "step": "01 / 08",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G30 自动拆解完整收尾",
+      "pass": false,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "100%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "0.112",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "explode": "0%",
+        "playback": "paused",
+        "routes": "0"
+      }
+    },
+    {
+      "label": "G31 拖动后立即返回规范镜头",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "learn",
+        "model": "h100",
+        "playback": "step",
+        "progress": "0.131",
+        "routes": "0",
+        "selected": "c-out",
+        "step": "01 / 08",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "learn",
+        "level": "board",
+        "explode": "0%",
+        "isolated": "false",
+        "userSelected": "false"
+      }
+    },
+    {
+      "label": "G30 自动拆解完整收尾",
+      "pass": true,
+      "actual": {
+        "buttonIsolated": "false",
+        "compareOpen": false,
+        "explode": "0%",
+        "focusDisabled": true,
+        "isolated": "false",
+        "level": "board",
+        "mode": "explore",
+        "model": "h100",
+        "playback": "paused",
+        "progress": "1.000",
+        "routes": "0",
+        "selected": "",
+        "step": "01 / 04",
+        "userSelected": "false"
+      },
+      "expected": {
+        "mode": "explore",
+        "explode": "0%",
+        "playback": "paused",
+        "routes": "0"
+      }
+    }
+  ],
+  "summary": {
+    "cases": 31,
+    "passed": 31,
+    "failed": []
+  }
+}
