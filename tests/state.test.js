@@ -95,6 +95,23 @@ test('diagram geometry, flows, verdict and trace are consistent', function () {
     });
   });
 });
+test('predict-then-play: valid options, correct/wrong, reset clears', function () {
+  var counts = {};
+  Object.keys(S.PREDICTS).forEach(function (k) {
+    var p = S.PREDICTS[k];
+    counts[k.split(':')[0]] = (counts[k.split(':')[0]] || 0) + 1;
+    assert.ok(p.q && p.options.length >= 3 && p.answer >= 0 && p.answer < p.options.length && p.explain);
+  });
+  Object.keys(counts).forEach(function (j) { assert.ok(counts[j] >= 2, j + ' needs >=2 predictions'); });
+  var s = S.createState({});
+  S.goto(s, 1);
+  assert.ok(S.getPredict('gemm', 1));
+  var wrong = (S.getPredict('gemm', 1).answer + 1) % 3;
+  var r1 = S.predict(s, wrong); assert.strictEqual(r1.correct, false);
+  var r2 = S.predict(s, S.getPredict('gemm', 1).answer); assert.strictEqual(r2.correct, true);
+  assert.strictEqual(S.predict(s, 99), null);
+  S.reset(s); assert.deepStrictEqual(s.predictions, {});
+});
 test('all journeys have steps, nodes, code and view text', function () {
   Object.keys(S.JOURNEYS).forEach(function (key) {
     var j = S.JOURNEYS[key];

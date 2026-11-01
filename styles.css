@@ -19,6 +19,12 @@ button:disabled { opacity: .45; cursor: default; }
 .svg-node { cursor: pointer; }
 .svg-node text { pointer-events: none; }
 .tooltip { position: fixed; z-index: 10; max-width: 320px; background: #111827; color: #f9fafb; padding: 8px 12px; border-radius: 8px; font-size: 14px; line-height: 1.5; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+.predict { border-top: 1px dashed #cbd5e1; margin-top: 12px; padding-top: 8px; }
+.predict h4 { margin: 8px 0; }
+.pred-opt { margin: 0 6px 6px 0; }
+.pred-opt.correct { background: #dcfce7; border-color: #15803d; font-weight: 700; }
+.pred-opt.wrong { background: #fee2e2; border-color: #dc2626; }
+.pred-feedback { font-size: 14px; color: #1e3a8a; }
 .panel { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
 pre { background: #111827; color: #e5e7eb; padding: 12px; border-radius: 8px; overflow: auto; white-space: pre-wrap; }
 .hint { color: #666; font-size: 13px; }

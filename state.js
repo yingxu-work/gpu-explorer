@@ -123,6 +123,19 @@
     },
   };
 
+  // Predict-then-play: keyed by journey + step index. Each question asks about
+  // the NEXT step (or, on the last step, the whole journey), so the current
+  // step's explanation does not give the answer away. answer = option index.
+  const PREDICTS = {
+    'gemm:1': { q: '下一步：C[3,7] 的输入被搬到哪里，才会被反复复用？', options: ['直接留在大显存，每次现取', '搬进 Shared Memory', '写回输出 C'], answer: 1, explain: '对：搬进 Shared Memory 后，多次乘加都从片上读，不必每次回大显存。' },
+    'gemm:3': { q: '下一步：warp 里每个线程（lane）算的是什么？', options: ['整张矩阵', '自己那一份的部分乘积', '最终的 C[3,7]'], answer: 1, explain: '对：每个 lane 只算自己的一份 partial，最后才累加成一个数。' },
+    'gemm:5': { q: '下一步：算完一块之后会发生什么？', options: ['直接写回 C[3,7]，结束', '同步，然后搬下一块继续算', '重新划分整张矩阵'], answer: 1, explain: '对：同步保证大家都搬完/算完，再搬下一块，直到累加完成才写回。' },
+    'pagetable:1': { q: 'TLB 未命中，下一步去哪里？', options: ['直接去内存取数据', '一级一级查页表', '换一个虚拟地址重试'], answer: 1, explain: '对：没有缓存的翻译结果，就只能从 PGD 开始一级一级查。' },
+    'pagetable:5': { q: '查到 PTE 后，物理地址是怎么拼出来的？', options: ['PTE 直接就是物理地址', '物理页号 + 页内偏移', '虚拟地址 + TLB 大小'], answer: 1, explain: '对：PTE 给页号，页内偏移不变，两者拼成物理地址，并可回填 TLB。' },
+    'pixel:2': { q: '下一步：光栅化给这个像素的属性是怎么来的？', options: ['查一张现成的像素表', '顶点属性按重心权重插值', '着色器随机生成'], answer: 1, explain: '对：attr = w0·v0 + w1·v1 + w2·v2，像素是三角形内部插出来的点。' },
+    'pixel:5': { q: '一个更远的像素已经写在深度缓冲里，新像素更远时会被怎样？', options: ['覆盖旧像素', '被丢弃，不写入', '先着色再擦掉'], answer: 1, explain: '对：深度测试在写入前就丢弃被挡住的像素，不会先画再擦。' },
+  };
+
   const VIEWS = ['structure', 'work', 'data', 'timeline'];
 
   function createState(overrides) {
@@ -134,7 +147,19 @@
       stepIndex: 0,
       selected: null,
       playing: false,
+      predictions: {},
     };
+  }
+  function getPredict(journey, stepIndex) { return PREDICTS[journey + ':' + stepIndex] || null; }
+  function predict(state, choice) {
+    const p = getPredict(state.journey, state.stepIndex);
+    if (!p || choice < 0 || choice >= p.options.length) return null;
+    const key = state.journey + ':' + state.stepIndex;
+    state.predictions[key] = choice;
+    return { correct: choice === p.answer, explain: p.explain };
+  }
+  function predictionMade(state) {
+    return state.predictions[state.journey + ':' + state.stepIndex];
   }
   function currentJourney(state) { return JOURNEYS[state.journey]; }
   function currentStep(state) { return currentJourney(state).steps[state.stepIndex]; }
@@ -152,7 +177,7 @@
     state.playing = false;
     return state;
   }
-  function reset(state) { state.stepIndex = 0; state.playing = false; state.selected = null; return state; }
+  function reset(state) { state.stepIndex = 0; state.playing = false; state.selected = null; state.predictions = {}; return state; }
   function setJourney(state, journey) {
     if (!JOURNEYS[journey]) return state;
     state.journey = journey; state.stepIndex = 0; state.playing = false; state.selected = null;
@@ -194,7 +219,7 @@
     return out;
   }
 
-  const api = { MODELS, JOURNEYS, VIEWS, createState, currentJourney, currentStep, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, playStep, encodeState, decodeState };
+  const api = { MODELS, JOURNEYS, VIEWS, PREDICTS, createState, currentJourney, currentStep, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, playStep, encodeState, decodeState, getPredict, predict, predictionMade };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerState = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

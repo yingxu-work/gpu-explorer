@@ -130,6 +130,37 @@
       ov.appendChild(b);
     });
 
+    // Predict-then-play card: question about the next step, answered in place.
+    const predBox = $('predict');
+    predBox.innerHTML = '';
+    const pred = S.getPredict(state.journey, state.stepIndex);
+    if (pred) {
+      const h = document.createElement('h4');
+      h.textContent = '先预测：' + pred.q;
+      predBox.appendChild(h);
+      const made = S.predictionMade(state);
+      pred.options.forEach(function (opt, i) {
+        const b = document.createElement('button');
+        b.className = 'pred-opt' + (made === i ? (i === pred.answer ? ' correct' : ' wrong') : '');
+        b.textContent = opt;
+        b.disabled = made === pred.answer;
+        b.onclick = function () {
+          const r = S.predict(state, i);
+          render();
+          if (r && !r.correct) {
+            $('predict-feedback').textContent = '不对，再想想：' + r.explain.replace(/^对：/, '');
+          }
+        };
+        predBox.appendChild(b);
+      });
+      const fb = document.createElement('p');
+      fb.id = 'predict-feedback';
+      fb.className = 'pred-feedback';
+      if (made === pred.answer) fb.textContent = pred.explain;
+      else if (made !== undefined && made !== null) fb.textContent = '已选一项，还没答对——可以再选一次。';
+      predBox.appendChild(fb);
+    }
+
     renderDiagram(journey, step);
     const code = $('code-panel');
     code.innerHTML = '';
