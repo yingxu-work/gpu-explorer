@@ -1,0 +1,200 @@
+// GPU Explorer — pure teaching-model state machine.
+// No DOM, no network, no GPU. Shared by the browser app and the Node tests.
+// All hardware numbers below are teaching simplifications, not datasheets
+// and not measured performance.
+//
+// Diagram geometry: each node has x/y/w/h in a 1100x520 SVG canvas.
+// kind: 'data' (green), 'compute' (blue), 'memory' (amber), 'control' (slate).
+// flows: static arrows for a journey; a step's `flows` lists the flow keys
+// (from + '>' + to) that are live in that step.
+(function (root) {
+  const MODELS = {
+    h100: { name: 'H100 (Hopper)', kind: 'GPU · 计算', note: '计算主线示例：SM、warp、shared memory、矩阵单元分工。' },
+    a100: { name: 'A100 (Ampere)', kind: 'GPU · 计算', note: '与 H100 对照：同一矩阵任务，组织方式有何不同（教学示意）。' },
+    rtx5090: { name: 'RTX 5090', kind: 'GPU · 消费级', note: '消费级示例：图形与计算共用同一套“结构—工作—数据”视角。' },
+    mi300x: { name: 'AMD MI300X', kind: 'GPU · 芯粒/堆叠', note: '比较示例：多芯粒与堆叠组织，同一问题换一种分工（教学示意）。' },
+    a20pro: { name: 'Apple A20 Pro（示意）', kind: 'SoC · CPU/内存', note: 'CPU/SoC 示例：重点在 CPU、页表与内存层级，具体规格为教学示意，非官方数据。' },
+    snapdragon: { name: 'Snapdragon 移动 SoC（示意）', kind: 'SoC · CPU/内存', note: '移动 SoC 示例：与 A20 Pro 对照 CPU 与内存组织，具体规格为教学示意。' },
+  };
+
+  const JOURNEYS = {
+    gemm: {
+      title: '一次矩阵乘法：C[3,7] 是怎么算出来的',
+      verdict: '结论先说：C[3,7] 只是一个数，它来自 A 的一行和 B 的一列。剩下的全部工作，都是在为这一次乘加把数据搬到正确的位置。',
+      nodes: [
+        { id: 'a-tile', label: 'A 的一行', kind: 'data', x: 20, y: 70, w: 220, h: 80, detail: '输入：A[3][:]。只用第 3 行，其他行这一步与 C[3,7] 无关。' },
+        { id: 'b-tile', label: 'B 的一列', kind: 'data', x: 20, y: 330, w: 220, h: 80, detail: '输入：B[:][7]。只用第 7 列，其他列这一步与 C[3,7] 无关。' },
+        { id: 'smem', label: 'Shared Memory', kind: 'memory', x: 320, y: 200, w: 220, h: 120, detail: '片上共享存储：A、B 小块搬到这里后可被多次复用，不必每次都去大显存。' },
+        { id: 'warp', label: 'Warp / 线程', kind: 'compute', x: 620, y: 70, w: 200, h: 80, detail: '分工：一个 warp 里的线程各算一部分，同一条指令、不同数据。' },
+        { id: 'sm', label: 'SM / 计算单元', kind: 'compute', x: 620, y: 330, w: 200, h: 120, detail: '执行：乘加并累加。矩阵单元也是在这里接手规整的乘加，不是凭空变快。' },
+        { id: 'c-out', label: '输出 C[3,7]', kind: 'data', x: 900, y: 200, w: 180, h: 80, detail: '结果：累加完成后写回的唯一输出。倒查时从这里往回走。' },
+      ],
+      flows: [
+        { from: 'a-tile', to: 'smem' }, { from: 'b-tile', to: 'smem' },
+        { from: 'smem', to: 'warp' }, { from: 'warp', to: 'sm' },
+        { from: 'sm', to: 'c-out' }, { from: 'smem', to: 'sm' },
+      ],
+      views: {
+        structure: '结构视角：看部件、归属和连接。当前高亮的部件就是这一步的主角。',
+        work: '工作视角：看工作怎么分组、谁在算、谁在等。',
+        data: '数据视角：看数据在哪里、怎么搬、被谁复用。',
+        timeline: '时间视角：看这一步在整个过程中的位置，前后各一步是什么。',
+      },
+      steps: [
+        { title: '选定输出 C[3,7]', body: '先不算整张矩阵，只盯一个输出。问：它依赖哪些输入？', active: ['c-out'], flows: [], trace: 'C[3,7] ← 待查：它的输入尚未定位。', code: ['// 目标：只算一个输出', 'C[3][7] = sum_k A[3][k] * B[k][7]'] },
+        { title: '找到相关的 A 行与 B 列', body: 'C[3,7] 只依赖 A 的第 3 行和 B 的第 7 列，其他行列这一步都不用。', active: ['a-tile', 'b-tile'], flows: [], trace: 'C[3,7] ← A[3][:] 与 B[:][7]。', code: ['// 依赖', 'row = A[3][:]', 'col = B[:][7]'] },
+        { title: '划分 tile 与 block', body: '把大矩阵切成小块，一个 block 负责一块输出，块内再分给线程。', active: ['sm'], flows: [], trace: '一个输出 tile ← 一个 block；块内再分给线程。', code: ['// 划分（教学示意）', 'tile = 16 x 16', 'block -> 一个输出 tile'] },
+        { title: '把数据搬进 Shared Memory', body: '先把要反复用的 A、B 小块搬到片上共享存储，后面多次计算不用每次都去大显存。', active: ['smem', 'a-tile', 'b-tile'], flows: ['a-tile>smem', 'b-tile>smem'], trace: 'smem ← A tile + B tile；下一步复用，不再回大显存。', code: ['// 搬运', 'smem_A = load(A tile)', 'smem_B = load(B tile)', '__syncthreads() // 等大家都搬完'] },
+        { title: 'Warp 分工', body: '一个 warp 里的线程各算一部分，同一条指令、不同数据。注意：是分工，不是每个线程各算一张矩阵。', active: ['warp'], flows: ['smem>warp'], trace: 'warp 各 lane ← smem_A[lane] × smem_B[lane]。', code: ['// warp 内分工', 'lane = threadIdx.x % 32', 'partial = smem_A[lane] * smem_B[lane]'] },
+        { title: '在 SM 上乘加', body: '计算单元做乘加并累加。矩阵专用单元（如果模型里有）也是在这个位置接手规整的乘加，而不是凭空变快。', active: ['sm', 'warp'], flows: ['warp>sm'], trace: 'acc ← acc + partial（在 SM 上累加）。', code: ['// 累加', 'acc += partial'] },
+        { title: '同步与下一块', body: '算完一块要同步，再搬下一块。等待不是空闲的借口：它在等数据就位。', active: ['smem', 'sm'], flows: ['smem>sm'], trace: '下一块 tile ← smem 同步后重新搬运。', code: ['// 同步后继续', '__syncthreads()', '// 搬下一块 tile，重复'] },
+        { title: '写回 C[3,7]', body: '累加完成，把结果写回输出。倒查一遍：这个数来自哪一行、哪一列、哪几次搬运。', active: ['c-out'], flows: ['sm>c-out'], trace: 'C[3,7] ← acc；倒查：A 行、B 列、smem 搬运、warp 分工。', code: ['// 写回', 'C[3][7] = acc'] },
+      ],
+    },
+    pagetable: {
+      title: 'CPU 取一个地址：页表是怎么查的',
+      verdict: '结论先说：程序看到的虚拟地址不是真实位置。TLB 命中就一步到位，未命中才要一级一级查页表，本例故意走未命中，好把全过程走一遍。',
+      nodes: [
+        { id: 'cpu', label: 'CPU 核', kind: 'compute', x: 20, y: 80, w: 170, h: 80, detail: '发出虚拟地址 va，并等翻译结果。程序只认识虚拟地址。' },
+        { id: 'tlb', label: 'TLB（快表）', kind: 'memory', x: 230, y: 80, w: 170, h: 80, detail: '翻译结果的缓存。命中：直接得物理地址；未命中：走完整页表。' },
+        { id: 'pgd', label: 'PGD', kind: 'control', x: 440, y: 80, w: 170, h: 80, detail: '第 1 级页表：用虚拟地址高位索引，得到下一级地址。' },
+        { id: 'pud', label: 'PUD', kind: 'control', x: 650, y: 80, w: 170, h: 80, detail: '第 2 级页表：上一级给出基址，再用下一段地址索引。' },
+        { id: 'pmd', label: 'PMD', kind: 'control', x: 860, y: 80, w: 170, h: 80, detail: '第 3 级页表：继续缩小范围，不是一次跳到答案。' },
+        { id: 'pte', label: 'PTE → 物理页', kind: 'control', x: 860, y: 260, w: 170, h: 80, detail: '第 4 级页表：给出物理页号，加上页内偏移就是物理地址，并可回填 TLB。' },
+        { id: 'ram', label: '内存', kind: 'data', x: 650, y: 260, w: 170, h: 80, detail: '物理地址真正指向的存储。页表、缓存、内存是三件不同的事。' },
+        { id: 'cache', label: '缓存', kind: 'memory', x: 440, y: 260, w: 170, h: 80, detail: '数据经过的缓存层级：命中就不用每次都去内存。' },
+      ],
+      flows: [
+        { from: 'cpu', to: 'tlb' }, { from: 'tlb', to: 'pgd' },
+        { from: 'pgd', to: 'pud' }, { from: 'pud', to: 'pmd' },
+        { from: 'pmd', to: 'pte' }, { from: 'pte', to: 'ram' },
+        { from: 'ram', to: 'cache' }, { from: 'cache', to: 'cpu' },
+      ],
+      views: {
+        structure: '结构视角：CPU、TLB、页表各级、内存与缓存的位置关系。',
+        work: '工作视角：一次地址翻译要经过哪几步、哪一步可能命中或 miss。',
+        data: '数据视角：虚拟地址怎样一级一级翻译成物理地址。',
+        timeline: '时间视角：这一步在翻译全过程中的位置。',
+      },
+      steps: [
+        { title: 'CPU 发出虚拟地址', body: '程序看到的是虚拟地址，不是内存里的真实位置。先问：翻译从哪里开始？', active: ['cpu'], flows: [], trace: 'va = 0x0000_7f00_1234（教学示意）→ 待翻译。', code: ['// 虚拟地址（教学示意）', 'va = 0x0000_7f00_1234'] },
+        { title: '先查 TLB', body: 'TLB 是翻译结果的缓存。命中就直接得到物理地址，不用一级一级查；这里故意走未命中，好把全过程走一遍。', active: ['tlb'], flows: ['cpu>tlb'], trace: 'TLB(va) → MISS；只能继续查页表。', code: ['// TLB', 'lookup(va) -> MISS  // 本例走全过程'] },
+        { title: '查 PGD', body: '用虚拟地址的高位索引第一级页表，得到下一级的地址。', active: ['pgd'], flows: ['tlb>pgd'], trace: 'PGD[va >> 39] → 下一级页表地址。', code: ['// 第 1 级', 'pgd_entry = PGD[va >> 39]'] },
+        { title: '查 PUD', body: '上一级给出下一级页表的基址，再用下一段地址索引。', active: ['pud'], flows: ['pgd>pud'], trace: 'PUD[va >> 30] → 下一级页表地址。', code: ['// 第 2 级', 'pud_entry = PUD[va >> 30]'] },
+        { title: '查 PMD', body: '继续向下走。每一级都在缩小范围，而不是一次跳到答案。', active: ['pmd'], flows: ['pud>pmd'], trace: 'PMD[va >> 21] → 下一级页表地址。', code: ['// 第 3 级', 'pmd_entry = PMD[va >> 21]'] },
+        { title: '查 PTE，得到物理页', body: '最后一级给出物理页号，加上页内偏移，就是物理地址。同时可以把这次翻译填回 TLB。', active: ['pte', 'tlb'], flows: ['pmd>pte'], trace: 'phys_addr = PTE[va >> 12] 的页号 + 页内偏移；同时回填 TLB。', code: ['// 第 4 级', 'phys_page = PTE[va >> 12]', 'phys_addr = phys_page + offset'] },
+        { title: '访问内存 / 装入缓存', body: '拿到物理地址后访问内存，数据经过缓存层级回到 CPU。页表、缓存、内存是三件不同的事，别混成一个“内存”。', active: ['ram', 'cache', 'cpu'], flows: ['pte>ram', 'ram>cache', 'cache>cpu'], trace: 'data = memory[phys_addr] → 经缓存 → CPU。', code: ['// 访问', 'data = memory[phys_addr]', '// 并经过缓存'] },
+      ],
+    },
+    pixel: {
+      title: '一个像素是怎么画出来的',
+      verdict: '结论先说：一个像素的颜色不是整张图算一次，而是三角形、插值、着色、纹理、深度测试一步步算出来，通过测试才写入帧缓冲。',
+      nodes: [
+        { id: 'tri', label: '三角形', kind: 'data', x: 20, y: 80, w: 170, h: 80, detail: '几何：哪一个三角形覆盖了这个像素的中心？没覆盖的与它无关。' },
+        { id: 'raster', label: '光栅化', kind: 'compute', x: 230, y: 80, w: 170, h: 80, detail: '插值：用重心插值把顶点属性按比例分到这个像素。' },
+        { id: 'shader', label: '片元着色', kind: 'compute', x: 440, y: 80, w: 170, h: 80, detail: '着色：对这个像素跑一次着色器，算出它自己的颜色。' },
+        { id: 'tex', label: '纹理', kind: 'memory', x: 440, y: 260, w: 170, h: 80, detail: '查表：用插值出的纹理坐标采样，得到纹理颜色。' },
+        { id: 'depth', label: '深度测试', kind: 'control', x: 650, y: 80, w: 170, h: 80, detail: '遮挡：更远就丢弃，更近才继续；遮挡在这里决定。' },
+        { id: 'fb', label: '帧缓冲', kind: 'memory', x: 860, y: 80, w: 170, h: 80, detail: '暂存：通过测试的像素写入这里，它还不是屏幕本身。' },
+        { id: 'pixel', label: '目标像素', kind: 'data', x: 860, y: 260, w: 170, h: 80, detail: '显示：帧缓冲送上屏幕，这个像素亮起来。' },
+      ],
+      flows: [
+        { from: 'tri', to: 'raster' }, { from: 'raster', to: 'shader' },
+        { from: 'shader', to: 'tex' }, { from: 'tex', to: 'shader' },
+        { from: 'shader', to: 'depth' }, { from: 'depth', to: 'fb' },
+        { from: 'fb', to: 'pixel' },
+      ],
+      views: {
+        structure: '结构视角：屏幕像素、三角形、光栅化、着色、纹理、深度与帧缓冲的位置关系。',
+        work: '工作视角：一个像素要经过哪几步、哪一步可能被丢弃。',
+        data: '数据视角：顶点属性怎样插值成像素数据，颜色怎样一步步算出来。',
+        timeline: '时间视角：这一步在画一个像素的全过程中的位置。',
+      },
+      steps: [
+        { title: '盯住一个像素', body: '先不看整张图，只盯屏幕上一个像素。问：它最后的颜色来自哪里？', active: ['pixel'], flows: [], trace: 'pixel = screen[x][y]（目标，未算出）。', code: ['// 目标：只追一个像素', 'pixel = screen[x][y]'] },
+        { title: '找到覆盖它的三角形', body: '几何阶段给出三角形，问：哪一个三角形覆盖了这个像素的中心？没被覆盖的三角形，这一步就和这个像素无关。', active: ['tri', 'pixel'], flows: ['tri>raster'], trace: '覆盖判断 → 命中一个三角形，才继续。', code: ['// 覆盖判断（教学示意）', 'covers = triangle_contains(tri, pixel)'] },
+        { title: '光栅化：算出插值', body: '用重心插值把顶点属性（位置、颜色、纹理坐标）按比例分到这个像素。像素不是凭空来的，它是三角形内部插出来的一个点。', active: ['raster', 'tri'], flows: ['tri>raster', 'raster>shader'], trace: 'attr = w0·v0 + w1·v1 + w2·v2（插值）。', code: ['// 插值（教学示意）', 'attr = w0 * v0 + w1 * v1 + w2 * v2'] },
+        { title: '片元着色：算颜色', body: '片元着色器对这个像素跑一次，算出它自己的颜色。注意：是每个像素各算一次，不是整张图算一次。', active: ['shader'], flows: ['raster>shader'], trace: 'color = shade(interpolated_attr)。', code: ['// 片元着色', 'color = shade(interpolated_attr)'] },
+        { title: '纹理采样', body: '如果材质有纹理，用插值出的纹理坐标去采样，得到纹理颜色，再与光照结果结合。纹理是一张查表，不是凭空画上去的图案。', active: ['tex', 'shader'], flows: ['shader>tex', 'tex>shader'], trace: 'tex_color = texture(uv)；color *= tex_color。', code: ['// 采样', 'tex_color = texture(uv)', 'color *= tex_color'] },
+        { title: '深度测试：被挡住就丢弃', body: '比较这个像素的深度和已写入的深度：更远就被挡住，直接丢弃，不写入；更近才继续。遮挡是在这里决定的，不是在着色之后“擦掉”。', active: ['depth', 'pixel'], flows: ['shader>depth'], trace: 'z < depth_buffer[x][y] ？继续 : 丢弃。', code: ['// 深度测试', 'if (z < depth_buffer[x][y]) keep(); else discard();'] },
+        { title: '写入帧缓冲', body: '通过测试的像素才写入帧缓冲。帧缓冲就是“下一帧要显示的那张图”的暂存处，还不是屏幕本身。', active: ['fb'], flows: ['depth>fb'], trace: 'framebuffer[x][y] = color；depth_buffer[x][y] = z。', code: ['// 写入', 'framebuffer[x][y] = color', 'depth_buffer[x][y] = z'] },
+        { title: '显示与倒查', body: '帧缓冲送上屏幕，这个像素亮起来。倒查一遍：它来自哪个三角形、哪次插值、哪次采样、哪次深度比较。', active: ['fb', 'pixel'], flows: ['fb>pixel'], trace: 'screen[x][y] ← framebuffer[x][y]；倒查三角形→插值→采样→深度。', code: ['// 显示', 'screen[x][y] = framebuffer[x][y]'] },
+      ],
+    },
+  };
+
+  const VIEWS = ['structure', 'work', 'data', 'timeline'];
+
+  function createState(overrides) {
+    const o = overrides || {};
+    return {
+      journey: JOURNEYS[o.journey] ? o.journey : 'gemm',
+      model: MODELS[o.model] ? o.model : 'h100',
+      view: VIEWS.indexOf(o.view) >= 0 ? o.view : 'structure',
+      stepIndex: 0,
+      selected: null,
+      playing: false,
+    };
+  }
+  function currentJourney(state) { return JOURNEYS[state.journey]; }
+  function currentStep(state) { return currentJourney(state).steps[state.stepIndex]; }
+  function isAtStart(state) { return state.stepIndex === 0; }
+  function isAtEnd(state) { return state.stepIndex === currentJourney(state).steps.length - 1; }
+  function next(state) {
+    if (!isAtEnd(state)) state.stepIndex += 1;
+    else state.playing = false;
+    return state;
+  }
+  function prev(state) { if (!isAtStart(state)) state.stepIndex -= 1; return state; }
+  function goto(state, i) {
+    var n = currentJourney(state).steps.length;
+    state.stepIndex = Math.max(0, Math.min(n - 1, i));
+    state.playing = false;
+    return state;
+  }
+  function reset(state) { state.stepIndex = 0; state.playing = false; state.selected = null; return state; }
+  function setJourney(state, journey) {
+    if (!JOURNEYS[journey]) return state;
+    state.journey = journey; state.stepIndex = 0; state.playing = false; state.selected = null;
+    return state;
+  }
+  function setModel(state, model) { if (MODELS[model]) state.model = model; return state; }
+  function setView(state, view) {
+    // View switch must preserve journey, model, step and selection.
+    if (VIEWS.indexOf(view) >= 0) state.view = view;
+    return state;
+  }
+  function select(state, nodeId) {
+    const ok = currentJourney(state).nodes.some(function (n) { return n.id === nodeId; });
+    if (ok) state.selected = nodeId;
+    return state;
+  }
+  function playStep(state) {
+    if (!state.playing) return state;
+    if (isAtEnd(state)) { state.playing = false; return state; }
+    return next(state);
+  }
+  function encodeState(state) {
+    return ['j=' + encodeURIComponent(state.journey), 'm=' + encodeURIComponent(state.model),
+      'v=' + encodeURIComponent(state.view), 's=' + state.stepIndex,
+      'sel=' + encodeURIComponent(state.selected || '')].join('&');
+  }
+  function decodeState(hash) {
+    const out = createState({});
+    if (!hash) return out;
+    const q = hash.replace(/^#/, '');
+    const params = new URLSearchParams(q);
+    if (JOURNEYS[params.get('j')]) out.journey = params.get('j');
+    if (MODELS[params.get('m')]) out.model = params.get('m');
+    if (VIEWS.indexOf(params.get('v')) >= 0) out.view = params.get('v');
+    const s = parseInt(params.get('s'), 10);
+    if (!isNaN(s)) out.stepIndex = Math.max(0, Math.min(currentJourney(out).steps.length - 1, s));
+    const sel = params.get('sel');
+    if (sel) select(out, sel);
+    return out;
+  }
+
+  const api = { MODELS, JOURNEYS, VIEWS, createState, currentJourney, currentStep, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, playStep, encodeState, decodeState };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.GpuExplorerState = api;
+})(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

@@ -1,0 +1,26 @@
+body { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0 auto; max-width: 1080px; padding: 20px 16px 32px; color: #111827; background: #f6f7f9; line-height: 1.65; }
+header h1 { font-size: 28px; margin: 0; letter-spacing: -0.5px; }
+.tag { font-size: 13px; background: #e8eefc; padding: 2px 8px; border-radius: 999px; }
+.sub, .note { color: #555; }
+.verdict { background: #fffbeb; border-left: 4px solid #b45309; padding: 10px 14px; border-radius: 0 10px 10px 0; color: #451a03; font-weight: 600; }
+.trace { background: #eff6ff; border: 1px solid #bfdbfe; padding: 8px 12px; border-radius: 8px; color: #1e3a8a; font-size: 14px; }
+.controls, .views, .playback { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
+button, select { font-size: 15px; padding: 8px 12px; border-radius: 8px; border: 1px solid #bbb; background: #fff; cursor: pointer; color: #111827; }
+button.active { background: #1a56db; color: #fff; border-color: #1a56db; }
+button:disabled { opacity: .45; cursor: default; }
+.progress { height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin: 12px 0 4px; }
+#progress-fill { height: 100%; background: #1a56db; width: 0%; transition: width .25s ease; }
+.overview { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.ov-step { font-size: 13px; padding: 6px 10px; background: #fff; color: #374151; }
+.ov-step.done { background: #e0f2fe; border-color: #7dd3fc; }
+.ov-step.active { background: #1a56db; color: #fff; border-color: #1a56db; font-weight: 700; }
+.diagram { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 8px; margin: 12px 0; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+#diagram-svg { width: 100%; height: auto; display: block; }
+.svg-node { cursor: pointer; }
+.svg-node text { pointer-events: none; }
+.tooltip { position: fixed; z-index: 10; max-width: 320px; background: #111827; color: #f9fafb; padding: 8px 12px; border-radius: 8px; font-size: 14px; line-height: 1.5; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+.panel { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+pre { background: #111827; color: #e5e7eb; padding: 12px; border-radius: 8px; overflow: auto; white-space: pre-wrap; }
+.hint { color: #666; font-size: 13px; }
+@media (max-width: 640px) { .panel { grid-template-columns: 1fr; } body { padding: 12px; } header h1 { font-size: 24px; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
