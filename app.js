@@ -102,6 +102,13 @@
     window.__gpuExplorerExplode = ui.explode;
     const sc = scene();
     if (!sc) return;
+    const physicalIds = new Set((sc.getComponents?.() || []).map(item => item.id));
+    if (state.journey === 'gemm') S.currentJourney(state).nodes.forEach(item => physicalIds.add(item.id));
+    if (ui.selection && !physicalIds.has(ui.selection)) {
+      ui = I.transition(ui, { type: 'SELECT', id: null }, context());
+      applied.selection = undefined;
+    }
+    state.selected = ui.mode === 'explore' && S.currentJourney(state).nodes.some(item => item.id === ui.selection) ? ui.selection : null;
     applyingScene = true;
     try {
       if (applied.model !== state.model) { applied = { model: state.model }; lastTreeKey = ''; }
@@ -110,6 +117,8 @@
         if (applied.guideRevision !== ui.guideRevision) {
           if (sc.prepareGuide) sc.prepareGuide({ level: ui.level, animate: !reducedMotion });
           else { sc.isolateSelected(false); sc.clearSelection?.(); sc.setExplode(0); sc.setLevel(ui.level); }
+          // Rebind the lesson after scene preparation clears transient overlays.
+          sc.update(S.currentJourney(state), S.currentStep(state), state);
           applied = { model: state.model, guideRevision: ui.guideRevision,
             level: ui.level, explode: 0, selection: null, isolated: false, camera: 'three-quarter' };
         }
@@ -212,6 +221,7 @@
     if (made !== undefined) { const p2 = document.createElement('p'); p2.className = 'pred-feedback'; p2.textContent = made === p.answer ? p.explain : '再想一下：' + p.explain; $('predict').append(p2); }
   }
   function renderBlocks() {
+    $('block-list').hidden = state.journey !== 'gemm';
     const focusedBlockId = document.activeElement?.dataset?.nodeId;
     $('block-list').replaceChildren();
     S.currentJourney(state).nodes.forEach(node => {

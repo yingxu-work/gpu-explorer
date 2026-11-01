@@ -49,7 +49,7 @@
       case 'SELECT':
         ui = explore(ui);
         return { ...ui, selection: event.id || null,
-          isolated: event.id ? ui.isolated : false,
+          isolated: event.id && event.id === ui.selection ? ui.isolated : false,
           level: LEVELS.includes(event.level) ? event.level : ui.level };
       case 'ISOLATE':
         ui = explore(ui);
@@ -83,6 +83,7 @@
         return { ...ui, playback: ui.playback === 'paused' ? 'step' : 'paused', dwell: 0 };
       case 'SCENE_LEVEL':
         return LEVELS.includes(event.level) ? { ...ui, level: event.level,
+          isolated: event.level === ui.level ? ui.isolated : false,
           explode: event.level === 'sm' ? 0 : ui.explode } : ui;
       case 'SCENE_ISOLATION':
         return { ...ui, isolated: ui.mode === 'explore' && !!event.value,

@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0b1014">
 <meta name="description" content="拆开一颗 GPU，跟着数据走完一次计算。可交互硬件解剖、逐步动画与数值实验。"><title>GPU Explorer — 走进一颗 GPU</title>
-<link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css?v=20261102f">
+<link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css?v=20261102g">
 <script type="importmap">{"imports":{"three":"./three/three.module.js","three/addons/":"./three/addons/"}}</script></head>
 <body>
 <header class="topbar">
@@ -62,5 +62,5 @@
 <div id="tooltip" class="tooltip" hidden></div><div id="toast" class="toast" role="status"></div>
 <dialog id="help-dialog"><button class="dialog-close" aria-label="关闭帮助">×</button><span class="section-label">A HANDS-ON FIELD GUIDE</span><h2>用手探索，用眼睛理解。</h2><dl><dt>拖动 / 右键拖动</dt><dd>旋转 / 平移；触屏支持单指旋转</dd><dt>滚轮 / 双指缩放</dt><dd>缩放模型</dd><dt>点击 / 双击</dt><dd>选中部件 / 聚焦部件</dd><dt>F / I / R</dt><dd>聚焦 / 隔离 / 相机与拆解复位</dd><dt>← → / 空格</dt><dd>切换步骤 / 自动播放或暂停</dd></dl><p>画布或计算部件列表聚焦时，方向键移动选中部件。输入控件与按钮保留自己的键盘行为。</p><button id="help-sources" class="text-link">查看模型口径与来源 ↗</button></dialog>
 <dialog id="sources-dialog"><button class="dialog-close" aria-label="关闭来源">×</button><span class="section-label">MODEL NOTES & SOURCES</span><h2>画得像，也要讲得准。</h2><p>外部形态是基于公开硬件外观与官方架构资料的程序化重建，没有使用厂家 CAD。被动元件与走线位置为近似排布。</p><p><b>H100 SXM 80GB：</b>132 SM、50MB L2、五组 HBM3。256KB 是每 SM 的 L1 / Shared 合计容量。完整 GH100 的 144 SM、60MB、六组 HBM 不是本标本的可用规格。</p><p><b>A100 SXM 80GB：</b>108 SM、40MB L2、五组 HBM2e。芯片内部阵列及连线为教学布局。</p><p>页表示例使用通用 x86-64 四级页表；像素旅程是通用图形管线；逻辑堆叠旅程是概念剖面。它们不表示 H100 具备 CPU 核、显示输出或上下堆叠逻辑层。</p><p><b>SM 布局：</b>按 NVIDIA 功能框图组织四个子分区，补出 LD/ST、派发与内部互连；图中间距不表示真实硅片上的物理距离。L1 指令缓存与 L1 数据缓存 / 共享内存分开标示。</p><p>GEMM 小矩阵解释内积与分块；32 lane 图表示分工，不是 Tensor Core 的逐 lane 寄存器映射。动画时间均为教学节奏。</p><a href="https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Hopper Architecture In-Depth ↗</a><a href="https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Ampere Architecture In-Depth ↗</a><a href="https://developer.nvidia.com/blog/supercharging-worlds-fastest-ai-supercomputing-platform-on-hgx-a100-80gb-gpus/" target="_blank" rel="noopener">NVIDIA A100 80GB / HBM2e ↗</a><p class="caveat">独立开源教学项目，与硬件厂商无隶属或认可关系。交互设计参考 PC Anatomy 与 LLM Visualization。</p></dialog>
-<script src="state.js?v=20261102f"></script><script src="scene-map.js?v=20261102f"></script><script src="journey-lab.js?v=20261102f"></script><script src="interaction-state.js?v=20261102f"></script><script src="app.js?v=20261102f"></script><script type="module" src="scene3d.js?v=20261102f"></script>
+<script src="state.js?v=20261102g"></script><script src="scene-map.js?v=20261102g"></script><script src="journey-lab.js?v=20261102g"></script><script src="interaction-state.js?v=20261102g"></script><script src="app.js?v=20261102g"></script><script type="module" src="scene3d.js?v=20261102g"></script>
 </body></html>

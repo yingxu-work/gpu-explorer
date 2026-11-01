@@ -128,6 +128,13 @@ test('closing the selected component also exits isolation', () => {
   ui=act(ui,'ISOLATE');assert.equal(ui.isolated,true);
   ui=act(ui,'SELECT',{id:null});assert.equal(ui.selection,null);assert.equal(ui.isolated,false);
 });
+test('changing isolated component or changing scale clears isolation consistently', () => {
+  let ui=I.create({mode:'explore',level:'sm',selection:'tensor'},base);
+  ui=act(ui,'ISOLATE');ui=act(ui,'SELECT',{id:'hbm'});
+  assert.equal(ui.isolated,false);
+  ui=act(ui,'ISOLATE');ui=act(ui,'SCENE_LEVEL',{level:'package'});
+  assert.equal(ui.isolated,false);assert.equal(ui.level,'package');
+});
 test('opening an SM clears mechanical explosion; pausing cancels automatic dissection', () => {
   let ui=I.create({mode:'explore',level:'package',explode:.8},base);
   ui=act(ui,'LEVEL',{level:'sm'});assert.equal(ui.explode,0);
