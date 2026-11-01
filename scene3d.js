@@ -39,6 +39,17 @@
 // InstancedMesh of 18 tiles (1 draw call) instead of one big
 // block. No Blender/glTF: the procedural route keeps the site
 // under 15MB and keeps step highlighting mapped to real nodes.
+//
+// Round 17 (this round only, A100 untouched, shell/copy/budgets
+// unchanged): the same treatment reaches the other three
+// journeys — die texture + pin fringe for every die journey
+// (pagetable, pixel, not just GEMM), and per-journey instanced
+// detail cells (see scene-map.js pagetableDetailCells,
+// pixelDetailCells, stackingDetailCells) drawn as one
+// InstancedMesh per role, riding their parent block on explode
+// and dimming with it. Stacking keeps its front pin bar and
+// its cross-section column; only its footprints step inward
+// upward (scene-map.js) and its layers gain core/bank relief.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -253,7 +264,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
     if (c.geometry) c.geometry.dispose();
   }
   this.meshes = {}; this.labels = {}; this.flowLines = [];
-  this.details = []; this.tsvLines = []; this.smGrid = null; this.smSub = null; this.l2BanksMesh = null;
+  this.details = []; this.tsvLines = []; this.smGrid = null; this.smSub = null; this.l2BanksMesh = null; this.journeyDetail = null;
   this.journeyId = journeyId;
   this.model = model || 'h100';
   var isA100 = journeyId === 'gemm' && this.model === 'a100';
@@ -276,10 +287,12 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   dieSlab.position.set(0, -0.55, slabZ);
   dieSlab.receiveShadow = true;
   this.group.add(dieSlab);
-  // Round 12 (GEMM only): the die surface itself carries the
-  // detail — a thin textured plane just above the slab top, so
-  // blocks sit on traces and a power grid instead of on flat grey.
-  if (journeyId === 'gemm') {
+  // Round 12 (GEMM) / Round 17 (every die journey): the die
+  // surface itself carries the detail — a thin textured plane
+  // just above the slab top, so blocks sit on traces and a power
+  // grid instead of on flat grey. Stacking is not a die journey,
+  // so its column keeps the plain slab.
+  if (journeyId !== 'stacking') {
     var dieTex = new THREE.Mesh(
       new THREE.PlaneGeometry(slabW, slabD),
       new THREE.MeshStandardMaterial({ map: makeDieTexture(), roughness: 0.65, metalness: 0.35 }));
@@ -325,10 +338,12 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   // Front pin bar (GEX): one fine gold line along the package front
   // edge, so the near-black package has a defined edge against the
   // near-black background instead of dissolving into it. Round 12
-  // (GEMM only): a full instanced pin fringe around the package
-  // instead — ~90 pins, still 1 draw call — so the package reads
-  // as a real chip from every orbit angle, not just the front.
-  if (journeyId === 'gemm') {
+  // (GEMM) / Round 17 (every die journey): a full instanced pin
+  // fringe around the package instead — still 1 draw call — so
+  // the package reads as a real chip from every orbit angle, not
+  // just the front. Stacking keeps the front bar: its package is
+  // a column, not a die.
+  if (journeyId !== 'stacking') {
     // Round 16: fine dense BGA fringe, sized from the actual
     // substrate (not hardcoded ranges), still 1 InstancedMesh.
     var pinGeo = new THREE.BoxGeometry(0.12, 0.10, 0.30);
@@ -654,6 +669,42 @@ SceneView.prototype.build = function (journeyId, journey, model) {
       self.smSub = { meshes: subMeshes, box: smBox };
     }
   }
+  // Round 17 detail cells (pagetable, pixel, stacking only;
+  // GEMM keeps its SM grid/sub-cells above, A100 keeps its
+  // Figure 5 bands): one InstancedMesh per role, cells sitting
+  // on their parent block's top plate (parent top = box.y +
+  // box.h/2 + 0.01, the top plate's top face). Non-pickable,
+  // like the SM detail: they are relief, never selections.
+  // They ride their parent on explode (see update) and dim
+  // with it (see applyHighlight).
+  (function () {
+    var detailCells = null;
+    if (journeyId === 'pagetable') detailCells = M.pagetableDetailCells(boxes);
+    else if (journeyId === 'pixel') detailCells = M.pixelDetailCells(boxes);
+    else if (journeyId === 'stacking') detailCells = M.stackingDetailCells(boxes);
+    if (!detailCells || !detailCells.length) return;
+    var byId2 = {}; boxes.forEach(function (b) { byId2[b.id] = b; });
+    var roles = [];
+    detailCells.forEach(function (c) { if (roles.indexOf(c.role) < 0) roles.push(c.role); });
+    var meshes = {};
+    roles.forEach(function (role) {
+      var cells = detailCells.filter(function (c) { return c.role === role; });
+      var mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.55 });
+      var im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, cells.length);
+      var dd = new THREE.Object3D(); var cc2 = new THREE.Color();
+      cells.forEach(function (c, ci) {
+        var parent = byId2[c.parent];
+        dd.position.set(parent.x + c.dx, parent.y + parent.h / 2 + 0.01 + c.h / 2, parent.z + c.dz);
+        dd.scale.set(c.w, c.h, c.d); dd.updateMatrix(); im.setMatrixAt(ci, dd.matrix);
+        var v = 0.92 + ((ci * 37) % 5) * 0.03;
+        im.setColorAt(ci, cc2.setHex(c.color).multiplyScalar(v));
+      });
+      im.castShadow = true; im.receiveShadow = true;
+      self.group.add(im);
+      meshes[role] = { mesh: im, cells: cells };
+    });
+    self.journeyDetail = { meshes: meshes, boxes: byId2 };
+  })();
   // TSV hints (stacking only): sparse vertical lines between
   // adjacent layers, updated every frame in animate() so they
   // stretch across the gap as the stack explodes. At explode 0 the
@@ -779,6 +830,18 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
       mm.material.emissiveIntensity = noDim ? 0 : ((subSel || subActive) ? 0.20 : 0);
     });
   }
+  // Round 17: journey detail cells dim with their parents. A role
+  // mesh spans several parents (e.g. pt-entry spans 4 levels), so
+  // it stays bright if ANY of its parents is active/selected.
+  if (this.journeyDetail) {
+    Object.keys(this.journeyDetail.meshes).forEach(function (role) {
+      var entry = self.journeyDetail.meshes[role];
+      var lit = entry.cells.some(function (c) { return !!active[c.parent] || selectedId === c.parent; });
+      entry.mesh.material.color.setScalar(lit ? 1 : DIM_FACTOR);
+      entry.mesh.material.emissive = new THREE.Color(lit ? ACTIVE_EMISSIVE : 0x000000);
+      entry.mesh.material.emissiveIntensity = lit ? 0.20 : 0;
+    });
+  }
   if (step) {
     var live = {}; (step.flows || []).forEach(function (f) { live[f] = true; });
     this.flowLines.forEach(function (line) {
@@ -829,6 +892,22 @@ SceneView.prototype.update = function (journeyId, journey, step, selectedId, exp
       entry.cells.forEach(function (c, ci) {
         sd.position.set(sp.x + c.dx, sp.y + self.smSub.box.h / 2 + 0.22 + c.h / 2, sp.z + c.dz);
         sd.scale.set(c.w, c.h, c.d); sd.updateMatrix(); entry.mesh.setMatrixAt(ci, sd.matrix);
+      });
+      entry.mesh.instanceMatrix.needsUpdate = true;
+    });
+  }
+  // Round 17: journey detail cells ride their own parent block on
+  // explode (each cell's parent may differ, unlike the SM case).
+  if (this.journeyDetail) {
+    var jd = new THREE.Object3D();
+    var jdBoxes = this.journeyDetail.boxes;
+    Object.keys(this.journeyDetail.meshes).forEach(function (role) {
+      var entry = self.journeyDetail.meshes[role];
+      entry.cells.forEach(function (c, ci) {
+        var pb = jdBoxes[c.parent];
+        var pp = M.explodePos(pb, explodeT);
+        jd.position.set(pp.x + c.dx, pp.y + pb.h / 2 + 0.01 + c.h / 2, pp.z + c.dz);
+        jd.scale.set(c.w, c.h, c.d); jd.updateMatrix(); entry.mesh.setMatrixAt(ci, jd.matrix);
       });
       entry.mesh.instanceMatrix.needsUpdate = true;
     });

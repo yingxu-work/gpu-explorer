@@ -18,6 +18,14 @@
 // labelled as package context there. Stacking stays one centred
 // column; TSV hints between its layers are drawn in scene3d.js.
 //
+// Round 17 (this round only, A100 untouched): the other three
+// journeys get the same floorplan treatment GEMM got in Round
+// 12 — regions ordered by place, not pipeline rows, plus
+// per-journey detail cells (pagetableDetailCells, pixelDetailCells,
+// stackingDetailCells) and a stepped stacking cross-section. No
+// A100 geometry is copied into them; each journey keeps its own
+// correct structure, and state.js (steps, predictions, phases)
+// is not touched at all.
 // Fixed hardware palette (one colour per family, every zoom level):
 //   compute blue 0x89b4fa, memory teal 0x94e2d5, data sand 0xfab387,
 //   control grey 0x9b9ba4. Data-movement lines share the data hue
@@ -60,30 +68,55 @@
       'c-out':  { x: 8.9,  z: 0,    w: 2.4, d: 2.4, h: 1.0 }
     },
     pagetable: {
-      // Top row, evenly spaced left -> right; bottom row returns under
-      // the right column, with a long clean return lane (cache -> cpu).
-      // Round 11: same ~30% height raise as GEMM, footprints unchanged.
-      cpu:   { x: -8.6,  z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
-      tlb:   { x: -5.16, z: -2.7, w: 2.9, d: 2.0, h: 1.0 },
-      pgd:   { x: -1.72, z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
-      pud:   { x: 1.72,  z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
-      pmd:   { x: 5.16,  z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
-      pte:   { x: 8.6,   z: -2.7, w: 2.9, d: 2.0, h: 1.05 },
-      ram:   { x: 8.6,   z: 2.7,  w: 2.9, d: 2.0, h: 1.05 },
-      cache: { x: 1.72,  z: 2.7,  w: 2.9, d: 2.0, h: 1.0 }
+      // Round 17: CPU / MEMORY HIERARCHY FLOORPLAN, not a pipeline
+      // row. The old row read as a flowchart because every block was
+      // the same size in one line. A real hierarchy orders blocks by
+      // place: a CPU core complex in the west, its TLB immediately
+      // east of the core (translation cache lives on-core, not at
+      // the far end of a row), the four page-table levels as one
+      // stacked table region in the centre (levels read north to
+      // south, PGD -> PUD -> PMD -> PTE, each band spanning the
+      // region width, like entries in one table), the cache as the
+      // strip south of that region, and RAM as a tall flank slab
+      // on the east edge (memory is a region, not one more row
+      // cell). Step highlighting is unchanged: each step still
+      // highlights its node, which now sits in its hierarchy
+      // place (e.g. the walk steps light successive bands of one
+      // region, the last step lights RAM + cache + CPU across
+      // the die). All boxes stay inside the 22 x 9.6 die frame.
+      cpu:   { x: -7.9, z: -2.3, w: 4.0, d: 3.0, h: 1.15 },
+      tlb:   { x: -3.9, z: -2.3, w: 2.6, d: 3.0, h: 1.0 },
+      pgd:   { x: 1.6,  z: -3.35, w: 6.2, d: 1.3, h: 1.0 },
+      pud:   { x: 1.6,  z: -1.85, w: 6.2, d: 1.3, h: 1.0 },
+      pmd:   { x: 1.6,  z: -0.35, w: 6.2, d: 1.3, h: 1.0 },
+      pte:   { x: 1.6,  z: 1.15, w: 6.2, d: 1.3, h: 1.0 },
+      cache: { x: 1.6,  z: 2.85, w: 6.2, d: 1.5, h: 1.0 },
+      ram:   { x: 7.9,  z: 0.3,  w: 3.0, d: 7.4, h: 1.05 }
     },
     pixel: {
-      // Top row, evenly spaced left -> right; texture sits under the
-      // shader (its sampling loop is vertical), target pixel under the
-      // frame buffer (its write is vertical).
-      // Round 11: same ~30% height raise as GEMM, footprints unchanged.
-      tri:    { x: -8.4, z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
-      raster: { x: -4.2, z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
-      shader: { x: 0,    z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
-      depth:  { x: 4.2,  z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
-      fb:     { x: 8.4,  z: -2.7, w: 3.0, d: 2.0, h: 1.05 },
-      tex:    { x: 0,    z: 2.7,  w: 3.0, d: 2.0, h: 1.0 },
-      pixel:  { x: 8.4,  z: 2.7,  w: 3.0, d: 2.0, h: 1.05 }
+      // Round 17: PIXEL PIPELINE FLOORPLAN, not a row of equal
+      // cells. The old row gave every stage the same 3.0 x 2.0
+      // cell, so the shader array, the texture memory and the
+      // framebuffer all read as identical bricks. A pipeline
+      // floorplan groups stages into regions by place: geometry
+      // front-end (triangle + rasterizer) as a north-west band,
+      // the fragment shader as one large central array region
+      // (subdivided into shader cores, see pixelDetailCells),
+      // texture as the memory strip south of that array (its
+      // sampling loop is vertical, shader <-> texture), and the
+      // back-end as an east column (depth test north, framebuffer
+      // middle, target pixel as a separate display tile south —
+      // the framebuffer is not the screen). Step highlighting is
+      // unchanged; the shader step now lights the whole array
+      // region, the texture step lights array + strip together.
+      // All boxes stay inside the 22 x 9.6 die frame.
+      tri:    { x: -8.6, z: -2.8, w: 3.2, d: 2.2, h: 1.05 },
+      raster: { x: -4.8, z: -2.8, w: 3.2, d: 2.2, h: 1.05 },
+      shader: { x: 1.0,  z: -0.6, w: 6.4, d: 4.6, h: 1.1 },
+      tex:    { x: 1.0,  z: 3.5,  w: 6.4, d: 1.4, h: 1.0 },
+      depth:  { x: 7.4,  z: -2.8, w: 3.2, d: 2.2, h: 1.05 },
+      fb:     { x: 7.4,  z: 0.2,  w: 3.2, d: 2.2, h: 1.05 },
+      pixel:  { x: 7.4,  z: 3.5,  w: 3.2, d: 1.4, h: 1.05 }
     },
     stacking: {
       // Centred vertical column (x 0, z 0), base grounded on the slab.
@@ -91,12 +124,19 @@
       // front face at z 2.8): a label centred under the slab above it
       // is occluded by that slab from any elevated camera, so centred
       // labels vanish in the stack — front callouts stay readable.
-      substrate: { x: 0, z: 0, w: 8.6, d: 5.6, h: 0.5, y: 0.0, labelZ: 3.8 },
-      'mem-layer': { x: 0, z: 0, w: 8.6, d: 5.6, h: 0.6, y: 0.95, labelZ: 3.8 },
+      // Round 17: STEPPED cross-section. Footprints now shrink
+      // monotonically upward (substrate widest, lid narrowest), so
+      // the side view reads as a real stepped stack cross-section
+      // and the top view reads as nested footprints, instead of
+      // six identical slabs. Logic-low keeps 8.6 width, so the
+      // Round 11 side-block shelf geometry (column face at
+      // x +/-4.3, gap 1.0) is unchanged.
+      substrate: { x: 0, z: 0, w: 9.2, d: 6.2, h: 0.5, y: 0.0, labelZ: 3.8 },
+      'mem-layer': { x: 0, z: 0, w: 8.8, d: 5.9, h: 0.6, y: 0.95, labelZ: 3.8 },
       'logic-low': { x: 0, z: 0, w: 8.6, d: 5.6, h: 0.9, y: 2.05, labelZ: 3.8 },
-      bond:      { x: 0, z: 0, w: 8.6, d: 5.6, h: 0.35, y: 2.95, labelZ: 3.8 },
-      'logic-top': { x: 0, z: 0, w: 8.6, d: 5.6, h: 0.9, y: 4.0, labelZ: 3.8 },
-      lid:       { x: 0, z: 0, w: 8.6, d: 5.6, h: 0.45, y: 5.0, labelZ: 3.8 },
+      bond:      { x: 0, z: 0, w: 8.4, d: 5.4, h: 0.35, y: 2.95, labelZ: 3.8 },
+      'logic-top': { x: 0, z: 0, w: 8.2, d: 5.4, h: 0.9, y: 4.0, labelZ: 3.8 },
+      lid:       { x: 0, z: 0, w: 7.6, d: 5.0, h: 0.45, y: 5.0, labelZ: 3.8 },
       // Side tier blocks flank the column symmetrically in x, both at
       // logic-band height, forward of the column so they read as tiers.
       // Round 11: moved inward (7.4 -> 6.9) so the gap to the column
@@ -454,6 +494,89 @@
     }
     return out;
   }
+  // Round 17 detail cells for the three unified journeys. Same
+  // idea as Round 13's SM sub-cells, per journey, never copied
+  // from A100: each cell is a small relief on its parent block's
+  // top face, positioned relative to the parent centre (dx/dz),
+  // so scene3d.js can draw one InstancedMesh per role and ride
+  // the parent on explode. Colours stay inside the fixed
+  // family palette (compute blue / memory teal / control grey).
+  function tlbEntries(box) {
+    var out = [], gap = 0.10, cols = 4, rows = 2, i, j;
+    var tw = (box.w - (cols + 1) * gap) / cols, td = (box.d - (rows + 1) * gap) / rows;
+    for (i = 0; i < cols; i++) for (j = 0; j < rows; j++) {
+      out.push({ parent: 'tlb', role: 'tlb-entry', dx: -box.w / 2 + gap + tw / 2 + i * (tw + gap), dz: -box.d / 2 + gap + td / 2 + j * (td + gap), w: tw, d: td, h: 0.12, color: KIND_COLOR.memory });
+    }
+    return out;
+  }
+  function ptEntryCells(box) {
+    var out = [], gap = 0.10, n = 6, i;
+    var tw = (box.w - (n + 1) * gap) / n;
+    for (i = 0; i < n; i++) {
+      out.push({ parent: box.id, role: 'pt-entry', dx: -box.w / 2 + gap + tw / 2 + i * (tw + gap), dz: 0, w: tw, d: box.d - 0.24, h: 0.12, color: KIND_COLOR.control });
+    }
+    return out;
+  }
+  function cacheLines(box) {
+    var out = [], gap = 0.10, n = 6, i;
+    var tw = (box.w - (n + 1) * gap) / n;
+    for (i = 0; i < n; i++) {
+      out.push({ parent: 'cache', role: 'cache-line', dx: -box.w / 2 + gap + tw / 2 + i * (tw + gap), dz: 0, w: tw, d: box.d - 0.24, h: 0.12, color: KIND_COLOR.memory });
+    }
+    return out;
+  }
+  function pagetableDetailCells(boxes) {
+    var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+    var out = [];
+    if (byId.tlb) out = out.concat(tlbEntries(byId.tlb));
+    ['pgd', 'pud', 'pmd', 'pte'].forEach(function (id) { if (byId[id]) out = out.concat(ptEntryCells(byId[id])); });
+    if (byId.cache) out = out.concat(cacheLines(byId.cache));
+    return out;
+  }
+  function shaderCores(box) {
+    var out = [], gap = 0.16, cols = 5, rows = 3, i, j;
+    var tw = (box.w - (cols + 1) * gap) / cols, td = (box.d - (rows + 1) * gap) / rows;
+    for (i = 0; i < cols; i++) for (j = 0; j < rows; j++) {
+      out.push({ parent: 'shader', role: 'shader-core', dx: -box.w / 2 + gap + tw / 2 + i * (tw + gap), dz: -box.d / 2 + gap + td / 2 + j * (td + gap), w: tw, d: td, h: 0.14, color: KIND_COLOR.compute });
+    }
+    return out;
+  }
+  function texTiles(box) {
+    var out = [], gap = 0.12, n = 4, i;
+    var tw = (box.w - (n + 1) * gap) / n;
+    for (i = 0; i < n; i++) {
+      out.push({ parent: 'tex', role: 'texel', dx: -box.w / 2 + gap + tw / 2 + i * (tw + gap), dz: 0, w: tw, d: box.d - 0.24, h: 0.12, color: KIND_COLOR.memory });
+    }
+    return out;
+  }
+  function pixelDetailCells(boxes) {
+    var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+    var out = [];
+    if (byId.shader) out = out.concat(shaderCores(byId.shader));
+    if (byId.tex) out = out.concat(texTiles(byId.tex));
+    return out;
+  }
+  function stackingDetailCells(boxes) {
+    var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+    var out = [], gap = 0.20, i, j;
+    function grid(box, parent, role, cols, rows, color) {
+      var tw = (box.w - (cols + 1) * gap) / cols, td = (box.d - (rows + 1) * gap) / rows;
+      for (i = 0; i < cols; i++) for (j = 0; j < rows; j++) {
+        out.push({ parent: parent, role: role, dx: -box.w / 2 + gap + tw / 2 + i * (tw + gap), dz: -box.d / 2 + gap + td / 2 + j * (td + gap), w: tw, d: td, h: 0.14, color: color });
+      }
+    }
+    if (byId['logic-top']) grid(byId['logic-top'], 'logic-top', 'top-core', 2, 2, KIND_COLOR.compute);
+    if (byId['logic-low']) {
+      // Big cores north row (2 wide cells), small cores south row (4).
+      var low = byId['logic-low'];
+      var bw = (low.w - 3 * gap) / 2, bd = 2.2;
+      for (i = 0; i < 2; i++) out.push({ parent: 'logic-low', role: 'low-core', dx: -low.w / 2 + gap + bw / 2 + i * (bw + gap), dz: -1.3, w: bw, d: bd, h: 0.14, color: KIND_COLOR.compute });
+      var sw = (low.w - 5 * gap) / 4;
+      for (i = 0; i < 4; i++) out.push({ parent: 'logic-low', role: 'low-core', dx: -low.w / 2 + gap + sw / 2 + i * (sw + gap), dz: 1.3, w: sw, d: bd, h: 0.14, color: KIND_COLOR.compute });
+    }
+    if (byId['mem-layer']) grid(byId['mem-layer'], 'mem-layer', 'mem-bank', 3, 2, KIND_COLOR.memory);
+    return out;
+  }
   // Round 11 shared base for a stacking side block: a flat shelf
   // under the block, spanning from the column face (x +/-4.3, the
   // column width is 8.6) to the block's outer edge, its top exactly
@@ -489,7 +612,7 @@
     active.forEach(function (b) { sx += b.x; sy += b.y; sz += b.z; });
     return { x: sx / active.length, y: sy / active.length, z: sz / active.length };
   }
-  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, SUB_COLOR: SUB_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails, stackingShelf: stackingShelf, floorplanL2: floorplanL2, smGridTiles: smGridTiles, smTileSubCells: smTileSubCells, l2Banks: l2Banks, hbmLayers: hbmLayers, interconnectBus: interconnectBus, a100GpcGroups: a100GpcGroups, a100SmTiles: a100SmTiles, a100SmSubCells: a100SmSubCells, a100L2Partitions: a100L2Partitions, a100HbmStacks: a100HbmStacks, a100HbmControllers: a100HbmControllers, a100Nvlink: a100Nvlink, a100TopStrips: a100TopStrips };
+  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, SUB_COLOR: SUB_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails, stackingShelf: stackingShelf, floorplanL2: floorplanL2, smGridTiles: smGridTiles, smTileSubCells: smTileSubCells, l2Banks: l2Banks, hbmLayers: hbmLayers, interconnectBus: interconnectBus, pagetableDetailCells: pagetableDetailCells, pixelDetailCells: pixelDetailCells, stackingDetailCells: stackingDetailCells, a100GpcGroups: a100GpcGroups, a100SmTiles: a100SmTiles, a100SmSubCells: a100SmSubCells, a100L2Partitions: a100L2Partitions, a100HbmStacks: a100HbmStacks, a100HbmControllers: a100HbmControllers, a100Nvlink: a100Nvlink, a100TopStrips: a100TopStrips };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerSceneMap = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

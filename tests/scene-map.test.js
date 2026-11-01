@@ -150,18 +150,93 @@ test('stacking layout is one centred column with symmetric side blocks', functio
   assert.ok(Math.abs(byId['cut-core'].x + byId['gpu-block'].x) < 0.01, 'side blocks must flank symmetrically');
   assert.ok(byId['cut-core'].y === byId['gpu-block'].y, 'side blocks must share logic-layer height');
 });
-test('chain journeys run in regular left-to-right rows', function () {
+test('Round 17 pagetable: CPU/memory hierarchy floorplan, not a row', function () {
   var pt = M.boxesFor('pagetable', S.JOURNEYS.pagetable);
   var byId = {}; pt.forEach(function (b) { byId[b.id] = b; });
-  var chain = ['cpu', 'tlb', 'pgd', 'pud', 'pmd', 'pte'];
-  for (var i = 1; i < chain.length; i++) {
-    assert.ok(byId[chain[i]].x > byId[chain[i - 1]].x, chain[i] + ' must sit right of ' + chain[i - 1]);
-    assert.ok(byId[chain[i]].z === byId[chain[i - 1]].z, 'chain row must share one depth');
-  }
+  // Core complex west, TLB immediately east of the core, page-table
+  // region centre, RAM as an east flank. (Supersedes the old test
+  // that required a single left-to-right row.)
+  assert.ok(byId.cpu.x < byId.tlb.x, 'CPU core must sit west of its TLB');
+  assert.ok(byId.tlb.x < byId.pgd.x && byId.tlb.x < byId.pte.x, 'TLB must sit west of the page-table region');
+  assert.ok(byId.ram.x > byId.pte.x && byId.ram.x > byId.cache.x, 'RAM must sit east of the table region');
+  assert.ok(byId.ram.d > byId.ram.w, 'RAM must be a tall flank slab, not a row cell');
+  // Levels share one region x and stack north -> south in walk order.
+  ['pgd', 'pud', 'pmd', 'pte', 'cache'].forEach(function (id) {
+    assert.ok(byId[id].x === byId.pgd.x, id + ' must share the table region x');
+  });
+  assert.ok(byId.pgd.z < byId.pud.z && byId.pud.z < byId.pmd.z && byId.pmd.z < byId.pte.z, 'levels must stack PGD -> PUD -> PMD -> PTE north to south');
+  assert.ok(byId.cache.z > byId.pte.z, 'cache strip must sit south of the last table level');
+  // No two die blocks overlap in plan.
+  pt.forEach(function (a) { pt.forEach(function (b) {
+    if (a.id >= b.id) return;
+    assert.ok(Math.abs(a.x - b.x) * 2 >= (a.w + b.w) || Math.abs(a.z - b.z) * 2 >= (a.d + b.d), a.id + ' must not overlap ' + b.id);
+  }); });
+  pt.forEach(function (b) {
+    assert.ok(Math.abs(b.x) + b.w / 2 <= 10.5 && Math.abs(b.z) + b.d / 2 <= 4.9, b.id + ' must fit inside the die frame');
+  });
+});
+test('Round 17 pixel: pipeline floorplan with a shader array region', function () {
   var px = M.boxesFor('pixel', S.JOURNEYS.pixel);
   var pxId = {}; px.forEach(function (b) { pxId[b.id] = b; });
-  assert.ok(pxId['tex'].x === pxId['shader'].x, 'texture must sit under the shader');
-  assert.ok(pxId['pixel'].x === pxId['fb'].x, 'target pixel must sit under the frame buffer');
+  // Front-end west, shader array centre (largest block), back-end east column.
+  assert.ok(pxId.tri.x < pxId.raster.x && pxId.raster.x < pxId.shader.x, 'geometry front-end must sit west of the shader array');
+  assert.ok(pxId.shader.w > pxId.tri.w && pxId.shader.d > pxId.tri.d, 'shader must be the largest region, not an equal row cell');
+  assert.ok(pxId.tex.x === pxId.shader.x, 'texture must sit under the shader');
+  assert.ok(pxId.tex.z > pxId.shader.z, 'texture strip must sit south of the shader array');
+  assert.ok(pxId.depth.x === pxId.fb.x && pxId.fb.x === pxId.pixel.x, 'back-end must share one east column x');
+  assert.ok(pxId.depth.z < pxId.fb.z && pxId.fb.z < pxId.pixel.z, 'back-end must stack depth -> framebuffer -> target pixel north to south');
+  assert.ok(pxId.pixel.d < pxId.fb.d, 'target pixel (display tile) must differ from the framebuffer block');
+  px.forEach(function (a) { px.forEach(function (b) {
+    if (a.id >= b.id) return;
+    assert.ok(Math.abs(a.x - b.x) * 2 >= (a.w + b.w) || Math.abs(a.z - b.z) * 2 >= (a.d + b.d), a.id + ' must not overlap ' + b.id);
+  }); });
+  px.forEach(function (b) {
+    assert.ok(Math.abs(b.x) + b.w / 2 <= 10.5 && Math.abs(b.z) + b.d / 2 <= 4.9, b.id + ' must fit inside the die frame');
+  });
+});
+test('Round 17 detail cells: pagetable / pixel / stacking, inside parents, no A100 geometry', function () {
+  function check(cells, boxes) {
+    var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+    cells.forEach(function (c) {
+      var p = byId[c.parent];
+      assert.ok(p, 'detail cell parent must exist: ' + c.parent);
+      assert.ok(Math.abs(c.dx) + c.w / 2 <= p.w / 2 + 0.001, c.role + ' must fit inside ' + c.parent + ' in x');
+      assert.ok(Math.abs(c.dz) + c.d / 2 <= p.d / 2 + 0.001, c.role + ' must fit inside ' + c.parent + ' in z');
+    });
+  }
+  var ptBoxes = M.boxesFor('pagetable', S.JOURNEYS.pagetable);
+  var ptCells = M.pagetableDetailCells(ptBoxes);
+  assert.strictEqual(ptCells.filter(function (c) { return c.role === 'tlb-entry'; }).length, 8, 'TLB must carry 8 entries (4x2)');
+  assert.strictEqual(ptCells.filter(function (c) { return c.role === 'pt-entry'; }).length, 24, '4 table levels x 6 entries');
+  assert.strictEqual(ptCells.filter(function (c) { return c.role === 'cache-line'; }).length, 6, 'cache strip must carry 6 lines');
+  check(ptCells, ptBoxes);
+  var pxBoxes = M.boxesFor('pixel', S.JOURNEYS.pixel);
+  var pxCells = M.pixelDetailCells(pxBoxes);
+  assert.strictEqual(pxCells.filter(function (c) { return c.role === 'shader-core'; }).length, 15, 'shader array must carry 15 cores (5x3)');
+  assert.strictEqual(pxCells.filter(function (c) { return c.role === 'texel'; }).length, 4, 'texture strip must carry 4 texels');
+  check(pxCells, pxBoxes);
+  var stBoxes = M.boxesFor('stacking', S.JOURNEYS.stacking);
+  var stCells = M.stackingDetailCells(stBoxes);
+  assert.strictEqual(stCells.filter(function (c) { return c.role === 'top-core'; }).length, 4, 'top logic must carry 4 cores (2x2)');
+  assert.strictEqual(stCells.filter(function (c) { return c.role === 'low-core'; }).length, 6, 'low logic must carry 2 big + 4 small cores');
+  assert.strictEqual(stCells.filter(function (c) { return c.role === 'mem-bank'; }).length, 6, 'memory layer must carry 6 banks (3x2)');
+  check(stCells, stBoxes);
+  // Detail roles are journey-local: no A100 role (l0/scheduler-as-Fig.5-band etc.) leaks in.
+  ptCells.concat(pxCells, stCells).forEach(function (c) {
+    assert.ok(['tlb-entry', 'pt-entry', 'cache-line', 'shader-core', 'texel', 'top-core', 'low-core', 'mem-bank'].indexOf(c.role) >= 0, 'unexpected detail role: ' + c.role);
+  });
+});
+test('Round 17 stacking: stepped cross-section, top view nests', function () {
+  var boxes = M.boxesFor('stacking', S.JOURNEYS.stacking);
+  var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
+  var order = ['substrate', 'mem-layer', 'logic-low', 'bond', 'logic-top', 'lid'];
+  for (var i = 1; i < order.length; i++) {
+    assert.ok(byId[order[i]].w <= byId[order[i - 1]].w, order[i] + ' must not be wider than the layer below');
+    assert.ok(byId[order[i]].d <= byId[order[i - 1]].d, order[i] + ' must not be deeper than the layer below');
+    assert.ok(byId[order[i]].y > byId[order[i - 1]].y, order[i] + ' must sit above ' + order[i - 1]);
+  }
+  assert.ok(byId.substrate.w > byId.lid.w, 'stepped stack must narrow from substrate to lid');
+  assert.ok(byId['logic-low'].w === 8.6, 'logic-low width must stay 8.6 so the Round 11 shelf geometry is unchanged');
 });
 
 
@@ -273,7 +348,7 @@ test('Round 14 model notes are tagged by exact model, no 140B figure anywhere', 
   assert.ok(!/140/.test(S.MODELS.h100.note + S.MODELS.a100.note + S.MODELS.rtx5090.note), 'no 140B leak/rumor figure in model notes');
 });
 
-test('Round 11 die journeys: heights raised, footprints unchanged', function () {
+test('Round 11/17 die journeys: heights are raised flat slabs', function () {
   ['pagetable', 'pixel'].forEach(function (key) {
     M.boxesFor(key, S.JOURNEYS[key]).forEach(function (b) {
       assert.ok(b.h >= 1.0 && b.h <= 1.15, key + ':' + b.id + ' height must be raised flat slab (h=' + b.h + ')');
