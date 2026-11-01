@@ -148,7 +148,7 @@
   var A100_LAYOUT = {
     'a-tile': { x: -9.0, z: -2.4, w: 2.8, d: 2.0, h: 0.95 },
     'b-tile': { x: -9.0, z: 2.4, w: 2.8, d: 2.0, h: 0.95 },
-    warp:     { x: 0,    z: -4.0, w: 12.0, d: 0.8, h: 1.0 },
+    warp:     { x: 0,    z: -3.80, w: 12.0, d: 0.8, h: 1.0 },
     sm:       { x: 0,    z: 0,    w: 12.0, d: 6.4, h: 1.1 },
     smem:     { x: 0,    z: 4.0,  w: 12.0, d: 1.0, h: 0.85 },
     'c-out':  { x: 9.0,  z: 0,    w: 2.4, d: 2.4, h: 1.0 }
@@ -160,9 +160,9 @@
     var out = [];
     var gx = [-4.525, -1.575, 1.375, 4.325];
     var i;
-    for (i = 0; i < 4; i++) out.push({ gpc: i, x: gx[i], z: -1.9, w: 2.75, d: 2.6, enabled: true });
-    for (i = 0; i < 3; i++) out.push({ gpc: 4 + i, x: gx[i], z: 1.9, w: 2.75, d: 2.6, enabled: true });
-    out.push({ gpc: 7, x: gx[3], z: 1.9, w: 2.75, d: 2.6, enabled: false });
+    for (i = 0; i < 4; i++) out.push({ gpc: i, x: gx[i], z: -1.85, w: 2.75, d: 2.55, enabled: true });
+    for (i = 0; i < 3; i++) out.push({ gpc: 4 + i, x: gx[i], z: 1.85, w: 2.75, d: 2.55, enabled: true });
+    out.push({ gpc: 7, x: gx[3], z: 1.85, w: 2.75, d: 2.55, enabled: false });
     return out;
   }
   // SM tiles inside the GPC groups: 2x2 per enabled group = 28 tiles.
@@ -220,14 +220,14 @@
   // south edge; PCIe + GigaThread strips on the north edge.
   function a100L2Partitions() {
     return [
-      { x: -3.0, z: 0, w: 5.8, d: 1.2, h: 1.0, color: 0x73b3dd },
-      { x: 3.0, z: 0, w: 5.8, d: 1.2, h: 1.0, color: 0x73b3dd }
+      { x: -3.05, z: 0, w: 5.9, d: 1.0, h: 1.0, color: 0x73b3dd },
+      { x: 3.05, z: 0, w: 5.9, d: 1.0, h: 1.0, color: 0x73b3dd }
     ];
   }
   function a100HbmStacks() {
     return [
-      { x: -11.9, z: -2.2, w: 2.6, d: 3.0 }, { x: -11.9, z: 2.2, w: 2.6, d: 3.0 },
-      { x: 11.9, z: -2.7, w: 2.6, d: 2.0 }, { x: 11.9, z: 0, w: 2.6, d: 2.0 }, { x: 11.9, z: 2.7, w: 2.6, d: 2.0 }
+      { x: -11.35, z: -2.2, w: 1.95, d: 2.4 }, { x: -11.35, z: 2.2, w: 1.95, d: 2.4 },
+      { x: 11.35, z: -2.7, w: 1.95, d: 1.7 }, { x: 11.35, z: 0, w: 1.95, d: 1.7 }, { x: 11.35, z: 2.7, w: 1.95, d: 1.7 }
     ];
   }
   function a100HbmControllers() {
@@ -235,13 +235,13 @@
   }
   function a100Nvlink() {
     var out = [], i;
-    for (i = 0; i < 12; i++) out.push({ x: -9.5 + i * 1.727, z: 4.7, w: 1.4, d: 0.3 });
+    for (i = 0; i < 12; i++) out.push({ x: -9.35 + i * 1.70, z: 4.62, w: 1.50, d: 0.28 });
     return out;
   }
   function a100TopStrips() {
     return [
-      { label: 'pcie', z: -4.7, w: 20.8, d: 0.3, color: 0xf3913f },
-      { label: 'gigathread', z: -4.35, w: 20.8, d: 0.3, color: 0xf3913f }
+      { label: 'pcie', z: -4.68, w: 20.8, d: 0.25, color: 0xf3913f },
+      { label: 'gigathread', z: -4.40, w: 20.8, d: 0.25, color: 0xf3913f }
     ];
   }
   // Explode offsets per journey. Die: radial from the chip centre, so the

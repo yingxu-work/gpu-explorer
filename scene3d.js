@@ -127,7 +127,9 @@ function makeDieTexture() {
     ctx.fillStyle = 'rgba(255,255,255,' + (rnd() * 0.03).toFixed(3) + ')';
     ctx.fillRect(rnd() * 1024, rnd() * 472, 8 + rnd() * 40, 4 + rnd() * 20);
   }
-  ctx.strokeStyle = 'rgba(61,67,77,0.55)'; ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(61,67,77,0.65)'; ctx.lineWidth = 2;
+  for (i = 0; i <= 1024; i += 64) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 472); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(61,67,77,0.65)';
   for (i = 0; i <= 1024; i += 128) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 472); ctx.stroke(); }
   for (i = 0; i <= 472; i += 118) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(1024, i); ctx.stroke(); }
   var traceColors = ['#3a414c', '#4b5563', '#c9a86a'];
@@ -135,7 +137,7 @@ function makeDieTexture() {
     var horiz = rnd() > 0.5;
     var x0 = rnd() * 1024, y0 = rnd() * 472, len = 40 + rnd() * 200;
     ctx.strokeStyle = traceColors[Math.floor(rnd() * 3)];
-    ctx.globalAlpha = ctx.strokeStyle === '#c9a86a' ? 0.30 : 0.45;
+    ctx.globalAlpha = ctx.strokeStyle === '#c9a86a' ? 0.45 : 0.60;
     ctx.lineWidth = 1;
     ctx.beginPath();
     if (horiz) { ctx.moveTo(x0, y0); ctx.lineTo(Math.min(x0 + len, 1024), y0); }
@@ -143,7 +145,7 @@ function makeDieTexture() {
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
-  ctx.fillStyle = 'rgba(155,155,164,0.20)';
+  ctx.fillStyle = 'rgba(155,155,164,0.32)';
   for (var vx = 16; vx < 1024; vx += 32) for (var vy = 16; vy < 472; vy += 32) {
     ctx.beginPath(); ctx.arc(vx, vy, 1.2, 0, Math.PI * 2); ctx.fill();
   }
@@ -265,8 +267,8 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   // around the die slab makes the die read as one object. NO grid
   // floor — no reference has one; the background is solid #161618.
   var slabW = isStack ? 20 : (journeyId === 'gemm' ? 20.8 : 22), slabD = isStack ? 12 : 9.6;
-  var interW = isStack ? 21 : (journeyId === 'gemm' ? 28 : 23.5), interD = isStack ? 13 : 11.5;
-  var subW = isStack ? 22 : (journeyId === 'gemm' ? 29 : 24.5), subD = isStack ? 14 : 12.5;
+  var interW = isStack ? 21 : (journeyId === 'gemm' ? (isA100 ? 25.0 : 28) : 23.5), interD = isStack ? 13 : (isA100 ? 11.2 : 11.5);
+  var subW = isStack ? 22 : (journeyId === 'gemm' ? (isA100 ? 25.8 : 29) : 24.5), subD = isStack ? 14 : (isA100 ? 12.0 : 12.5);
   var slabZ = isStack ? 1 : 0;
   var dieSlab = new THREE.Mesh(
     new THREE.BoxGeometry(slabW, 0.5, slabD),
@@ -282,7 +284,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
       new THREE.PlaneGeometry(slabW, slabD),
       new THREE.MeshStandardMaterial({ map: makeDieTexture(), roughness: 0.65, metalness: 0.35 }));
     dieTex.rotation.x = -Math.PI / 2;
-    dieTex.position.set(0, -0.29, slabZ);
+    dieTex.position.set(0, -0.28, slabZ);
     dieTex.receiveShadow = true;
     this.group.add(dieTex);
   }
@@ -290,13 +292,13 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   // blocks inside it read as one chip even at overview zoom.
   var self = this;
   if (!isStack) {
-    var rimMat = new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.6, metalness: 0.2 });
+    var rimMat = new THREE.MeshStandardMaterial({ color: 0x5a5a66, roughness: 0.35, metalness: 0.6 });
     [-(slabD / 2 + 0.18), slabD / 2 + 0.18].forEach(function (rz) {
-      var bar = new THREE.Mesh(new THREE.BoxGeometry(slabW, 0.16, 0.35), rimMat);
+      var bar = new THREE.Mesh(new THREE.BoxGeometry(slabW, 0.22, 0.35), rimMat);
       bar.position.set(0, -0.22, slabZ + rz); bar.receiveShadow = true; self.group.add(bar);
     });
     [-(slabW / 2 + 0.18), slabW / 2 + 0.18].forEach(function (rx) {
-      var bar = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.16, slabD), rimMat);
+      var bar = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.22, slabD), rimMat);
       bar.position.set(rx, -0.22, slabZ); bar.receiveShadow = true; self.group.add(bar);
     });
   }
@@ -306,6 +308,14 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   interposer.position.set(0, -0.95, slabZ);
   interposer.receiveShadow = true;
   this.group.add(interposer);
+  if (isA100) {
+    var interTop = new THREE.Mesh(
+      new THREE.BoxGeometry(interW - 0.6, 0.08, interD - 0.6),
+      new THREE.MeshStandardMaterial({ color: 0x35353a, roughness: 0.6, metalness: 0.3 }));
+    interTop.position.set(0, -0.76, slabZ);
+    interTop.receiveShadow = true;
+    this.group.add(interTop);
+  }
   var substrate = new THREE.Mesh(
     new THREE.BoxGeometry(subW, 0.4, subD),
     new THREE.MeshStandardMaterial({ color: 0x232326, roughness: 0.8, metalness: 0 }));
@@ -319,20 +329,23 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   // instead — ~90 pins, still 1 draw call — so the package reads
   // as a real chip from every orbit angle, not just the front.
   if (journeyId === 'gemm') {
-    var pinGeo = new THREE.BoxGeometry(0.22, 0.10, 0.55);
+    // Round 16: fine dense BGA fringe, sized from the actual
+    // substrate (not hardcoded ranges), still 1 InstancedMesh.
+    var pinGeo = new THREE.BoxGeometry(0.12, 0.10, 0.30);
     var pinMat = new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 0.4, metalness: 0.6 });
+    var pinStep = 0.45, pinX = subW / 2 - 0.3, pinZ = subD / 2 - 0.3;
     var pinCount = 0;
-    for (var px = -14; px <= 14; px += 0.9) pinCount += 2;
-    for (var pz = -5.5; pz <= 5.5; pz += 0.9) pinCount += 2;
+    for (var px = -pinX; px <= pinX; px += pinStep) pinCount += 2;
+    for (var pz = -pinZ; pz <= pinZ; pz += pinStep) pinCount += 2;
     var pins = new THREE.InstancedMesh(pinGeo, pinMat, pinCount);
     var dummy = new THREE.Object3D(); var pi = 0;
-    for (var px2 = -14; px2 <= 14; px2 += 0.9) {
-      dummy.rotation.set(0, 0, 0); dummy.position.set(px2, -1.12, slabZ + subD / 2 - 0.3); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
-      dummy.position.set(px2, -1.12, slabZ - subD / 2 + 0.3); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
+    for (var px2 = -pinX; px2 <= pinX; px2 += pinStep) {
+      dummy.rotation.set(0, 0, 0); dummy.position.set(px2, -1.12, slabZ + pinZ); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
+      dummy.position.set(px2, -1.12, slabZ - pinZ); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
     }
-    for (var pz2 = -5.5; pz2 <= 5.5; pz2 += 0.9) {
-      dummy.rotation.set(0, Math.PI / 2, 0); dummy.position.set(subW / 2 - 0.3, -1.12, slabZ + pz2); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
-      dummy.position.set(-subW / 2 + 0.3, -1.12, slabZ + pz2); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
+    for (var pz2 = -pinZ; pz2 <= pinZ; pz2 += pinStep) {
+      dummy.rotation.set(0, Math.PI / 2, 0); dummy.position.set(pinX, -1.12, slabZ + pz2); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
+      dummy.position.set(-pinX, -1.12, slabZ + pz2); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
     }
     this.group.add(pins);
   } else {
@@ -363,6 +376,8 @@ SceneView.prototype.build = function (journeyId, journey, model) {
         new THREE.BoxGeometry(st.w, 0.6, st.d),
         new THREE.MeshStandardMaterial({ color: 0x313131, roughness: 0.7, metalness: 0.1 }));
       slab.position.set(st.x, 0.05, st.z); slab.castShadow = true; slab.receiveShadow = true;
+      slab.add(new THREE.LineSegments(new THREE.EdgesGeometry(slab.geometry),
+        new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.6 })));
       self.group.add(slab);
       var li;
       for (li = 0; li < 2; li++) hbmLayersByLevel[li].push({ x: st.x, z: st.z, w: st.w - 0.15 * (li + 1), d: st.d - 0.15 * (li + 1), y: 0.35 + li * 0.14 });
@@ -451,11 +466,13 @@ SceneView.prototype.build = function (journeyId, journey, model) {
         new THREE.BoxGeometry(pt.w, pt.h, pt.d),
         new THREE.MeshStandardMaterial({ color: pt.color, roughness: 0.40, metalness: 0.50 }));
       part.position.set(pt.x, 0.75, pt.z); part.castShadow = true; part.receiveShadow = true;
+      part.add(new THREE.LineSegments(new THREE.EdgesGeometry(part.geometry),
+        new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.6 })));
       self.group.add(part);
     });
     var l2Sprite2 = makeLabelSprite('L2', '#9b9ba4');
-    l2Sprite2.scale.set(2.2, 0.48, 1);
-    l2Sprite2.position.set(0, 1.7, 0);
+    l2Sprite2.scale.set(2.6, 0.57, 1);
+    l2Sprite2.position.set(0, 1.55, 0);
     self.group.add(l2Sprite2);
     // GPC group outlines (scenery): thin frames around each of
     // the 7 enabled GPC groups and the 1 disabled position, so
@@ -463,9 +480,9 @@ SceneView.prototype.build = function (journeyId, journey, model) {
     // disabled outline has no tiles inside it.
     M.a100GpcGroups().forEach(function (g) {
       var frameGeo = new THREE.BoxGeometry(g.w, 0.06, g.d);
-      var frameMat = new THREE.LineBasicMaterial({ color: 0x404040, transparent: true, opacity: g.enabled ? 0.9 : 0.5 });
+      var frameMat = new THREE.LineBasicMaterial({ color: 0x8a8a96, transparent: true, opacity: g.enabled ? 0.9 : 0.5 });
       var frame = new THREE.LineSegments(new THREE.EdgesGeometry(frameGeo), frameMat);
-      frame.position.set(g.x, 0.62, g.z);
+      frame.position.set(g.x, 1.10, g.z);
       self.group.add(frame);
     });
   }
@@ -618,7 +635,10 @@ SceneView.prototype.build = function (journeyId, journey, model) {
       subCells.forEach(function (c) { if (subRoles.indexOf(c.role) < 0) subRoles.push(c.role); });
       subRoles.forEach(function (role) {
         var cells = subCells.filter(function (c) { return c.role === role; });
-        var mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.55 });
+        var rm = { l0: [0.50, 0.30], scheduler: [0.50, 0.30], dispatch: [0.55, 0.25], register: [0.45, 0.40], int32: [0.35, 0.55], fp32: [0.35, 0.55], fp64: [0.35, 0.55], tensor: [0.30, 0.65], ldst: [0.50, 0.35], sfu: [0.50, 0.35] }[role];
+        var mat = isA100 && rm
+          ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: rm[0], metalness: rm[1] })
+          : new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.55 });
         var im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, cells.length);
         var d2 = new THREE.Object3D(); var cc = new THREE.Color();
         cells.forEach(function (c, ci) {

@@ -315,5 +315,37 @@ test('Round 15 A100 colours sampled from NVIDIA Figures 4/5, model note is spec-
   assert.ok(!/A100（GA100\/Ampere，官方）/.test(S.MODELS.a100.note), 'A100 note must not use bare official phrasing');
 });
 
+
+test('Round 16 A100 micro-proportions: package, L2, HBM, NVLink, top strips', function () {
+  var boxes = {}; M.boxesFor('gemm', S.JOURNEYS.gemm, 'a100').forEach(function (b) { boxes[b.id] = b; });
+  var l2 = M.a100L2Partitions();
+  assert.strictEqual(l2.length, 2, 'L2 must stay 2 partitions');
+  assert.ok(l2[0].d < 1.2, 'L2 band must be slimmer than Round 14');
+  var gpcs = M.a100GpcGroups();
+  var rowH = gpcs[0].d;
+  assert.ok(l2[0].d / rowH < 0.45, 'L2 height must be under half a GPC row (Fig.4 ratio)');
+  assert.ok(Math.abs((l2[1].x - l2[1].w / 2) - (l2[0].x + l2[0].w / 2) - 0.20) < 0.01, 'L2 seam must be 0.20');
+  var hbm = M.a100HbmStacks();
+  assert.strictEqual(hbm.length, 5, 'HBM must stay 5 stacks');
+  hbm.forEach(function (st) {
+    var outer = Math.abs(st.x) + st.w / 2;
+    assert.ok(outer < 12.6, 'HBM outer edge must sit near the die edge, not as a separate board');
+    var innerGap = Math.abs(st.x) - st.w / 2 - 10.4;
+    assert.ok(innerGap > -0.1 && innerGap < 0.5, 'HBM inner edge must sit at the die edge (gap ~0)');
+  });
+  var nv = M.a100Nvlink();
+  assert.strictEqual(nv.length, 12, 'NVLink must stay 12 segments');
+  assert.ok(nv[1].x - nv[0].x - nv[0].w < 0.25, 'NVLink gaps must be small, segments wide');
+  assert.ok(nv[0].x < -9 && nv[11].x > 9, 'NVLink must span the die width symmetrically');
+  var tops = M.a100TopStrips();
+  var warp = boxes.warp;
+  tops.forEach(function (ts) {
+    assert.ok(ts.z + ts.d / 2 < warp.z - warp.d / 2, 'top strips must not overlap the warp strip');
+  });
+  var tiles = M.a100SmTiles(boxes.sm);
+  assert.strictEqual(tiles.length, 28, 'tile count must stay 28');
+  assert.ok(tiles.every(function (tl) { return tl.w > tl.d; }), 'SM tiles must stay wider than deep (Fig.5 tile aspect)');
+});
+
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);
