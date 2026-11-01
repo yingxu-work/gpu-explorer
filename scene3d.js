@@ -49,14 +49,35 @@ var SELECT_EMISSIVE = 0x5e6ad2; // explicit click selection keeps the chrome acc
 var FLOW_HOT = 0xfab387; // flow lines share the data hue, so the 3-item legend stays honest
 var FLOW_IDLE = 0x2f2f31;
 var DIM_FACTOR = 0.78;
-// One matte material recipe for all silicon: roughness 0.6,
-// metalness 0.2. Colour, not finish, carries the hardware meaning.
+// Round 13 silicon sheen: PC Anatomy reads as hardware because
+// its surfaces have metal variation, not one flat matte finish.
+// Colour still carries the family, but metalness/roughness now
+// carry the material: compute is the most metallic, memory is
+// matte-er, data/control sit between. Flat matte single colours
+// were a major Lego tell in Round 12.
 var KIND_MAT = {
-  compute: { roughness: 0.6, metalness: 0.2 },
-  memory: { roughness: 0.6, metalness: 0.2 },
-  data: { roughness: 0.6, metalness: 0.2 },
-  control: { roughness: 0.6, metalness: 0.2 }
+  compute: { roughness: 0.35, metalness: 0.55 },
+  memory: { roughness: 0.45, metalness: 0.30 },
+  data: { roughness: 0.40, metalness: 0.50 },
+  control: { roughness: 0.40, metalness: 0.50 }
 };
+// Flat engraved label: text lying IN the slab face (PC Anatomy:
+// "L1 / SHARED MEMORY" is engraved, not a floating sprite).
+// A plane on the vertical front face of a band, light capitals
+// on transparent dark, no border, no pill, no glow.
+function makeFlatLabel(text, w, h) {
+  var canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 128;
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#c8cdd6'; ctx.font = '600 64px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, 256, 64);
+  var tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  var mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+  var mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  return mesh;
+}
 
 function makeLabelSprite(text, colorHex) {
   var canvas = document.createElement('canvas');
@@ -230,7 +251,7 @@ SceneView.prototype.build = function (journeyId, journey) {
     if (c.geometry) c.geometry.dispose();
   }
   this.meshes = {}; this.labels = {}; this.flowLines = [];
-  this.details = []; this.tsvLines = []; this.smGrid = null;
+  this.details = []; this.tsvLines = []; this.smGrid = null; this.smSub = null; this.l2BanksMesh = null;
   this.journeyId = journeyId;
   var boxes = M.boxesFor(journeyId, journey);
   var isStack = journeyId === 'stacking';
@@ -246,7 +267,7 @@ SceneView.prototype.build = function (journeyId, journey) {
   var slabZ = isStack ? 1 : 0;
   var dieSlab = new THREE.Mesh(
     new THREE.BoxGeometry(slabW, 0.5, slabD),
-    new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.6, metalness: 0.2 }));
+    new THREE.MeshStandardMaterial({ color: 0x232b36, roughness: 0.35, metalness: 0.55 }));
   dieSlab.position.set(0, -0.55, slabZ);
   dieSlab.receiveShadow = true;
   this.group.add(dieSlab);
@@ -341,30 +362,53 @@ SceneView.prototype.build = function (journeyId, journey) {
         new THREE.BoxGeometry(0.12, 0.1, 7.2),
         new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 0.4, metalness: 0.6 }));
       gold.position.set(tx + (tx < 0 ? -1.4 : 1.4), -0.05, 0); self.group.add(gold);
+      // Round 13 HBM layers: 3 stepped layers on each slab, so the
+      // edge reads as a stack from any orbit angle (still flat in
+      // plan — no Round 9 towers). Layers are scenery, not nodes.
+      M.hbmLayers().filter(function (ly) { return (tx < 0) === (ly.x < 0); }).forEach(function (ly, li) {
+        var layer = new THREE.Mesh(
+          new THREE.BoxGeometry(ly.w, ly.h, ly.d),
+          new THREE.MeshStandardMaterial({ color: ly.color, roughness: 0.45, metalness: 0.30 }));
+        layer.position.set(tx, 0.35 + li * 0.14, 0); layer.castShadow = true; layer.receiveShadow = true;
+        self.group.add(layer);
+      });
     });
   }
-  // Round 12 (GEMM only): the central L2 band — scenery from
-  // scene-map.js, not a selectable node. A low grey strip west
-  // of the SM grid, with a small always-visible engraved-style
-  // label (scenery labels are not node labels, so the sparse
-  // node-label rule is unaffected). Without it the floorplan
-  // would read as inputs jumping straight into SMs.
+  // Round 13 (GEMM only): L2 as 6 banks, not one band, plus
+  // a varying-width interconnect bus to the SM grid, plus an
+  // engraved front-face label. PC Anatomy: repetition + width
+  // variation + engraved text are what make a region read as
+  // hardware instead of one solid brick.
   if (journeyId === 'gemm') {
+    var l2b = M.l2Banks();
+    var bankGeo = new THREE.BoxGeometry(l2b[0].w, l2b[0].h, l2b[0].d);
+    var bankMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.40, metalness: 0.50 });
+    var banks = new THREE.InstancedMesh(bankGeo, bankMat, l2b.length);
+    var bd = new THREE.Object3D(); var bc = new THREE.Color();
+    l2b.forEach(function (bk, bi) {
+      bd.position.set(bk.x, bk.h / 2 - 0.25, bk.z); bd.updateMatrix(); banks.setMatrixAt(bi, bd.matrix);
+      banks.setColorAt(bi, bc.setHex(bk.shade ? 0x7d7d88 : 0x9b9ba4));
+    });
+    banks.castShadow = true; banks.receiveShadow = true;
+    self.group.add(banks);
+    self.l2BanksMesh = banks;
+    // Round 13, revised after screenshots: the engraved front-face
+    // L2 label proved illegible at overview (foreshortened to a few
+    // pixels), worse than Round 12's floating caption — dropped.
+    // The small floating caption is restored; it is scenery, not
+    // a node label, so the sparse node-label rule is unaffected.
     var l2 = M.floorplanL2();
-    var l2Mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(l2.w, l2.h, l2.d),
-      new THREE.MeshStandardMaterial({ color: l2.color, roughness: 0.6, metalness: 0.2 }));
-    l2Mesh.position.set(l2.x, l2.h / 2 - 0.25, l2.z);
-    l2Mesh.castShadow = true; l2Mesh.receiveShadow = true;
-    var l2Edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(l2Mesh.geometry),
-      new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.5 }));
-    l2Mesh.add(l2Edges);
-    self.group.add(l2Mesh);
     var l2Sprite = makeLabelSprite('L2', '#9b9ba4');
     l2Sprite.scale.set(2.2, 0.48, 1);
     l2Sprite.position.set(l2.x, l2.h / 2 + 0.45, l2.z);
     self.group.add(l2Sprite);
+    M.interconnectBus().forEach(function (rb) {
+      var ribbon = new THREE.Mesh(
+        new THREE.BoxGeometry(rb.w, rb.h, rb.d),
+        new THREE.MeshStandardMaterial({ color: rb.color, roughness: 0.30, metalness: 0.60 }));
+      ribbon.position.set(rb.x, -0.27, rb.z); ribbon.receiveShadow = true;
+      self.group.add(ribbon);
+    });
   }
   boxes.forEach(function (box) {
     var node = journey.nodes.filter(function (n) { return n.id === box.id; })[0];
@@ -461,6 +505,31 @@ SceneView.prototype.build = function (journeyId, journey) {
       grid.castShadow = true; grid.receiveShadow = true;
       self.group.add(grid);
       self.smGrid = { mesh: grid, box: smBox, tiles: tiles };
+      // Round 13 sub-cells: every tile subdivided PC-Anatomy-style
+      // (scheduler / core grid / tensor / register), as 4
+      // InstancedMeshes (4 draw calls for 414 small geometries).
+      // Unit-box geometry scaled per instance; colours are the
+      // PC-Anatomy subpart colours from scene-map.js. They ride
+      // the SM box on explode (see update) and dim with it (see
+      // applyHighlight); they are never separate selections.
+      var subCells = M.smTileSubCells(smBox);
+      var subMeshes = {};
+      ['core', 'scheduler', 'tensor', 'register'].forEach(function (role) {
+        var cells = subCells.filter(function (c) { return c.role === role; });
+        var mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.55 });
+        var im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, cells.length);
+        var d2 = new THREE.Object3D(); var cc = new THREE.Color();
+        cells.forEach(function (c, ci) {
+          d2.position.set(smBox.x + c.dx, smBox.y + smBox.h / 2 + 0.22 + c.h / 2, smBox.z + c.dz);
+          d2.scale.set(c.w, c.h, c.d); d2.updateMatrix(); im.setMatrixAt(ci, d2.matrix);
+          var v = 0.92 + ((ci * 37) % 5) * 0.03;
+          im.setColorAt(ci, cc.setHex(c.color).multiplyScalar(v));
+        });
+        im.castShadow = true; im.receiveShadow = true;
+        self.group.add(im);
+        subMeshes[role] = { mesh: im, cells: cells };
+      });
+      self.smSub = { meshes: subMeshes, box: smBox };
     }
   }
   // TSV hints (stacking only): sparse vertical lines between
@@ -576,6 +645,17 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     this.smGrid.mesh.material.emissive = new THREE.Color((gridSel || gridActive) ? ACTIVE_EMISSIVE : 0x000000);
     this.smGrid.mesh.material.emissiveIntensity = (gridSel || gridActive) ? 0.20 : 0;
   }
+  // Round 13: sub-cells dim with their SM region, L2 banks stay
+  // neutral scenery (no step names L2, so no highlight of it).
+  if (this.smSub) {
+    var subActive = !!active['sm']; var subSel = selectedId === 'sm';
+    Object.keys(this.smSub.meshes).forEach(function (role) {
+      var mm = self.smSub.meshes[role].mesh;
+      mm.material.color.setScalar((subActive || subSel) ? 1 : DIM_FACTOR);
+      mm.material.emissive = new THREE.Color((subSel || subActive) ? ACTIVE_EMISSIVE : 0x000000);
+      mm.material.emissiveIntensity = (subSel || subActive) ? 0.20 : 0;
+    });
+  }
   if (step) {
     var live = {}; (step.flows || []).forEach(function (f) { live[f] = true; });
     this.flowLines.forEach(function (line) {
@@ -611,6 +691,19 @@ SceneView.prototype.update = function (journeyId, journey, step, selectedId, exp
       gd2.updateMatrix(); this.smGrid.mesh.setMatrixAt(ti, gd2.matrix);
     }, this);
     this.smGrid.mesh.instanceMatrix.needsUpdate = true;
+  }
+  // Round 13: sub-cell instances ride the same exploded SM centre.
+  if (this.smSub) {
+    var sp = M.explodePos(this.smSub.box, explodeT);
+    var sd = new THREE.Object3D();
+    Object.keys(this.smSub.meshes).forEach(function (role) {
+      var entry = self.smSub.meshes[role];
+      entry.cells.forEach(function (c, ci) {
+        sd.position.set(sp.x + c.dx, sp.y + self.smSub.box.h / 2 + 0.22 + c.h / 2, sp.z + c.dz);
+        sd.scale.set(c.w, c.h, c.d); sd.updateMatrix(); entry.mesh.setMatrixAt(ci, sd.matrix);
+      });
+      entry.mesh.instanceMatrix.needsUpdate = true;
+    });
   }
   this.applyHighlight(step, selectedId);
   // Deliberately no camera move on step change: the active blocks are

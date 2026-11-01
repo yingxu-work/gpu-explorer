@@ -97,6 +97,50 @@ test('Round 12 SM grid tiles: regular grid inside the SM region', function () {
   assert.strictEqual(Object.keys(xs).length, 6, 'tiles must form 6 columns');
   assert.strictEqual(Object.keys(zs).length, 3, 'tiles must form 3 rows');
 });
+test('Round 13 SM sub-cells: PC-Anatomy density, every tile subdivided, no overlaps', function () {
+  var box = M.boxFor('gemm', S.JOURNEYS.gemm.nodes.filter(function (n) { return n.id === 'sm'; })[0]);
+  var cells = M.smTileSubCells(box);
+  function byRole(r) { return cells.filter(function (c) { return c.role === r; }); }
+  assert.strictEqual(cells.length, 414, '18 tiles x 23 sub-cells must be 414');
+  assert.strictEqual(byRole('core').length, 216, '12 core cells per tile');
+  assert.strictEqual(byRole('scheduler').length, 72, '4 scheduler segments per tile');
+  assert.strictEqual(byRole('tensor').length, 54, '3 tensor segments per tile');
+  assert.strictEqual(byRole('register').length, 72, '4 register segments per tile');
+  cells.forEach(function (c) {
+    assert.ok(Math.abs(c.dx) + c.w / 2 <= box.w / 2 + 0.001, c.role + ' must fit inside the SM region in x');
+    assert.ok(Math.abs(c.dz) + c.d / 2 <= box.d / 2 + 0.001, c.role + ' must fit inside the SM region in z');
+  });
+  // Bands must not overlap in z within a tile: scheduler north, cores middle, tensor/register south.
+  var t0 = cells.filter(function (c) { return c.tile === 0; });
+  function band(role) { var cs = t0.filter(function (c) { return c.role === role; }); return { lo: Math.min.apply(null, cs.map(function (c) { return c.dz - c.d / 2; })), hi: Math.max.apply(null, cs.map(function (c) { return c.dz + c.d / 2; })) }; }
+  assert.ok(band('scheduler').hi < band('core').lo, 'scheduler band must sit north of the core grid');
+  assert.ok(band('core').hi < band('tensor').lo, 'core grid must sit north of the tensor band');
+  assert.ok(band('tensor').hi < band('register').lo, 'tensor band must sit north of the register band');
+});
+test('Round 13 L2 banks, HBM layers, interconnect bus', function () {
+  var l2 = M.floorplanL2();
+  var banks = M.l2Banks();
+  assert.strictEqual(banks.length, 6, 'L2 must be 6 banks, not one band');
+  banks.forEach(function (b, i) {
+    assert.ok(Math.abs(b.z - l2.z) + b.d / 2 <= l2.d / 2 + 0.001, 'bank must fit inside the L2 band');
+    if (i) assert.ok(b.z > banks[i - 1].z + banks[i - 1].d / 2, 'banks must have a gap between them');
+  });
+  assert.strictEqual(banks.filter(function (b) { return b.shade === 1; }).length, 3, 'banks must alternate shade');
+  var layers = M.hbmLayers();
+  assert.strictEqual(layers.length, 6, '3 HBM layers per side');
+  [-11.9, 11.9].forEach(function (tx) {
+    var side = layers.filter(function (ly) { return ly.x === tx; });
+    assert.strictEqual(side.length, 3, 'each side must have 3 layers');
+    assert.ok(side[0].w > side[1].w && side[1].w > side[2].w, 'layers must inset monotonically');
+  });
+  var bus = M.interconnectBus();
+  assert.strictEqual(bus.length, 5, 'bus must be 5 ribbons');
+  var widths = {}; bus.forEach(function (rb) { widths[rb.d] = true; });
+  assert.ok(Object.keys(widths).length > 1, 'bus ribbons must vary in width');
+  bus.forEach(function (rb) {
+    assert.ok(rb.x - rb.w / 2 <= -2.65 + 0.01 && rb.x + rb.w / 2 >= -1.5 - 0.01, 'bus must span L2 east edge to SM west edge');
+  });
+});
 test('stacking layout is one centred column with symmetric side blocks', function () {
   var boxes = M.boxesFor('stacking', S.JOURNEYS.stacking);
   var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });

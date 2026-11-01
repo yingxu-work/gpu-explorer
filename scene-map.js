@@ -225,6 +225,94 @@
     }
     return out;
   }
+  // Round 13 PC-Anatomy density (GEMM only, pure geometry, no DOM).
+  // PC Anatomy's SM view (fresh gpuserver screenshot
+  // r13-pc-anatomy-sm-crop.png, 2026-11-01) is NOT 18 large tiles:
+  // one SM = 4 subpartition columns, each with ~50 tiny blue cells
+  // in a grid, an orange segmented strip + a teal segmented strip
+  // at the head, and a tensor (orange, segmented) + texture
+  // (purple, segmented) strip at the foot, with the L1/Shared
+  // text engraved into the front slab face. Our 18-tile grid was
+  // 10x sparser than that, which is why it still read as Lego.
+  // smTileSubCells therefore subdivides EVERY SM tile the same
+  // way, so the die reads as a pattern at overview and as real
+  // sub-geometry at zoom: per tile, 12 core cells (4x3), 4
+  // scheduler segments (orange, north edge), 3 tensor segments
+  // (purple, south band) and 4 register segments (teal, south
+  // band) = 23 small geometries per tile, 414 in total, drawn
+  // as 4 InstancedMeshes in scene3d.js (4 draw calls, not 414).
+  // Offsets are relative to the SM box centre; heights are
+  // per-role step heights, so the tile top is a stepped relief,
+  // not a flat colour. Colours are the PC-Anatomy subpart
+  // colours (steel blue / orange / purple / teal), used only
+  // for sub-cell detail, not as new legend families.
+  var SUB_COLOR = { core: 0x6f9fd0, scheduler: 0xc67a2e, tensor: 0x5b4a8a, register: 0x4fa8a0 };
+  function smTileSubCells(box) {
+    var tiles = smGridTiles(box);
+    var out = [];
+    tiles.forEach(function (t, ti) {
+      var i, j;
+      // North band: 4 scheduler segments.
+      for (i = 0; i < 4; i++) {
+        out.push({ role: 'scheduler', tile: ti, dx: t.dx - t.w / 2 + 0.06 + (i + 0.5) * (t.w - 0.12) / 4, dz: t.dz - t.d / 2 + 0.11, w: (t.w - 0.12) / 4 - 0.03, d: 0.16, h: 0.14, color: SUB_COLOR.scheduler });
+      }
+      // Middle: 4x3 core cells, in the band between the north
+      // scheduler strip and the south tensor/register strips
+      // (no overlap: scheduler -0.56..-0.40, cores -0.355..0.155,
+      // tensor 0.17..0.33, register 0.35..0.49, tile edge 0.58).
+      for (i = 0; i < 4; i++) {
+        for (j = 0; j < 3; j++) {
+          out.push({ role: 'core', tile: ti, dx: t.dx - t.w / 2 + 0.06 + (i + 0.5) * (t.w - 0.12) / 4, dz: t.dz - 0.28 + j * 0.18, w: (t.w - 0.12) / 4 - 0.03, d: 0.15, h: 0.10, color: SUB_COLOR.core });
+        }
+      }
+      // South band, two rows: tensor (purple, 3) above register (teal, 4).
+      for (i = 0; i < 3; i++) {
+        out.push({ role: 'tensor', tile: ti, dx: t.dx - t.w / 2 + 0.06 + (i + 0.5) * (t.w - 0.12) / 3, dz: t.dz + t.d / 2 - 0.33, w: (t.w - 0.12) / 3 - 0.03, d: 0.16, h: 0.12, color: SUB_COLOR.tensor });
+      }
+      for (i = 0; i < 4; i++) {
+        out.push({ role: 'register', tile: ti, dx: t.dx - t.w / 2 + 0.06 + (i + 0.5) * (t.w - 0.12) / 4, dz: t.dz + t.d / 2 - 0.16, w: (t.w - 0.12) / 4 - 0.03, d: 0.14, h: 0.10, color: SUB_COLOR.register });
+      }
+    });
+    return out;
+  }
+  // L2 as banks, not one band (PC Anatomy: repetition is the
+  // beauty). 6 banks along the L2 band depth, constant gaps,
+  // alternating shade index for material variation.
+  function l2Banks() {
+    var l2 = floorplanL2();
+    var gap = 0.08, n = 6, d = (l2.d - (n + 1) * gap) / n, out = [], i;
+    for (i = 0; i < n; i++) {
+      out.push({ x: l2.x, z: l2.z - l2.d / 2 + gap + d / 2 + i * (d + gap), w: l2.w, d: d, h: l2.h, shade: i % 2 });
+    }
+    return out;
+  }
+  // HBM as stacked layers with a stepped edge, not one flat slab:
+  // 3 layers per side, each inset and raised, so the edge reads
+  // as a stack from any orbit angle (still flat in plan view —
+  // no Round 9 towers).
+  function hbmLayers() {
+    var out = [];
+    [-11.9, 11.9].forEach(function (tx) {
+      var i;
+      for (i = 0; i < 3; i++) {
+        out.push({ x: tx, y: 0.05 + i * 0.14, w: 2.6 - i * 0.15, d: 7.2 - i * 0.15, h: 0.14, color: 0x7fb8ad });
+      }
+    });
+    return out;
+  }
+  // Interconnect bus between L2 and the SM grid: 5 ribbons of
+  // varying width (data wide, control narrow), dark metal, at
+  // slab-top level. A single 1px flow line cannot carry this;
+  // width variation is what makes a bus read as physical wiring.
+  function interconnectBus() {
+    var widths = [0.08, 0.18, 0.06, 0.14, 0.10];
+    var zs = [-2.6, -1.4, -0.2, 1.0, 2.2];
+    var out = [], i;
+    for (i = 0; i < 5; i++) {
+      out.push({ x: -2.05, z: zs[i], w: 1.3, d: widths[i], h: 0.06, color: 0x3a4350 });
+    }
+    return out;
+  }
   // Round 11 shared base for a stacking side block: a flat shelf
   // under the block, spanning from the column face (x +/-4.3, the
   // column width is 8.6) to the block's outer edge, its top exactly
@@ -260,7 +348,7 @@
     active.forEach(function (b) { sx += b.x; sy += b.y; sz += b.z; });
     return { x: sx / active.length, y: sy / active.length, z: sz / active.length };
   }
-  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails, stackingShelf: stackingShelf, floorplanL2: floorplanL2, smGridTiles: smGridTiles };
+  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, SUB_COLOR: SUB_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails, stackingShelf: stackingShelf, floorplanL2: floorplanL2, smGridTiles: smGridTiles, smTileSubCells: smTileSubCells, l2Banks: l2Banks, hbmLayers: hbmLayers, interconnectBus: interconnectBus };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerSceneMap = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));
