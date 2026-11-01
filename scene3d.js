@@ -272,8 +272,12 @@ function SceneView(container, isCompare) {
 }
 SceneView.prototype.resize = function () {
   var w = this.container.clientWidth || 800;
-  var h = 520;
+  /* Piece 5: follow the container's actual height instead of a fixed
+     520px, so the <=768px aspect-ratio box (3/2) renders at that
+     framing; desktop containers stay 520px, so desktop is unchanged. */
+  var h = this.container.clientHeight || 520;
   this.renderer.setSize(w, h, false);
+  this.renderer.domElement.style.height = h + 'px';
   this.camera.aspect = w / h;
   this.camera.updateProjectionMatrix();
 };

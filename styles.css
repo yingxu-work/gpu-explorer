@@ -115,10 +115,35 @@ pre { background: #161618; color: #F4F4F5; font-family: ui-monospace, "SF Mono",
 @media (max-width: 1100px) {
   body { height: auto; overflow: auto; }
   .shell { grid-template-columns: 1fr; }
-  .sidebar { border-right: none; border-bottom: 1px solid #2F2F31; }
+  /* Piece 5: compact stacked sidebar — journey nav becomes one
+     horizontally scrollable row and the three model selects share
+     rows where they fit, so the canvas is no longer pushed a full
+     viewport below a 525px sidebar. Desktop (>1100px) untouched. */
+  .sidebar { border-right: none; border-bottom: 1px solid #2F2F31; padding: 12px; }
+  .sidebar section { margin-bottom: 16px; }
+  .nav-list { flex-direction: row; overflow-x: auto; padding-bottom: 2px; }
+  .nav-item { flex: none; }
+  .gloss { margin-top: 6px; }
+  .sidebar section:last-child { display: flex; flex-wrap: wrap; column-gap: 12px; }
+  .sidebar section:last-child h3 { flex: 1 1 100%; }
+  .sidebar section:last-child .field { flex: 1 1 200px; margin-top: 4px; }
   .inspector { border-left: none; border-top: 1px solid #2F2F31; }
   .diagrams { flex-direction: column; }
   .canvas-panel { padding: 16px 14px 8px; }
+}
+/* Piece 5: phone/small-tablet only (<=768px). The fixed 520px canvas
+   at 375px wide gave a 0.58 aspect ratio that cropped the wide die
+   left/right and left most of the height empty black; a 3/2 box keeps
+   the desktop-like framing. The bottom bar sticks to the viewport
+   bottom so step controls/timeline chips stay reachable without
+   scrolling past the whole inspector. */
+@media (max-width: 768px) {
+  .canvas-panel { padding: 12px 12px 8px; }
+  .diagram { padding: 8px; margin: 8px 0; }
+  .scene3d { height: auto; aspect-ratio: 3 / 2; }
+  .inspector { padding: 12px 14px; }
+  .bottombar { position: sticky; bottom: 0; z-index: 5; padding: 10px 12px 8px; }
+  .playback { gap: 6px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 
