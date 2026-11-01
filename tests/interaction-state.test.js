@@ -110,6 +110,15 @@ test('ordinary sequence stops at the last step rather than looping', () => {
   }
   assert.equal(stepIndex,7);assert.equal(ui.progress,1);assert.equal(ui.playback,'paused');
 });
+test('Play restarts from the last step even while its single-step animation is unfinished', () => {
+  const final={...base,stepIndex:7,atEnd:true};
+  let ui=I.create({},final);assert.equal(ui.progress,0);
+  assert.equal(I.sequenceIntent(ui,final),'restart');
+  ui=act(ui,'TICK',{dt:100},final);assert.equal(I.sequenceIntent(ui,final),'restart');
+  ui=act(ui,'RESUME_SEQUENCE',{},final);assert.equal(I.sequenceIntent(ui,final),'pause');
+  ui=I.create({},base);assert.equal(I.sequenceIntent(ui,base),'resume');
+  ui=act(ui,'ENTER_EXPLORE');assert.equal(I.sequenceIntent(ui,base),'replay');
+});
 test('exploration links restore physical context; lesson links normalize conflicting geometry', () => {
   let ui=I.create({mode:'explore',level:'package',explode:.75,selection:'hbm'},base);
   assert.equal(ui.explode,.75);assert.equal(ui.selection,'hbm');assert.equal(ui.level,'package');

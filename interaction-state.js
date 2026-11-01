@@ -12,6 +12,12 @@
   function guideLevel(context) {
     return context.journey === 'gemm' ? GEMM_LEVELS[context.stepIndex] || 'board' : 'board';
   }
+  function sequenceIntent(ui, context = {}) {
+    if (ui.mode === 'learn' && ui.playback === 'sequence') return 'pause';
+    if (context.atEnd) return 'restart';
+    if (ui.mode === 'learn' && ui.progress < 1) return 'resume';
+    return 'replay';
+  }
   function enterGuide(ui, context, playback) {
     return {
       ...ui, mode: 'learn', level: guideLevel(context), selection: null,
@@ -118,5 +124,5 @@
       default: return ui;
     }
   }
-  return { LEVELS, GEMM_LEVELS, guideLevel, create, transition };
+  return { LEVELS, GEMM_LEVELS, guideLevel, sequenceIntent, create, transition };
 });

@@ -322,9 +322,10 @@
     else { transition({ type: 'EXPLORE_RESET' }); render(); }
   }
   function toggleSequence() {
-    if (ui.mode === 'learn' && ui.playback === 'sequence') { transition({ type: 'PAUSE' }); render(); return; }
-    if (ui.mode === 'learn' && ui.progress < 1) { transition({ type: 'RESUME_SEQUENCE' }); render(); return; }
-    if (S.isAtEnd(state)) S.goto(state, 0);
+    const intent = I.sequenceIntent(ui, context());
+    if (intent === 'pause') { transition({ type: 'PAUSE' }); render(); return; }
+    if (intent === 'resume') { transition({ type: 'RESUME_SEQUENCE' }); render(); return; }
+    if (intent === 'restart') S.goto(state, 0);
     enterGuide({ playback: 'sequence' });
   }
   window.__gpuExplorerRender = render;
