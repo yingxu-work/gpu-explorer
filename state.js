@@ -121,6 +121,41 @@
         { title: '显示与倒查', body: '帧缓冲送上屏幕，这个像素亮起来。倒查一遍：它来自哪个三角形、哪次插值、哪次采样、哪次深度比较。', active: ['fb', 'pixel'], flows: ['fb>pixel'], trace: 'screen[x][y] ← framebuffer[x][y]；倒查三角形→插值→采样→深度。', code: ['// 显示', 'screen[x][y] = framebuffer[x][y]'] },
       ],
     },
+    stacking: {
+      title: '芯片怎么叠起来：逻辑折叠剖面',
+      verdict: '结论先说：所谓“折叠”，不是把芯片对折，而是把两层逻辑上下叠起来，用很短的垂直连接代替很长的横向连线。省距离是收益，散热和制造难度是代价——两者都要画出来。',
+      nodes: [
+        { id: 'lid', label: '散热盖', kind: 'control', x: 250, y: 30, w: 600, h: 50, detail: '最上面：把热量导出去。叠得越密，热越难从中间出去。' },
+        { id: 'logic-top', label: '上层逻辑 · 超大核', kind: 'compute', x: 250, y: 100, w: 600, h: 90, detail: '上层逻辑（教学示意）：超大核在上面，离散热盖最近，也离下层最近。' },
+        { id: 'bond', label: '混合键合层', kind: 'control', x: 250, y: 210, w: 600, h: 40, detail: '上下层的垂直连接层：信号从这里上下走，而不是绕远路横向走。' },
+        { id: 'logic-low', label: '下层逻辑 · 大核 + 小核', kind: 'compute', x: 250, y: 270, w: 600, h: 90, detail: '下层逻辑（教学示意）：大核与小核分工，靠近内存层。' },
+        { id: 'mem-layer', label: '内存 / 缓存层', kind: 'memory', x: 250, y: 380, w: 600, h: 70, detail: '内存与缓存层：数据离计算越近，等待越少（教学示意，非实测）。' },
+        { id: 'substrate', label: '基板', kind: 'data', x: 250, y: 470, w: 600, h: 40, detail: '最下面：承载整颗芯片，并把信号引到封装外面。' },
+        { id: 'cut-core', label: '被划掉的核', kind: 'compute', x: 880, y: 100, w: 180, h: 90, disabled: true, detail: '分档示例：同一颗芯片的低档版本里，这个核存在但被关闭，不参与工作。' },
+        { id: 'gpu-block', label: 'GPU 块', kind: 'compute', x: 880, y: 270, w: 180, h: 90, detail: '图形计算块：与 CPU 逻辑并排在同一颗芯片里，分工不同。' },
+      ],
+      flows: [
+        { from: 'logic-top', to: 'bond' }, { from: 'bond', to: 'logic-low' },
+        { from: 'logic-low', to: 'mem-layer' }, { from: 'mem-layer', to: 'substrate' },
+        { from: 'gpu-block', to: 'logic-low' },
+      ],
+      views: {
+        structure: '结构视角：从上到下看剖面：散热盖、两层逻辑、键合层、内存层、基板。',
+        work: '工作视角：信号怎样垂直穿过各层，哪里可能排队、哪里发热。',
+        data: '数据视角：数据离计算有多近，垂直距离为什么比横向短。',
+        timeline: '时间视角：这一步在“切开—分层—连通—算代价”全过程中的位置。',
+      },
+      steps: [
+        { title: '盯住一颗叠起来的芯片', body: '先不看参数表，只看剖面：这颗芯片不是平铺的一层，而是上下两层逻辑叠在一起。问：叠，到底省了什么？', active: ['lid', 'logic-top'], flows: [], trace: '问题：叠起来省了什么，又付了什么代价？', code: ['// 剖面（教学示意）', 'chip = [lid, logic_top, bond, logic_low, mem, substrate]'] },
+        { title: '先看全家分档', body: '同一颗芯片可以分出高低档：低档不是重新设计，而是把一部分核或 GPU 块关闭。图中被划掉的核就是这个意思——存在，但不工作。', active: ['cut-core', 'logic-top'], flows: [], trace: '低档 ← 同一颗芯片 − 被关闭的单元。', code: ['// 分档（教学示意）', 'high_tier = all_units_on', 'low_tier = all_units_on - cut_core'] },
+        { title: '切开看剖面', body: '从上往下数：散热盖、上层逻辑、键合层、下层逻辑、内存层、基板。每一层都有自己的职责，不能把它们说成一个“芯片”。', active: ['lid', 'bond', 'substrate'], flows: [], trace: '剖面（自上而下）：盖 → 上层 → 键合 → 下层 → 内存 → 基板。', code: ['// 自上而下', 'layers = [lid, logic_top, bond, logic_low, mem, substrate]'] },
+        { title: '上层逻辑：超大核在上面', body: '上层放最重的超大核，离散热盖近，也离下层近。位置本身就是设计选择：放哪里，决定了它离谁近、离热多远。', active: ['logic-top'], flows: ['logic-top>bond'], trace: '超大核 → 键合层（垂直向下，下一步）。', code: ['// 上层', 'super_core -> bond_layer'] },
+        { title: '混合键合：上下层怎么连', body: '键合层是上下层之间的垂直通道。信号从这里穿过去，距离很短；如果绕到芯片边缘再横向走，距离就长得多。这是堆叠的核心收益，仍是教学示意，不是实测距离。', active: ['bond'], flows: ['bond>logic-low'], trace: '信号：上层 → 键合层（垂直）→ 下层。', code: ['// 垂直连接', 'signal = top_logic -[bond]-> low_logic'] },
+        { title: '下层逻辑与内存', body: '下层逻辑靠近内存层，数据不用跑远就能拿到。离计算越近的存储，等待通常越少——但这不等于“无限快”，带宽和容量仍是限制。', active: ['logic-low', 'mem-layer'], flows: ['logic-low>mem-layer'], trace: '下层逻辑 ↔ 内存层：近，但仍受带宽与容量限制。', code: ['// 就近取数', 'data = mem_layer[near(low_logic)]'] },
+        { title: '信号走多远：垂直 vs 横向', body: '同样两个单元，平铺时信号要横向穿过整颗芯片；叠起来时只要垂直穿过一层键合。短，不是因为“新技术魔法”，而是几何上就是更近。', active: ['bond', 'mem-layer'], flows: ['mem-layer>substrate'], trace: '垂直路径 ≪ 横向绕行路径（几何示意，非实测数值）。', code: ['// 距离对比（教学示意）', 'vertical = one_bond_layer', 'horizontal = across_the_die'] },
+        { title: '热与代价：叠起来不是免费的', body: '倒查一遍：收益是距离短、集成密；代价是中间层的热难散出去，制造与测试也更难。只讲收益不讲代价的堆叠讲解，是不完整的。', active: ['lid', 'logic-top'], flows: [], trace: '收益：短距离、高集成；代价：散热难、制造与测试难。', code: ['// 权衡', 'benefit = short_vertical_path', 'cost = heat + yield + test'] },
+      ],
+    },
   };
 
   // Predict-then-play: keyed by journey + step index. Each question asks about
@@ -134,6 +169,8 @@
     'pagetable:5': { q: '查到 PTE 后，物理地址是怎么拼出来的？', options: ['PTE 直接就是物理地址', '物理页号 + 页内偏移', '虚拟地址 + TLB 大小'], answer: 1, explain: '对：PTE 给页号，页内偏移不变，两者拼成物理地址，并可回填 TLB。' },
     'pixel:2': { q: '下一步：光栅化给这个像素的属性是怎么来的？', options: ['查一张现成的像素表', '顶点属性按重心权重插值', '着色器随机生成'], answer: 1, explain: '对：attr = w0·v0 + w1·v1 + w2·v2，像素是三角形内部插出来的点。' },
     'pixel:5': { q: '一个更远的像素已经写在深度缓冲里，新像素更远时会被怎样？', options: ['覆盖旧像素', '被丢弃，不写入', '先着色再擦掉'], answer: 1, explain: '对：深度测试在写入前就丢弃被挡住的像素，不会先画再擦。' },
+    'stacking:1': { q: '同一颗芯片的低档版本，图中被划掉的核会怎样？', options: ['物理上不存在', '存在但被关闭，不参与工作', '变成 GPU 继续工作'], answer: 1, explain: '对：分档常常是同一颗芯片关闭一部分单元，而不是重新设计一颗。' },
+    'stacking:4': { q: '上下两层逻辑之间，混合键合层的作用是什么？', options: ['只是把两层粘在一起', '提供上下层之间的垂直信号连接', '给上层供电，与信号无关'], answer: 1, explain: '对：键合层是信号走垂直方向的通道，短，才是堆叠省距离的关键。' },
   };
 
   const VIEWS = ['structure', 'work', 'data', 'timeline'];

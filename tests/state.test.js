@@ -112,6 +112,18 @@ test('predict-then-play: valid options, correct/wrong, reset clears', function (
   assert.strictEqual(S.predict(s, 99), null);
   S.reset(s); assert.deepStrictEqual(s.predictions, {});
 });
+test('stacking journey shows layers top-to-bottom and a disabled tier block', function () {
+  var s = S.createState({});
+  S.setJourney(s, 'stacking');
+  var j = S.currentJourney(s);
+  eq(j.steps.length, 8);
+  var disabled = j.nodes.filter(function (n) { return n.disabled; });
+  assert.ok(disabled.length >= 1, 'stacking needs a disabled tier block');
+  var ys = j.nodes.filter(function (n) { return !n.disabled && n.x < 850; }).map(function (n) { return n.y; });
+  assert.ok(ys.length >= 6, 'stacking needs >=6 layers');
+  while (!S.isAtEnd(s)) S.next(s);
+  eq(S.currentStep(s).title, '热与代价：叠起来不是免费的');
+});
 test('all journeys have steps, nodes, code and view text', function () {
   Object.keys(S.JOURNEYS).forEach(function (key) {
     var j = S.JOURNEYS[key];
