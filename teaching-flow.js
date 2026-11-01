@@ -42,10 +42,10 @@ export function lessonPresentation(level, stepIndex, model = 'h100') {
   const marker = (id, host, point, label, color, role = 'location', size = [.52, .40]) => {
     result.markers.push({ id, host, point, label, color, role, size });
   };
-  const memoryMarkers = () => {
+  const memoryMarkers = (includeOutput = true) => {
     marker('input-a', 'hbm', [-3.75, .84, -2.60], 'A · HBM', 'a', 'source', [1.22, .72]);
     marker('input-b', 'hbm', [-3.75, .84, 0], 'B · HBM', 'b', 'source', [1.22, .72]);
-    marker('output-c', 'hbm', [3.75, .84, 0], 'C[3,7] · HBM', 'c', 'target', [1.22, .72]);
+    if (includeOutput) marker('output-c', 'hbm', [3.75, .84, 0], 'C[3,7] · HBM', 'c', 'target', [1.22, .72]);
   };
   const sm = [-1.55, .59, -.89], l2 = [0, .59, -.89];
   if (level === 'hbm') {
@@ -66,7 +66,7 @@ export function lessonPresentation(level, stepIndex, model = 'h100') {
       marker('assigned-sm', 'gpu-die', sm, '选中的 SM', 'c', 'target', [.32, .45]);
       add('place-cta', 'gpu-die', ['CTA 3', 'selected SM'], [[1.5, .61, 2.4], [0, .61, 2.4], [0, .61, -.89], sm.map((v, i) => i === 1 ? .61 : v)], 'c', 'placement');
     } else if ([3, 6].includes(stepIndex)) {
-      memoryMarkers();
+      memoryMarkers(false);
       marker('cache', 'gpu-die', l2, 'L2', 'a', 'cache', [.30, .55]);
       marker('assigned-sm', 'gpu-die', sm, 'SM / Shared', 'a', 'target', [.32, .45]);
       for (const [i, z] of [[0, -2.6], [1, 0]]) {

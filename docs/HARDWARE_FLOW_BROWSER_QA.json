@@ -1,0 +1,1012 @@
+{
+  "date": "2026-11-01",
+  "applicationCommits": [
+    "6aba175",
+    "97540201",
+    "d495318"
+  ],
+  "scope": "Chrome/WebGL UI observations across refinement candidates",
+  "passed": [
+    {
+      "test": "paused-camera",
+      "s": 0,
+      "cam": "top",
+      "before": {
+        "mode": "learn",
+        "p": "0.115",
+        "playback": "paused",
+        "revision": "3",
+        "step": "01 / 08"
+      },
+      "after": {
+        "camera": "top",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.115",
+        "playback": "paused",
+        "revision": "3",
+        "step": "01 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 0,
+      "cam": "side",
+      "before": {
+        "mode": "learn",
+        "p": "0.115",
+        "playback": "paused",
+        "revision": "3",
+        "step": "01 / 08"
+      },
+      "after": {
+        "camera": "side",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.115",
+        "playback": "paused",
+        "revision": "3",
+        "step": "01 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 0,
+      "cam": "three-quarter",
+      "before": {
+        "mode": "learn",
+        "p": "0.115",
+        "playback": "paused",
+        "revision": "3",
+        "step": "01 / 08"
+      },
+      "after": {
+        "camera": "3d",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.115",
+        "playback": "paused",
+        "revision": "3",
+        "step": "01 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 1,
+      "cam": "top",
+      "before": {
+        "mode": "learn",
+        "p": "0.138",
+        "playback": "paused",
+        "revision": "4",
+        "step": "02 / 08"
+      },
+      "after": {
+        "camera": "top",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.138",
+        "playback": "paused",
+        "revision": "4",
+        "step": "02 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 1,
+      "cam": "side",
+      "before": {
+        "mode": "learn",
+        "p": "0.138",
+        "playback": "paused",
+        "revision": "4",
+        "step": "02 / 08"
+      },
+      "after": {
+        "camera": "side",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.138",
+        "playback": "paused",
+        "revision": "4",
+        "step": "02 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 1,
+      "cam": "three-quarter",
+      "before": {
+        "mode": "learn",
+        "p": "0.138",
+        "playback": "paused",
+        "revision": "4",
+        "step": "02 / 08"
+      },
+      "after": {
+        "camera": "3d",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.138",
+        "playback": "paused",
+        "revision": "4",
+        "step": "02 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 2,
+      "cam": "top",
+      "before": {
+        "mode": "learn",
+        "p": "0.112",
+        "playback": "paused",
+        "revision": "5",
+        "step": "03 / 08"
+      },
+      "after": {
+        "camera": "top",
+        "flow": "true",
+        "markers": "2",
+        "mode": "learn",
+        "p": "0.112",
+        "playback": "paused",
+        "revision": "5",
+        "step": "03 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 2,
+      "cam": "side",
+      "before": {
+        "mode": "learn",
+        "p": "0.112",
+        "playback": "paused",
+        "revision": "5",
+        "step": "03 / 08"
+      },
+      "after": {
+        "camera": "side",
+        "flow": "true",
+        "markers": "2",
+        "mode": "learn",
+        "p": "0.112",
+        "playback": "paused",
+        "revision": "5",
+        "step": "03 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 2,
+      "cam": "three-quarter",
+      "before": {
+        "mode": "learn",
+        "p": "0.112",
+        "playback": "paused",
+        "revision": "5",
+        "step": "03 / 08"
+      },
+      "after": {
+        "camera": "3d",
+        "flow": "true",
+        "markers": "2",
+        "mode": "learn",
+        "p": "0.112",
+        "playback": "paused",
+        "revision": "5",
+        "step": "03 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 3,
+      "cam": "top",
+      "before": {
+        "mode": "learn",
+        "p": "0.106",
+        "playback": "paused",
+        "revision": "6",
+        "step": "04 / 08"
+      },
+      "after": {
+        "camera": "top",
+        "flow": "true",
+        "markers": "5",
+        "mode": "learn",
+        "p": "0.106",
+        "playback": "paused",
+        "revision": "6",
+        "step": "04 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 3,
+      "cam": "side",
+      "before": {
+        "mode": "learn",
+        "p": "0.106",
+        "playback": "paused",
+        "revision": "6",
+        "step": "04 / 08"
+      },
+      "after": {
+        "camera": "side",
+        "flow": "true",
+        "markers": "5",
+        "mode": "learn",
+        "p": "0.106",
+        "playback": "paused",
+        "revision": "6",
+        "step": "04 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 3,
+      "cam": "three-quarter",
+      "before": {
+        "mode": "learn",
+        "p": "0.106",
+        "playback": "paused",
+        "revision": "6",
+        "step": "04 / 08"
+      },
+      "after": {
+        "camera": "3d",
+        "flow": "true",
+        "markers": "5",
+        "mode": "learn",
+        "p": "0.106",
+        "playback": "paused",
+        "revision": "6",
+        "step": "04 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 4,
+      "cam": "top",
+      "before": {
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "7",
+        "step": "05 / 08"
+      },
+      "after": {
+        "camera": "top",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "7",
+        "step": "05 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 4,
+      "cam": "side",
+      "before": {
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "7",
+        "step": "05 / 08"
+      },
+      "after": {
+        "camera": "side",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "7",
+        "step": "05 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 4,
+      "cam": "three-quarter",
+      "before": {
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "7",
+        "step": "05 / 08"
+      },
+      "after": {
+        "camera": "3d",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "7",
+        "step": "05 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 5,
+      "cam": "top",
+      "before": {
+        "mode": "learn",
+        "p": "0.144",
+        "playback": "paused",
+        "revision": "8",
+        "step": "06 / 08"
+      },
+      "after": {
+        "camera": "top",
+        "flow": "true",
+        "markers": "4",
+        "mode": "learn",
+        "p": "0.144",
+        "playback": "paused",
+        "revision": "8",
+        "step": "06 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 5,
+      "cam": "side",
+      "before": {
+        "mode": "learn",
+        "p": "0.144",
+        "playback": "paused",
+        "revision": "8",
+        "step": "06 / 08"
+      },
+      "after": {
+        "camera": "side",
+        "flow": "true",
+        "markers": "4",
+        "mode": "learn",
+        "p": "0.144",
+        "playback": "paused",
+        "revision": "8",
+        "step": "06 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 5,
+      "cam": "three-quarter",
+      "before": {
+        "mode": "learn",
+        "p": "0.144",
+        "playback": "paused",
+        "revision": "8",
+        "step": "06 / 08"
+      },
+      "after": {
+        "camera": "3d",
+        "flow": "true",
+        "markers": "4",
+        "mode": "learn",
+        "p": "0.144",
+        "playback": "paused",
+        "revision": "8",
+        "step": "06 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 6,
+      "cam": "top",
+      "before": {
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "9",
+        "step": "07 / 08"
+      },
+      "after": {
+        "camera": "top",
+        "flow": "true",
+        "markers": "5",
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "9",
+        "step": "07 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 6,
+      "cam": "side",
+      "before": {
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "9",
+        "step": "07 / 08"
+      },
+      "after": {
+        "camera": "side",
+        "flow": "true",
+        "markers": "5",
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "9",
+        "step": "07 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 6,
+      "cam": "three-quarter",
+      "before": {
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "9",
+        "step": "07 / 08"
+      },
+      "after": {
+        "camera": "3d",
+        "flow": "true",
+        "markers": "5",
+        "mode": "learn",
+        "p": "0.122",
+        "playback": "paused",
+        "revision": "9",
+        "step": "07 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 7,
+      "cam": "top",
+      "before": {
+        "mode": "learn",
+        "p": "0.196",
+        "playback": "paused",
+        "revision": "10",
+        "step": "08 / 08"
+      },
+      "after": {
+        "camera": "top",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.196",
+        "playback": "paused",
+        "revision": "10",
+        "step": "08 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 7,
+      "cam": "side",
+      "before": {
+        "mode": "learn",
+        "p": "0.196",
+        "playback": "paused",
+        "revision": "10",
+        "step": "08 / 08"
+      },
+      "after": {
+        "camera": "side",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.196",
+        "playback": "paused",
+        "revision": "10",
+        "step": "08 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-camera",
+      "s": 7,
+      "cam": "three-quarter",
+      "before": {
+        "mode": "learn",
+        "p": "0.196",
+        "playback": "paused",
+        "revision": "10",
+        "step": "08 / 08"
+      },
+      "after": {
+        "camera": "3d",
+        "flow": "true",
+        "markers": "3",
+        "mode": "learn",
+        "p": "0.196",
+        "playback": "paused",
+        "revision": "10",
+        "step": "08 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "support-explode-isolate-guide",
+      "level": "hbm",
+      "view": {
+        "buttons": 8,
+        "crumb": "SXM 模组\n›\n芯片封装\n›\nHBM 内存",
+        "level": "hbm",
+        "mode": "explore",
+        "scene": "hbm"
+      },
+      "exploded": {
+        "level": "hbm",
+        "x": "1.000"
+      },
+      "isolated": {
+        "isolated": "true",
+        "level": "hbm",
+        "name": "HBM3 堆叠剖面"
+      },
+      "restored": {
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "selectionHidden": true,
+        "step": "05 / 08",
+        "x": "0.000"
+      },
+      "pass": true
+    },
+    {
+      "test": "support-explode-isolate-guide",
+      "level": "power",
+      "view": {
+        "buttons": 9,
+        "crumb": "SXM 模组\n›\n供电模块",
+        "level": "power",
+        "mode": "explore",
+        "scene": "power"
+      },
+      "exploded": {
+        "level": "power",
+        "x": "1.000"
+      },
+      "isolated": {
+        "isolated": "true",
+        "level": "power",
+        "name": "回流参考平面"
+      },
+      "restored": {
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "selectionHidden": true,
+        "step": "05 / 08",
+        "x": "0.000"
+      },
+      "pass": true
+    },
+    {
+      "test": "support-explode-isolate-guide",
+      "level": "interconnect",
+      "view": {
+        "buttons": 8,
+        "crumb": "SXM 模组\n›\nPCB / SXM",
+        "level": "interconnect",
+        "mode": "explore",
+        "scene": "interconnect"
+      },
+      "exploded": {
+        "level": "interconnect",
+        "x": "1.000"
+      },
+      "isolated": {
+        "isolated": "true",
+        "level": "interconnect",
+        "name": "介质与铜层"
+      },
+      "restored": {
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn",
+        "selectionHidden": true,
+        "step": "05 / 08",
+        "x": "0.000"
+      },
+      "pass": true
+    },
+    {
+      "test": "running-camera",
+      "cam": "top",
+      "before": {
+        "mode": "learn",
+        "p": "0.133",
+        "play": "sequence",
+        "rev": "2",
+        "step": "04 / 08"
+      },
+      "after": {
+        "mode": "learn",
+        "p": "0.247",
+        "play": "sequence",
+        "rev": "2",
+        "step": "04 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "running-camera",
+      "cam": "side",
+      "before": {
+        "mode": "learn",
+        "p": "0.133",
+        "play": "sequence",
+        "rev": "2",
+        "step": "04 / 08"
+      },
+      "after": {
+        "mode": "learn",
+        "p": "0.364",
+        "play": "sequence",
+        "rev": "2",
+        "step": "04 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "running-camera",
+      "cam": "three-quarter",
+      "before": {
+        "mode": "learn",
+        "p": "0.133",
+        "play": "sequence",
+        "rev": "2",
+        "step": "04 / 08"
+      },
+      "after": {
+        "mode": "learn",
+        "p": "0.474",
+        "play": "sequence",
+        "rev": "2",
+        "step": "04 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "running-orbit",
+      "after": {
+        "camera": "free",
+        "mode": "learn",
+        "play": "sequence"
+      },
+      "pass": true
+    },
+    {
+      "test": "paused-orbit-wheel",
+      "before": "0.668",
+      "after": {
+        "mode": "learn",
+        "p": "0.668",
+        "play": "paused"
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-seven-view",
+      "level": "board",
+      "after": {
+        "crumb": "SXM 模组",
+        "level": "board",
+        "scene": "board",
+        "scrollWidth": 375,
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-seven-view",
+      "level": "package",
+      "after": {
+        "crumb": "SXM 模组\n›\n芯片封装",
+        "level": "package",
+        "scene": "package",
+        "scrollWidth": 375,
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-seven-view",
+      "level": "die",
+      "after": {
+        "crumb": "SXM 模组\n›\n芯片封装\n›\nGPU Die",
+        "level": "die",
+        "scene": "die",
+        "scrollWidth": 375,
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-seven-view",
+      "level": "sm",
+      "after": {
+        "crumb": "SXM 模组\n›\n芯片封装\n›\nGPU Die\n›\nSM",
+        "level": "sm",
+        "scene": "sm",
+        "scrollWidth": 375,
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-seven-view",
+      "level": "hbm",
+      "after": {
+        "crumb": "SXM 模组\n›\n芯片封装\n›\nHBM 内存",
+        "level": "hbm",
+        "scene": "hbm",
+        "scrollWidth": 375,
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-seven-view",
+      "level": "power",
+      "after": {
+        "crumb": "SXM 模组\n›\n供电模块",
+        "level": "power",
+        "scene": "power",
+        "scrollWidth": 375,
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-seven-view",
+      "level": "interconnect",
+      "after": {
+        "crumb": "SXM 模组\n›\nPCB / SXM",
+        "level": "interconnect",
+        "scene": "interconnect",
+        "scrollWidth": 375,
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "a100-hbm-model-swap",
+      "after": {
+        "hero": "HBM2e",
+        "labels": [
+          "DRAM 存储层",
+          "硅通孔 / TSV",
+          "底部接口芯片 / Base die",
+          "8 个独立通道"
+        ],
+        "level": "hbm",
+        "model": "a100",
+        "x": "0.000"
+      },
+      "pass": true
+    },
+    {
+      "test": "physical-level-camera-sync",
+      "after": {
+        "button": "three-quarter",
+        "camera": "3d",
+        "level": "sm"
+      },
+      "pass": true
+    },
+    {
+      "test": "sequence-completion-final",
+      "samples": [
+        {
+          "p": "0.832",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.881",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.931",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.982",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "1.000",
+          "play": "sequence",
+          "status": "complete",
+          "step": "04 / 08"
+        },
+        {
+          "p": "1.000",
+          "play": "sequence",
+          "status": "complete",
+          "step": "04 / 08"
+        },
+        {
+          "p": "1.000",
+          "play": "sequence",
+          "status": "complete",
+          "step": "04 / 08"
+        },
+        {
+          "p": "1.000",
+          "play": "sequence",
+          "status": "complete",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.029",
+          "play": "sequence",
+          "status": "running",
+          "step": "05 / 08"
+        }
+      ],
+      "pass": true
+    }
+  ],
+  "inconclusive": [
+    {
+      "test": "sequence-completion-dwell",
+      "after": {
+        "p": "0.045",
+        "play": "sequence",
+        "status": "running",
+        "step": "05 / 08"
+      },
+      "pass": false,
+      "result": "sampling window missed; later sequence-completion-final observed the correct completion dwell"
+    },
+    {
+      "test": "sequence-completion-observed",
+      "samples": [
+        {
+          "p": "0.112",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.171",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.220",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.272",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.322",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.370",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.421",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.471",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.526",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.575",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.623",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.678",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        },
+        {
+          "p": "0.728",
+          "play": "sequence",
+          "status": "running",
+          "step": "04 / 08"
+        }
+      ],
+      "pass": false,
+      "result": "sampling window missed; later sequence-completion-final observed the correct completion dwell"
+    }
+  ],
+  "manual": [
+    {
+      "test": "native fullscreen",
+      "result": "Browser rejected fullscreen; error toast observed. Fullscreen visual behavior not verified."
+    },
+    {
+      "test": "component keyboard",
+      "result": "Power canvas ArrowRight selected visible power-board; A-row button returned to package."
+    },
+    {
+      "test": "deep link",
+      "result": "A100 power-inductor, power view and 60% explosion restored from URL."
+    },
+    {
+      "test": "tablet layout",
+      "result": "768px viewport had document scrollWidth 768; HBM2e detail inspected."
+    }
+  ],
+  "consoleErrors": []
+}

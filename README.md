@@ -53,7 +53,7 @@ python3 -m http.server 18910 --bind 127.0.0.1
 
 `app.js` 管界面、交互与播放；`hardware-model.js` 构建程序化实物；`hbm-model.js`、`power-model.js`、`interconnect-model.js` 构建组件剖面；`scene3d.js` 管 WebGL、相机和选取；`teaching-flow.js` 管沿模型表面的教学路径；`lesson-story.js` 管路径说明；`journey-lab.js` 管教学图与可测试的数学；`state.js` 管共享状态。`scene-map.js` 保留旧概念图映射与兼容测试，当前实物渲染不依赖其几何。
 
-测试覆盖状态往返、旅程控制、旧概念几何、数值计算、页表索引、三维相机投影、隔离恢复、静态资源与界面契约；它们不执行 WebGL。此前回归记录保留 114 项检查与 31 条 Chrome 操作序列；本次新增组件、路径语义和视角连续性验证，见组件与教学路径细化记录。
+测试覆盖状态往返、旅程控制、旧概念几何、数值计算、页表索引、三维相机投影、隔离恢复、静态资源与界面契约；它们不执行 WebGL。此前回归记录保留 114 项检查与 31 条 Chrome 操作序列；本次共 146 项自动化检查、HTTP 集成与 42 项 Chrome 状态检查；新增组件、路径语义和视角连续性验证，见组件与教学路径细化记录。
 
 GitHub Pages 从 `main` 根目录发布。
 

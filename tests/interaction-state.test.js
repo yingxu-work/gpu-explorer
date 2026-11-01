@@ -207,7 +207,7 @@ test('explore reset clears selection, isolation, dissection and camera preset to
 test('seeded mixed click patterns preserve guide/anatomy exclusivity for 12000 actions', () => {
   let seed=937,ui=I.create({},base);
   const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  const events=[()=>({type:'LEVEL',level:LEVELS[Math.floor(random()*4)]}),()=>({type:'SELECT',id:'tensor'}),()=>({type:'ISOLATE'}),()=>({type:'EXPLODE_SET',value:random()}),()=>({type:'EXPLODE_TOGGLE'}),()=>({type:'ENTER_GUIDE',playback:random()<.4?'sequence':'step'}),()=>({type:'NAVIGATE'}),()=>({type:'MOTION_TOGGLE'}),()=>({type:'TICK',dt:100}),()=>({type:'EXPLORE_RESET'}),()=>({type:'PAUSE'})];
+  const events=[()=>({type:'LEVEL',level:LEVELS[Math.floor(random()*LEVELS.length)]}),()=>({type:'SELECT',id:'tensor'}),()=>({type:'ISOLATE'}),()=>({type:'EXPLODE_SET',value:random()}),()=>({type:'EXPLODE_TOGGLE'}),()=>({type:'ENTER_GUIDE',playback:random()<.4?'sequence':'step'}),()=>({type:'NAVIGATE'}),()=>({type:'CAMERA',preset:['top','side','three-quarter'][Math.floor(random()*3)]}),()=>({type:'MOTION_TOGGLE'}),()=>({type:'TICK',dt:100}),()=>({type:'EXPLORE_RESET'}),()=>({type:'PAUSE'})];
   const LEVELS=I.LEVELS;
   for(let i=0;i<12000;i++){
     const context={...base,stepIndex:Math.floor(random()*8),reducedMotion:random()<.1};

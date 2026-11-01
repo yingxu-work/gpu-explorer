@@ -35,6 +35,7 @@ test('dependency, work placement and actual memory transfers remain different co
     assert.match(view.note,step===2?/不是数据传输/:/尚未搬运|仍在 HBM/);
   }
   assert.ok(lessonPresentation('die',2).routes.some(route=>route.stages.includes('selected SM')));
+  assert.ok(!lessonPresentation('package',3).markers.some(marker=>marker.id==='output-c'),'loading inputs must not mark the output as written');
   for(const step of [3,7]){
     const view=lessonPresentation('package',step);
     assert.equal(view.xray,true,'package cover must reveal the internal cache and SM');
