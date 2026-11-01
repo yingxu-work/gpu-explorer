@@ -304,47 +304,116 @@ export function createHardwareModel(T, model = 'h100') {
     clearcoat:1,clearcoatRoughness:.13,iridescence:.62,iridescenceIOR:1.33,iridescenceThicknessRange:[100,270]
   }));
   siliconCover.position.set(0,.486,0);siliconCover.scale.set(5.255,.105,7.605);siliconCover.castShadow=true;siliconCover.receiveShadow=true;die.add(siliconCover);
-  // Functional SM close-up. Physical silicon does not have raised blocks:
-  // the enlarged relief makes the on-die logical arrangement inspectable.
+  // Functional organization follows NVIDIA's 2 × 2 SM subpartition diagrams.
+  // These raised shapes show shared resources and connectivity, not silicon distances.
   const smRoot = new T.Group(); smRoot.visible=false; root.add(smRoot);
-  const smAssembly = component('sm-detail','单个 SM 执行单元','功能级放大视图：四个子分区共享片上的 L1 / Shared Memory。浮雕高度和元件尺寸用于教学。','sm',smRoot,'sm');
-  box(smAssembly,0,-.08,0,10.9,.28,8.4,mats.siliconSide);
-  box(smAssembly,0,.07,0,10.6,.025,8.1,mats.darkMetal);
-  const registerGroup = component('registers','寄存器文件','寄存器存储线程私有的操作数与累加器。寄存器占用会限制一个 SM 中可同时驻留的线程块数量。','sm',smAssembly,'sm-detail');
-  const scheduler = component('warp','Warp 调度器','每个子分区的 warp 调度器从可就绪的 warp 中选择指令。一个 warp 由 32 个线程组成。','sm',smAssembly,'sm-detail');
-  const tensor = component('tensor','Tensor Core','矩阵乘加单元以片段执行 D = A × B + C。输入、输出的线程分布由具体的 MMA 指令规定。','sm',smAssembly,'sm-detail');
-  const smem=component('smem','L1 / Shared Memory',`线程块内可显式管理的共享存储，与 L1 使用统一的片上存储资源。${ampere?'Ampere A100 每 SM 最多 164 KB':'Hopper H100 每 SM 最多 228 KB'} Shared Memory。`,'sm',smAssembly,'sm-detail');
-  const fp32=[]; const registers=[]; const registerStrips=[];
+  const smAssembly = component('sm-detail','SM 功能组织','四个子分区共用 L1 数据缓存/共享内存。按官方功能框图重建；相对距离、浮雕高度不是物理版图。','sm',smRoot,'sm');
+  box(smAssembly,0,-.08,0,10.9,.28,8.6,mats.siliconSide);
+  box(smAssembly,0,.07,0,10.6,.025,8.3,mats.darkMetal);
+  const registerGroup = component('registers','寄存器文件','每个子分区有自己的寄存器文件，保存线程操作数和累加器。图中位置表示资源归属，不表示物理距离。','sm',smAssembly,'sm-detail');
+  const scheduler = component('warp','Warp 调度器','四个子分区各有一个调度器，从可就绪的 warp 中发射指令。调度器属于控制路径，数据通过寄存器、执行管线和 LD/ST 访问存储。','sm',smAssembly,'sm-detail');
+  const dispatch = component('dispatch','指令派发','每个子分区的派发单元把调度器选定的指令送往执行管线。它不是矩阵操作数的传输通道。','sm',smAssembly,'sm-detail');
+  const tensor = component('tensor','Tensor Core',ampere?'矩阵乘加执行单元。线程协同提供矩阵片段，操作数与累加器分布依具体 MMA 指令而异。':'矩阵乘加执行单元。Hopper GMMA 可从共享内存取得矩阵操作数；具体来源和寄存器分布依指令而异。','sm',smAssembly,'sm-detail');
+  const lsu=component('lsu','Load / Store 单元','执行线程的载入和存储请求，连接寄存器与 L1 数据缓存/共享内存子系统。与 scheduler 的指令控制路径不同。','sm',smAssembly,'sm-detail');
+  const smem=component('smem','L1 数据缓存 / 共享内存',`四个子分区共用的统一存储资源，合计 ${ampere?'192':'256'} KB；其中 Shared Memory 最多 ${ampere?'164':'228'} KB。32 banks 指共享内存，不是整个 L1 缓存。这里的长条位置来自功能框图，不表示真实芯片距离。`,'sm',smAssembly,'sm-detail');
+  const instruction=component('instruction-cache','L1 指令缓存','SM 级指令缓存与 L1 数据缓存不同；每个子分区还具有本地 L0 指令缓存。','sm',smAssembly,'sm-detail');
+  const smBus=component('sm-bus','SM 内部互连','功能示意：执行管线、LD/ST 与共用 L1 数据缓存/共享内存相连。线路是教学路由，不是厂家金属布线。','sm',smAssembly,'sm-detail');
+  const fp32=[],registers=[],registerStrips=[],lsuCells=[];
+  const partitionOrigins=[{x:-2.65,z:-1.72},{x:2.65,z:-1.72},{x:-2.65,z:1.08},{x:2.65,z:1.08}];
+  box(instruction,0,.23,-3.65,10.15,.12,.25,mats.register);
+  surfaceText(instruction,'L1 INSTRUCTION CACHE',0,.296,-3.65,8.5,.18,'#d0dfeb','500 32px monospace');
   for(let partition=0;partition<4;partition++) {
-    const x=-3.88+partition*2.59;
-    box(smAssembly,x,.13,-.30,2.40,.08,5.55,mats.black);
-    box(scheduler,x,.255,-2.68,2.16,.19,.55,mats.scheduler);
-    surfaceText(scheduler,'WARP SCHEDULER',x,.36,-2.68,2.01,.24,'#eee2cb','600 36px monospace');
-    for(let row=0;row<8;row++) for(let bank=0;bank<4;bank++) registers.push({x:x-.83+bank*.55,y:.25,z:-1.94+row*.15,w:.45,h:.10,d:.10});
-    registerStrips.push({x,y:.33,z:-.69,w:2.11,h:.025,d:.12});
-    for(let row=0;row<(ampere?2:4);row++) for(let lane=0;lane<8;lane++) fp32.push({x:x-.87+lane*.25,y:.24,z:-.23+row*.31,w:.19,h:.15,d:.22});
-    box(tensor,x,.29,1.48,2.13,.29,.80,mats.tensor);
-    surfaceText(tensor,'TENSOR CORE',x,.442,1.48,1.95,.25,'#f1e4c8','600 39px monospace');
-    surfaceText(smAssembly,`SUBPARTITION ${partition}`,x,.2,2.2,2.18,.22,'#91a1a4','400 34px monospace');
+    const {x,z}=partitionOrigins[partition];
+    box(smAssembly,x,.13,z,4.95,.08,2.62,mats.black);
+    box(smAssembly,x,.225,z-1.10,4.65,.07,.15,mats.register);
+    box(scheduler,x,.255,z-.87,4.65,.14,.20,mats.scheduler);
+    surfaceText(scheduler,`SMSP ${partition}  /  WARP SCHEDULER`,x,.332,z-.87,4.27,.16,'#eee2cb','500 31px monospace');
+    box(dispatch,x,.25,z-.64,4.65,.10,.13,mats.copper);
+    for(let row=0;row<2;row++)for(let bank=0;bank<16;bank++)registers.push({x:x-2.14+bank*.285,y:.25,z:z-.43+row*.16,w:.22,h:.10,d:.105});
+    registerStrips.push({x,y:.33,z:z-.11,w:4.40,h:.025,d:.07});
+    // The small green cells retain the correct FP32 lane count (32/16 per partition).
+    for(let row=0;row<(ampere?2:4);row++)for(let lane=0;lane<8;lane++)fp32.push({x:x-1.52+lane*.31,y:.24,z:z+.10+row*.19,w:.23,h:.13,d:.14});
+    box(smAssembly,x-2.04,.24,z+.39,.27,.13,.88,mats.trace);
+    box(smAssembly,x+1.00,.24,z+.39,.31,.13,.88,mats.register);
+    box(tensor,x+1.80,.27,z+.39,.98,.22,.93,mats.tensor);
+    surfaceText(tensor,'TENSOR',x+1.80,.385,z+.39,.89,.20,'#f1e4c8','600 34px monospace');
+    for(let lane=0;lane<8;lane++)lsuCells.push({x:x-2.10+lane*.47,y:.25,z:z+1.02,w:.37,h:.12,d:.17});
+    box(smAssembly,x+1.98,.25,z+1.02,.56,.12,.17,mats.scheduler);
+    // Branches terminate at the central interconnect, rather than crossing scheduler boxes.
+    box(smBus,x*.5,.18,z+1.18,Math.abs(x),.035,.045,mats.trace,false);
   }
-  instances(registerGroup,registers,mats.register); instances(registerGroup,registerStrips,mats.silver);
-  instances(smAssembly,fp32,mats.activeSM);
-  box(smem,0,.25,3.21,10.09,.25,1.05,mats.smem);
-  const sharedBanks=[]; for(let bank=0;bank<32;bank++) sharedBanks.push({x:-4.79+bank*.309,y:.39,z:3.21,w:.20,h:.025,d:.71});
+  instances(registerGroup,registers,mats.register);instances(registerGroup,registerStrips,mats.silver);
+  instances(smAssembly,fp32,mats.activeSM);instances(lsu,lsuCells,mats.copper);
+  box(smBus,0,.18,.50,.065,.035,3.75,mats.trace,false);
+  box(smBus,0,.18,2.40,10.1,.035,.07,mats.trace,false);
+  const tma=ampere?null:component('tma','Tensor Memory Accelerator','Hopper 的 TMA 异步搬运张量，可将全局内存的数据搬入共享内存。它是数据搬运硬件，和 warp 调度器不同。','sm',smAssembly,'sm-detail');
+  if(!ampere){box(tma,0,.24,2.65,10.05,.10,.22,mats.activeSM);surfaceText(tma,'TENSOR MEMORY ACCELERATOR',0,.296,2.65,8.5,.18,'#d6e9ce','500 32px monospace');}
+  box(smem,0,.25,3.20,10.09,.25,.66,mats.smem);
+  const sharedBanks=[];for(let bank=0;bank<32;bank++)sharedBanks.push({x:-4.79+bank*.309,y:.39,z:3.20,w:.20,h:.025,d:.39});
   instances(smem,sharedBanks,mats.darkMetal);
-  surfaceText(smem,'L1  /  SHARED MEMORY   ·   32 BANKS',0,.43,3.23,8.9,.36,'#d6efea','500 36px monospace');
-  surfaceText(smAssembly,`${specification.name}   /   STREAMING MULTIPROCESSOR`,0,.12,-3.73,9.4,.39,'#c3cdc6','500 40px monospace');
+  surfaceText(smem,`${ampere?'192':'256'} KB  L1 DATA CACHE / SHARED MEMORY`,0,.43,3.20,9.25,.26,'#d6efea','500 32px monospace');
+  for(let unit=0;unit<4;unit++)box(smAssembly,-3.84+unit*2.56,.21,3.86,2.32,.10,.24,mats.register);
+  surfaceText(smAssembly,'FUNCTIONAL ORGANIZATION  /  NOT A PHYSICAL FLOORPLAN',0,.12,-4.03,9.6,.20,'#aab9ba','400 28px monospace');
   const anchors={
     pcb:new T.Vector3(-6.5,.25,6.1),package:new T.Vector3(-4.7,.3,4.7),interposer:new T.Vector3(4.8,.35,3.6),
     hbm:new T.Vector3(-3.75,.9,-2.6),'gpu-die':new T.Vector3(0,.8,0),l2:new T.Vector3(0,.6,0),
     power:new T.Vector3(6.55,.5,-3),sxm:new T.Vector3(0,-.65,6.85),sm:new T.Vector3(-1.5,.7,-1),
     'a-tile':new T.Vector3(-3.75,.9,-2.6),'b-tile':new T.Vector3(-3.75,.9,0),'c-out':new T.Vector3(3.75,.9,0),
-    warp:new T.Vector3(-3.88,.5,-2.68),smem:new T.Vector3(0,.6,3.21),tensor:new T.Vector3(-3.88,.7,1.48),registers:new T.Vector3(-3.88,.5,-1.5)
+    warp:new T.Vector3(-2.65,.5,-2.59),smem:new T.Vector3(0,.6,3.20),tensor:new T.Vector3(-.85,.5,-1.33),registers:new T.Vector3(-2.65,.5,-2.03),lsu:new T.Vector3(-2.65,.4,-.70),tma:new T.Vector3(0,.4,2.65)
   };
   function setExplode(t) {
     for(const layer of layers) layer.group.position.y=t*layer.factor;
     for(const slice of hbmSlices) slice.mesh.position.y=slice.y+slice.index*t*.12;
   }
   function setLevel(level){siliconCover.visible=level==='board'||level==='package';}
-  return { root, components, layers, smRoot, pcb, serial, anchors, specification, materials:mats, setExplode, setLevel, surfaceText };
+  return { root, components, layers, smRoot, pcb, serial, anchors, specification, materials:mats, partitionOrigins, setExplode, setLevel, surfaceText };
+}
+
+// Surface-aligned teaching routes. These express memory hierarchy and functional
+// connectivity; public architecture diagrams do not reveal metal-mask routing.
+export function teachingRouteSpecs(level, stepIndex, model='h100') {
+  const routes=[];
+  const add=(id,host,stages,points,phase=0,kind='data')=>routes.push({id,host,stages,points,phase,kind});
+  const load=stepIndex===3||stepIndex===6,store=stepIndex===7;
+  if(!['board','package','die','sm'].includes(level))return routes;
+  if(level!=='sm'){
+    if(load){
+      for(const [i,z]of [[0,-2.529],[1,.072]]){
+        add('hbm-input-'+i,'interposer',['HBM','memory-controller'],[[-3.75,.226,z],[-2.57,.226,z]],i*.08);
+        add('cache-to-sm-'+i,'gpu-die',['memory-controller','L2','SM'],[[-2.57,.507,z],[-.18,.507,z],[-.18,.507,-1.05],[-1.5,.507,-1.05]],.18+i*.08);
+      }
+    }else if(store){
+      add('sm-to-l2','gpu-die',['SM','L2','memory-controller'],[[-1.5,.507,-1.05],[-.18,.507,-1.05],[-.18,.507,.072],[2.57,.507,.072]]);
+      add('hbm-writeback','interposer',['memory-controller','HBM'],[[2.57,.226,.072],[3.75,.226,.072]],.22);
+    }
+    return routes;
+  }
+  const shared=[-4.90,.439,3.20],lsu=[-4.72,.439,-.70],reg=[-4.72,.439,-2.03],tensor=[-.85,.439,-1.33];
+  if(load){
+    add('global-to-shared','sm-detail',model==='a100'?['L2/interconnect','async-copy','Shared Memory']:['L2/interconnect','TMA','Shared Memory'],[[5.16,.439,2.65],[0,.439,2.65],[0,.439,3.20],shared],0);
+  }
+  if(stepIndex===4||stepIndex===6){
+    add('shared-to-load-store','sm-detail',['Shared Memory','LD/ST'],[shared,[-5.10,.439,3.20],[-5.10,.439,-.70],lsu],stepIndex===6?.20:0);
+    add('load-store-to-register','sm-detail',['LD/ST','Register File'],[lsu,[-5.10,.439,-.70],[-5.10,.439,-2.03],reg],.22);
+    add('issue-instruction','sm-detail',['Warp Scheduler','Dispatch'],[[-2.65,.34,-2.59],[-2.65,.34,-2.36]],.05,'control');
+  }
+  if(stepIndex===5||stepIndex===6){
+    add('register-to-mma','sm-detail',['Register File','Tensor Core'],[reg,[-5.10,.439,-2.03],[-5.10,.439,-1.33],tensor],stepIndex===6?.42:0);
+    add('mma-accumulator','sm-detail',['Tensor Core','Accumulator registers'],[tensor,[.0,.439,-1.33],[.0,.439,-2.03],[-.5,.439,-2.03]],.28);
+  }
+  if(store)add('store-output','sm-detail',['Accumulator registers','LD/ST','L2/interconnect'],[reg,[-5.10,.439,-2.03],[-5.10,.439,-.70],lsu,[-4.72,.439,2.40],[5.16,.439,2.40]]);
+  return routes;
+}
+
+export function sampleSignalPath(points, fraction) {
+  if(!points.length)return[0,0,0];
+  const segments=[];let length=0;
+  for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i],d=Math.hypot(...b.map((v,k)=>v-a[k]));segments.push(d);length+=d;}
+  if(!length)return points[0].slice();
+  let position=Math.max(0,Math.min(1,Number(fraction)||0))*length;
+  for(let i=0;i<segments.length;i++){
+    if(position<=segments[i]||i===segments.length-1){const t=segments[i]?position/segments[i]:0;return points[i].map((v,k)=>v+(points[i+1][k]-v)*t);}
+    position-=segments[i];
+  }
+  return points[points.length-1].slice();
 }
