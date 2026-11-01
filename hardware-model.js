@@ -1,3 +1,20 @@
+// Hide every sibling subtree along the selected object's ancestor path.
+// Ancestors remain as paths, without retaining their unselected own meshes.
+export function isolateHardwareSubtree(root, selected) {
+  const path = new Set();
+  for(let node=selected;node;node=node.parent){path.add(node);if(node===root)break;}
+  if(!path.has(root))return [];
+  const hidden=[];
+  function prune(node){
+    if(node===selected)return;
+    for(const child of node.children){
+      if(path.has(child))prune(child);
+      else if(child.visible){child.visible=false;hidden.push(child);}
+    }
+  }
+  prune(root);return hidden;
+}
+
 // Procedural SXM anatomy. Package/board geometry is a recognizable physical
 // reconstruction, not a vendor CAD model. The etched logical floorplan is
 // schematic; its active SM and HBM counts match the selected shipping product.
@@ -227,9 +244,9 @@ export function createHardwareModel(T, model = 'h100') {
   }
   // Sixth site is a visible unpopulated pad, not a claimed sixth HBM stack.
   if(!ampere) {
-    box(hbm,3.75,.245,2.6,1.64,.035,1.94,mats.substrate);
+    box(interposer,3.75,.245,2.6,1.64,.035,1.94,mats.substrate);
     const pads=[]; for(let x=0;x<10;x++) for(let z=0;z<12;z++) pads.push({x:3.1+x*.145,y:.269,z:1.82+z*.14,w:.044,h:.008,d:.044});
-    instances(hbm,pads,mats.gold);
+    instances(interposer,pads,mats.gold);
   }
   const die = component('gpu-die',`${specification.die} GPU 裸片`,`${specification.name} 中真正执行计算的硅裸片。${specification.sm} 个有源 SM，${specification.l2} L2；逻辑区块布局是教学重建。`,'die',serial,'package');
   layers.push({group:die,factor:3.1});

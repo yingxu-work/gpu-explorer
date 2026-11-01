@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { createHardwareModel } from './hardware-model.js?v=20261102c';
+import { createHardwareModel, isolateHardwareSubtree } from './hardware-model.js?v=20261102d';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -107,6 +107,9 @@ class HardwareScene {
   resize() {
     const width=this.container.clientWidth||800,height=this.container.clientHeight||600;
     this.width=width;this.height=height;this.renderer.setSize(width,height,false);this.camera.aspect=width/height;this.camera.updateProjectionMatrix();
+    // A resize wins over the old hierarchy transition. Otherwise the next
+    // animation frame would restore a camera target fitted to the old aspect.
+    this.cameraTween=null;
     if(this.hardware)this.fitView(0,true);
   }
 
@@ -147,6 +150,10 @@ class HardwareScene {
 
   setVisibility() {
     const hw=this.hardware;
+    // Restore only objects changed by isolation before setting normal level
+    // visibility. Substrate/frame meshes are siblings, not selected content.
+    for(const object of this.isolationHidden||[])object.visible=true;
+    this.isolationHidden=[];
     hw.setLevel?.(this.level);
     hw.pcb.visible=this.level==='board';hw.serial.visible=this.level!=='sm';hw.smRoot.visible=this.level==='sm';
     this.ground.visible=this.level==='board';
@@ -157,11 +164,7 @@ class HardwareScene {
     }
     if(this.isolated&&this.selected){
       const keep=hw.components[this.canonical(this.selected)]?.group;
-      if(keep)for(const item of Object.values(hw.components)){
-        let related=item.group===keep;let cursor=keep.parent;while(cursor){if(cursor===item.group)related=true;cursor=cursor.parent;}
-        cursor=item.group.parent;while(cursor){if(cursor===keep)related=true;cursor=cursor.parent;}
-        if(!related)item.group.visible=false;
-      }
+      if(keep)this.isolationHidden=isolateHardwareSubtree(hw.root,keep);
     }
   }
 
@@ -179,7 +182,7 @@ class HardwareScene {
   setLabels(value) {this.labelsVisible=value===undefined?!this.labelsVisible:!!value;this.labelLayer.style.display=this.labelsVisible?'':'none';return this.labelsVisible;}
 
   moveCamera(position,target,duration=800) {
-    if(duration===0){this.camera.position.copy(position);this.controls.target.copy(target);this.controls.update();return;}
+    if(duration===0){this.cameraTween=null;this.camera.position.copy(position);this.controls.target.copy(target);this.controls.update();return;}
     this.cameraTween={from:this.camera.position.clone(),to:position.clone(),targetFrom:this.controls.target.clone(),targetTo:target.clone(),start:performance.now(),duration};
   }
 
@@ -202,7 +205,7 @@ class HardwareScene {
     const right=new THREE.Vector3(0,1,0).cross(direction).normalize();if(right.lengthSq()<.01)right.set(1,0,0);
     const up=direction.clone().cross(right).normalize();
     const tangent=Math.tan(THREE.MathUtils.degToRad(this.camera.fov/2));
-    const margin={board:1.025,package:1.11,die:1.22,sm:1.10}[this.level];let distance=3.5;
+    const margin=Math.max(this.camera.aspect<1.1?1.10:1,{board:1.025,package:1.11,die:1.22,sm:1.10}[this.level]);let distance=3.5;
     for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
       const relative=new THREE.Vector3(x,y,z).sub(target),near=relative.dot(direction);
       distance=Math.max(distance,near+Math.abs(relative.dot(right))*margin/(tangent*this.camera.aspect),near+Math.abs(relative.dot(up))*margin/tangent);
@@ -226,6 +229,8 @@ class HardwareScene {
 
   isolateSelected(value) {
     if(!this.selected&&value!==false)this.selectComponent(this.state?.journey==='gemm'?this.step?.active?.[0]||'gpu-die':'gpu-die',false);
+    const selectedComponent=this.hardware.components[this.canonical(this.selected)];
+    if(value!==false&&this.level==='sm'&&selectedComponent&&selectedComponent.level!=='sm')this.setLevel(selectedComponent.level);
     if(value!==false&&['sm','l2'].includes(this.canonical(this.selected))&&['board','package'].includes(this.level))this.setLevel('die');
     this.isolated=value===undefined?!this.isolated:!!value;this.setVisibility();if(this.isolated)this.focusSelected();return this.isolated;
   }
@@ -356,7 +361,7 @@ if(container){
       clearSelection(){main.clearSelection();compare?.clearSelection();},
       getComponents(){return main.getComponents();},selectComponent(id){main.selectComponent(id);},
       getLevel(){return main.level;},getSelected(){return main.selected;},
-      getStatus(){return {model:main.model,level:main.level,selected:main.selected,exploded:main.explode,drawCalls:main.renderer.info.render.calls,triangles:main.renderer.info.render.triangles};}
+      getStatus(){return {model:main.model,level:main.level,selected:main.selected,isolated:main.isolated,exploded:main.explode,drawCalls:main.renderer.info.render.calls,triangles:main.renderer.info.render.triangles};}
     };
     window.GpuExplorer3D=api;window.dispatchEvent(new CustomEvent('gpu-scene-ready',{detail:{components:main.getComponents()}}));
     if(window.__gpuExplorerRender)window.__gpuExplorerRender();
