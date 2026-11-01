@@ -31,6 +31,17 @@
       <option value="snapdragon">Snapdragon 移动 SoC（示意）</option>
     </select>
   </label>
+  <label>对比型号
+    <select id="compare-select">
+      <option value="">不对比</option>
+      <option value="h100">H100</option>
+      <option value="a100">A100</option>
+      <option value="rtx5090">RTX 5090</option>
+      <option value="mi300x">AMD MI300X</option>
+      <option value="a20pro">Apple A20 Pro（示意）</option>
+      <option value="snapdragon">Snapdragon 移动 SoC（示意）</option>
+    </select>
+  </label>
   <label>速度
     <select id="speed-select">
       <option value="0.5">0.5×</option>
@@ -56,8 +67,17 @@
   <div class="progress" aria-label="旅程进度"><div id="progress-fill"></div></div>
   <nav id="overview" class="overview" aria-label="全部步骤（点一下可跳转）"></nav>
 
-  <div id="diagram" class="diagram" aria-label="过程示意图">
-    <svg id="diagram-svg" viewBox="0 0 1100 520" role="img" aria-label="结构示意图"></svg>
+  <div class="diagrams">
+    <div id="diagram" class="diagram" aria-label="过程示意图">
+      <h3 id="main-model-name" class="diagram-model"></h3>
+      <svg id="diagram-svg" viewBox="0 0 1100 520" role="img" aria-label="结构示意图"></svg>
+    </div>
+    <div id="compare-diagram" class="diagram" aria-label="对比型号示意图" style="display:none">
+      <h3 id="compare-model-name" class="diagram-model"></h3>
+      <p id="compare-model-note" class="note"></p>
+      <svg id="compare-svg" viewBox="0 0 1100 520" role="img" aria-label="对比结构示意图"></svg>
+      <p id="compare-step-note" class="trace"></p>
+    </div>
   </div>
   <div id="tooltip" class="tooltip" style="display:none"></div>
   <p id="selected-note" class="note"></p>
@@ -77,7 +97,7 @@
 </main>
 
 <footer>
-  <p>v0 范围：四个旅程、六个型号（均为教学模型）、四种视图、单步/播放/暂停、先预测再播放。3D 仅在确实有助于表达空间堆叠时再引入；本版全部用轻量 2D 图，避免重型渲染。</p>
+  <p>v0 范围：四个旅程、六个型号（均为教学模型）、四种视图、单步/播放/暂停、先预测再播放、同一旅程同一步的双型号对比。3D 仅在确实有助于表达空间堆叠时再引入；本版全部用轻量 2D 图，避免重型渲染。</p>
 </footer>
 <script src="state.js"></script>
 <script src="app.js"></script>

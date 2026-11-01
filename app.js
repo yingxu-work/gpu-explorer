@@ -32,14 +32,15 @@
     return [label.slice(0, 10), label.slice(10)];
   }
 
-  function renderDiagram(journey, step) {
-    const svg = $('diagram-svg');
+  function renderDiagram(journey, step, svgEl, isCompare) {
+    const svg = svgEl || $('diagram-svg');
+    const suffix = isCompare ? '-c' : '';
     svg.innerHTML = '';
     const defs = el('defs');
-    const marker = el('marker', { id: 'arr', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' });
+    const marker = el('marker', { id: 'arr' + suffix, viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '7', markerHeight: '7', orient: 'auto-start-reverse' });
     marker.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: '#64748b' }));
     defs.appendChild(marker);
-    const markerHot = el('marker', { id: 'arr-hot', viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '8', markerHeight: '8', orient: 'auto-start-reverse' });
+    const markerHot = el('marker', { id: 'arr-hot' + suffix, viewBox: '0 0 10 10', refX: '9', refY: '5', markerWidth: '8', markerHeight: '8', orient: 'auto-start-reverse' });
     markerHot.appendChild(el('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: '#b45309' }));
     defs.appendChild(markerHot);
     svg.appendChild(defs);
@@ -55,7 +56,7 @@
       const line = el('line', {
         x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
         stroke: hot ? '#b45309' : '#94a3b8', 'stroke-width': hot ? '3.5' : '2',
-        'marker-end': hot ? 'url(#arr-hot)' : 'url(#arr)',
+        'marker-end': hot ? 'url(#arr-hot' + suffix + ')' : 'url(#arr' + suffix + ')',
         'stroke-dasharray': (f.from === 'smem' && f.to === 'sm') || (f.from === 'tex') ? '7 5' : '',
       });
       svg.appendChild(line);
@@ -104,7 +105,7 @@
     $('model-note').textContent = S.MODELS[state.model].name + ' · ' + S.MODELS[state.model].kind + ' — ' + S.MODELS[state.model].note;
     $('step-counter').textContent = '第 ' + (state.stepIndex + 1) + ' / ' + journey.steps.length + ' 步';
     $('step-title').textContent = step.title;
-    $('step-body').textContent = step.body;
+    $('step-body').textContent = S.getStepNote(step, state.model);
     $('trace').textContent = '追踪：' + (step.trace || '');
     $('view-note').textContent = journey.views[state.view];
     $('play-btn').textContent = state.playing ? '暂停' : '播放';
@@ -117,6 +118,7 @@
     });
     $('journey-select').value = state.journey;
     $('model-select').value = state.model;
+    $('compare-select').value = state.compareModel || '';
 
     // Persistent overview strip: every step, current highlighted, click to jump.
     const ov = $('overview');
@@ -161,7 +163,20 @@
       predBox.appendChild(fb);
     }
 
-    renderDiagram(journey, step);
+    renderDiagram(journey, step, $('diagram-svg'), false);
+    // Compare mode: same journey + step, second diagram + per-model annotation.
+    const cmpBox = $('compare-diagram');
+    if (state.compareModel) {
+      cmpBox.style.display = '';
+      $('compare-model-name').textContent = S.MODELS[state.compareModel].name + ' · ' + S.MODELS[state.compareModel].kind;
+      $('compare-model-note').textContent = S.MODELS[state.compareModel].note;
+      $('compare-step-note').textContent = S.getStepNote(step, state.compareModel);
+      $('main-model-name').textContent = S.MODELS[state.model].name + ' · 对比主型号';
+      renderDiagram(journey, step, $('compare-svg'), true);
+    } else {
+      cmpBox.style.display = 'none';
+      $('main-model-name').textContent = '';
+    }
     const code = $('code-panel');
     code.innerHTML = '';
     step.code.forEach(function (line) {
@@ -199,6 +214,7 @@
   };
   $('journey-select').onchange = function (e) { state.playing = false; stopTimer(); S.setJourney(state, e.target.value); render(); };
   $('model-select').onchange = function (e) { S.setModel(state, e.target.value); render(); };
+  $('compare-select').onchange = function (e) { S.setCompare(state, e.target.value || null); render(); };
   $('speed-select').onchange = function () { if (state.playing) startTimer(); };
   document.querySelectorAll('[data-view]').forEach(function (b) {
     b.onclick = function () { S.setView(state, b.dataset.view); render(); };

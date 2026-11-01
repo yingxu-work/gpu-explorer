@@ -41,14 +41,14 @@
         timeline: '时间视角：看这一步在整个过程中的位置，前后各一步是什么。',
       },
       steps: [
-        { title: '选定输出 C[3,7]', body: '先不算整张矩阵，只盯一个输出。问：它依赖哪些输入？', active: ['c-out'], flows: [], trace: 'C[3,7] ← 待查：它的输入尚未定位。', code: ['// 目标：只算一个输出', 'C[3][7] = sum_k A[3][k] * B[k][7]'] },
-        { title: '找到相关的 A 行与 B 列', body: 'C[3,7] 只依赖 A 的第 3 行和 B 的第 7 列，其他行列这一步都不用。', active: ['a-tile', 'b-tile'], flows: [], trace: 'C[3,7] ← A[3][:] 与 B[:][7]。', code: ['// 依赖', 'row = A[3][:]', 'col = B[:][7]'] },
-        { title: '划分 tile 与 block', body: '把大矩阵切成小块，一个 block 负责一块输出，块内再分给线程。', active: ['sm'], flows: [], trace: '一个输出 tile ← 一个 block；块内再分给线程。', code: ['// 划分（教学示意）', 'tile = 16 x 16', 'block -> 一个输出 tile'] },
-        { title: '把数据搬进 Shared Memory', body: '先把要反复用的 A、B 小块搬到片上共享存储，后面多次计算不用每次都去大显存。', active: ['smem', 'a-tile', 'b-tile'], flows: ['a-tile>smem', 'b-tile>smem'], trace: 'smem ← A tile + B tile；下一步复用，不再回大显存。', code: ['// 搬运', 'smem_A = load(A tile)', 'smem_B = load(B tile)', '__syncthreads() // 等大家都搬完'] },
-        { title: 'Warp 分工', body: '一个 warp 里的线程各算一部分，同一条指令、不同数据。注意：是分工，不是每个线程各算一张矩阵。', active: ['warp'], flows: ['smem>warp'], trace: 'warp 各 lane ← smem_A[lane] × smem_B[lane]。', code: ['// warp 内分工', 'lane = threadIdx.x % 32', 'partial = smem_A[lane] * smem_B[lane]'] },
-        { title: '在 SM 上乘加', body: '计算单元做乘加并累加。矩阵专用单元（如果模型里有）也是在这个位置接手规整的乘加，而不是凭空变快。', active: ['sm', 'warp'], flows: ['warp>sm'], trace: 'acc ← acc + partial（在 SM 上累加）。', code: ['// 累加', 'acc += partial'] },
-        { title: '同步与下一块', body: '算完一块要同步，再搬下一块。等待不是空闲的借口：它在等数据就位。', active: ['smem', 'sm'], flows: ['smem>sm'], trace: '下一块 tile ← smem 同步后重新搬运。', code: ['// 同步后继续', '__syncthreads()', '// 搬下一块 tile，重复'] },
-        { title: '写回 C[3,7]', body: '累加完成，把结果写回输出。倒查一遍：这个数来自哪一行、哪一列、哪几次搬运。', active: ['c-out'], flows: ['sm>c-out'], trace: 'C[3,7] ← acc；倒查：A 行、B 列、smem 搬运、warp 分工。', code: ['// 写回', 'C[3][7] = acc'] },
+        { title: '选定输出 C[3,7]', body: '先不算整张矩阵，只盯一个输出。问：它依赖哪些输入？', active: ['c-out'], flows: [], trace: 'C[3,7] ← 待查：它的输入尚未定位。', modelNotes: { h100: 'H100 视角：先把问题定成“一个输出”，再看组织：更大的计算阵列只是分工的载体，步骤本身不变。', a100: 'A100 视角：同样先定一个输出；组织方式不同，但“只算一个数、只依赖一行一列”这个起点不变。' }, code: ['// 目标：只算一个输出', 'C[3][7] = sum_k A[3][k] * B[k][7]'] },
+        { title: '找到相关的 A 行与 B 列', body: 'C[3,7] 只依赖 A 的第 3 行和 B 的第 7 列，其他行列这一步都不用。', active: ['a-tile', 'b-tile'], flows: [], trace: 'C[3,7] ← A[3][:] 与 B[:][7]。', modelNotes: { h100: 'H100 视角：依赖关系不变——A 第 3 行、B 第 7 列；换型号不会让无关行列突然变得相关。', a100: 'A100 视角：同上。对比的意义在后面几步（搬运、分工、累加），不在依赖本身。' }, code: ['// 依赖', 'row = A[3][:]', 'col = B[:][7]'] },
+        { title: '划分 tile 与 block', body: '把大矩阵切成小块，一个 block 负责一块输出，块内再分给线程。', active: ['sm'], flows: [], trace: '一个输出 tile ← 一个 block；块内再分给线程。', modelNotes: { h100: 'H100 视角：tile 划分是组织选择：块越大，一次搬运能复用的数据越多，但同步与等待的代价也要一起看。', a100: 'A100 视角：同样的 tile 思路，块内分工的粒度不同；先理解“块负责一块输出”，再谈哪种组织更划算。' }, code: ['// 划分（教学示意）', 'tile = 16 x 16', 'block -> 一个输出 tile'] },
+        { title: '把数据搬进 Shared Memory', body: '先把要反复用的 A、B 小块搬到片上共享存储，后面多次计算不用每次都去大显存。', active: ['smem', 'a-tile', 'b-tile'], flows: ['a-tile>smem', 'b-tile>smem'], trace: 'smem ← A tile + B tile；下一步复用，不再回大显存。', modelNotes: { h100: 'H100 视角：片上共享存储是复用的关键：A、B 小块搬进来一次，后续乘加反复读它，而不是每次回大显存。', a100: 'A100 视角：Shared Memory 的角色相同：搬进来、复用、同步；区别在容量与分工细节，不在“要不要搬”这一步。' }, code: ['// 搬运', 'smem_A = load(A tile)', 'smem_B = load(B tile)', '__syncthreads() // 等大家都搬完'] },
+        { title: 'Warp 分工', body: '一个 warp 里的线程各算一部分，同一条指令、不同数据。注意：是分工，不是每个线程各算一张矩阵。', active: ['warp'], flows: ['smem>warp'], trace: 'warp 各 lane ← smem_A[lane] × smem_B[lane]。', modelNotes: { h100: 'H100 视角：warp 分工不变：同一条指令、不同数据，每个 lane 算自己的一份 partial。', a100: 'A100 视角：warp 同样按线程组分工（教学示意按 warp 讲）；每个 lane 只算一份，累加在后面。' }, code: ['// warp 内分工', 'lane = threadIdx.x % 32', 'partial = smem_A[lane] * smem_B[lane]'] },
+        { title: '在 SM 上乘加', body: '计算单元做乘加并累加。矩阵专用单元（如果模型里有）也是在这个位置接手规整的乘加，而不是凭空变快。', active: ['sm', 'warp'], flows: ['warp>sm'], trace: 'acc ← acc + partial（在 SM 上累加）。', modelNotes: { h100: 'H100 视角：SM 上的乘加可以交给规整的矩阵单元接手——它仍是乘加，不是“跳过计算”。', a100: 'A100 视角：SM 同样做乘加累加；矩阵单元的存在与否改变的是这一步的组织，不是结果的定义。' }, code: ['// 累加', 'acc += partial'] },
+        { title: '同步与下一块', body: '算完一块要同步，再搬下一块。等待不是空闲的借口：它在等数据就位。', active: ['smem', 'sm'], flows: ['smem>sm'], trace: '下一块 tile ← smem 同步后重新搬运。', modelNotes: { h100: 'H100 视角：同步仍是瓶颈意识的来源：算得快不等于等得少，下一块没搬完就得等。', a100: 'A100 视角：同上：同步后搬下一块，重复直到累加完成；等待是过程的一部分，不是故障。' }, code: ['// 同步后继续', '__syncthreads()', '// 搬下一块 tile，重复'] },
+        { title: '写回 C[3,7]', body: '累加完成，把结果写回输出。倒查一遍：这个数来自哪一行、哪一列、哪几次搬运。', active: ['c-out'], flows: ['sm>c-out'], trace: 'C[3,7] ← acc；倒查：A 行、B 列、smem 搬运、warp 分工。', modelNotes: { h100: 'H100 视角：写回只写 C[3,7] 一个数；倒查时组织差异已不重要，重要的是行、列、搬运、分工这条链。', a100: 'A100 视角：同上：结果相同，路径的组织不同——这正是对比要教的东西：结果一样，代价与分工可以不一样。' }, code: ['// 写回', 'C[3][7] = acc'] },
       ],
     },
     pagetable: {
@@ -185,6 +185,7 @@
       selected: null,
       playing: false,
       predictions: {},
+      compareModel: (o.compareModel && MODELS[o.compareModel] && o.compareModel !== (MODELS[o.model] ? o.model : 'h100')) ? o.compareModel : null,
     };
   }
   function getPredict(journey, stepIndex) { return PREDICTS[journey + ':' + stepIndex] || null; }
@@ -200,6 +201,17 @@
   }
   function currentJourney(state) { return JOURNEYS[state.journey]; }
   function currentStep(state) { return currentJourney(state).steps[state.stepIndex]; }
+  function getStepNote(step, model) {
+    // Per-model annotation; defaults to the shared step body.
+    if (step.modelNotes && step.modelNotes[model]) return step.modelNotes[model];
+    return step.body;
+  }
+  function setCompare(state, model) {
+    if (!model) { state.compareModel = null; return state; }
+    if (!MODELS[model] || model === state.model) return state;
+    state.compareModel = model;
+    return state;
+  }
   function isAtStart(state) { return state.stepIndex === 0; }
   function isAtEnd(state) { return state.stepIndex === currentJourney(state).steps.length - 1; }
   function next(state) {
@@ -220,7 +232,13 @@
     state.journey = journey; state.stepIndex = 0; state.playing = false; state.selected = null;
     return state;
   }
-  function setModel(state, model) { if (MODELS[model]) state.model = model; return state; }
+  function setModel(state, model) {
+    if (MODELS[model]) {
+      state.model = model;
+      if (state.compareModel === model) state.compareModel = null;
+    }
+    return state;
+  }
   function setView(state, view) {
     // View switch must preserve journey, model, step and selection.
     if (VIEWS.indexOf(view) >= 0) state.view = view;
@@ -237,9 +255,11 @@
     return next(state);
   }
   function encodeState(state) {
-    return ['j=' + encodeURIComponent(state.journey), 'm=' + encodeURIComponent(state.model),
+    var parts = ['j=' + encodeURIComponent(state.journey), 'm=' + encodeURIComponent(state.model),
       'v=' + encodeURIComponent(state.view), 's=' + state.stepIndex,
-      'sel=' + encodeURIComponent(state.selected || '')].join('&');
+      'sel=' + encodeURIComponent(state.selected || '')];
+    if (state.compareModel) parts.push('cmp=' + encodeURIComponent(state.compareModel));
+    return parts.join('&');
   }
   function decodeState(hash) {
     const out = createState({});
@@ -253,10 +273,12 @@
     if (!isNaN(s)) out.stepIndex = Math.max(0, Math.min(currentJourney(out).steps.length - 1, s));
     const sel = params.get('sel');
     if (sel) select(out, sel);
+    const cmp = params.get('cmp');
+    if (cmp) setCompare(out, cmp);
     return out;
   }
 
-  const api = { MODELS, JOURNEYS, VIEWS, PREDICTS, createState, currentJourney, currentStep, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, playStep, encodeState, decodeState, getPredict, predict, predictionMade };
+  const api = { MODELS, JOURNEYS, VIEWS, PREDICTS, createState, currentJourney, currentStep, getStepNote, setCompare, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, playStep, encodeState, decodeState, getPredict, predict, predictionMade };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerState = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

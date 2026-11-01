@@ -141,5 +141,41 @@ test('all journeys have steps, nodes, code and view text', function () {
   assert.ok(Object.keys(S.MODELS).length >= 6);
 });
 
+test('compare mode preserves step/journey/view/selection and rejects same/invalid', function () {
+  var s = S.createState({});
+  S.goto(s, 3); S.setView(s, 'data'); S.select(s, 'smem');
+  S.setCompare(s, 'a100');
+  eq(s.compareModel, 'a100'); eq(s.stepIndex, 3); eq(s.journey, 'gemm'); eq(s.view, 'data'); eq(s.selected, 'smem');
+  S.setCompare(s, 'h100'); eq(s.compareModel, 'a100'); // same as primary: rejected
+  S.setCompare(s, 'nope'); eq(s.compareModel, 'a100');
+  S.setCompare(s, null); eq(s.compareModel, null);
+});
+test('setModel to the compare model clears compare', function () {
+  var s = S.createState({});
+  S.setCompare(s, 'a100'); eq(s.compareModel, 'a100');
+  S.setModel(s, 'a100'); eq(s.compareModel, null); eq(s.model, 'a100');
+});
+test('per-model GEMM notes exist for H100 and A100, default to shared body', function () {
+  var j = S.JOURNEYS.gemm;
+  j.steps.forEach(function (step, i) {
+    assert.ok(step.modelNotes && step.modelNotes.h100 && step.modelNotes.a100, 'GEMM step ' + i + ' needs h100+a100 notes');
+    assert.notStrictEqual(step.modelNotes.h100, step.modelNotes.a100, 'notes must differ: step ' + i);
+    eq(S.getStepNote(step, 'h100'), step.modelNotes.h100);
+    eq(S.getStepNote(step, 'a100'), step.modelNotes.a100);
+  });
+  var pt = S.JOURNEYS.pagetable.steps[0];
+  eq(S.getStepNote(pt, 'a20pro'), pt.body); // no per-model note: shared body
+});
+test('compare mode round-trips in URL hash', function () {
+  var s = S.createState({});
+  S.goto(s, 4); S.setCompare(s, 'a100');
+  var d = S.decodeState('#' + S.encodeState(s));
+  eq(d.compareModel, 'a100'); eq(d.stepIndex, 4); eq(d.model, 'h100');
+  var bad = S.decodeState('#j=gemm&m=a100&cmp=a100');
+  eq(bad.compareModel, null); // compare equal to primary is dropped
+  var plain = S.decodeState('#j=gemm&m=h100&s=2');
+  eq(plain.compareModel, null);
+});
+
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);
