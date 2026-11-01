@@ -215,6 +215,64 @@ test('Round 11 stacking: side blocks sit 1.0 from the column, shelf spans the ga
   assert.ok(byId['cut-core'].x === -byId['gpu-block'].x, 'shelf geometry must stay symmetric');
 });
 
+test('Round 14 A100 (GA100/Ampere, official): 7 GPC groups, L2 2 partitions, HBM 5 stacks, NVLink 12', function () {
+  var groups = M.a100GpcGroups();
+  assert.strictEqual(groups.length, 8, '8 GPC positions (full GA100), 7 enabled for A100');
+  assert.strictEqual(groups.filter(function (g) { return g.enabled; }).length, 7, 'A100 uses 7 GPCs');
+  assert.strictEqual(groups.filter(function (g) { return !g.enabled; }).length, 1, '1 disabled GPC position');
+  var north = groups.filter(function (g) { return g.z < 0; });
+  var south = groups.filter(function (g) { return g.z > 0; });
+  assert.strictEqual(north.length, 4, 'north row 4 GPCs');
+  assert.strictEqual(south.length, 4, 'south row 3 enabled + 1 disabled');
+  var l2 = M.a100L2Partitions();
+  assert.strictEqual(l2.length, 2, 'L2 must be 2 partitions (official Ampere text)');
+  assert.ok(l2[0].x < 0 && l2[1].x > 0, 'partitions must sit left and right of the centre seam');
+  assert.strictEqual(M.a100HbmStacks().length, 5, 'A100 HBM must be 5 stacks (official; full GA100 = 6)');
+  assert.strictEqual(M.a100Nvlink().length, 12, 'A100 NVLink strip must be 12 segments');
+  assert.strictEqual(M.a100TopStrips().length, 2, 'north edge must carry PCIe + GigaThread strips');
+  var tiles = M.a100SmTiles(M.boxFor('gemm', S.JOURNEYS.gemm.nodes.filter(function (n) { return n.id === 'sm'; })[0], 'a100'));
+  assert.strictEqual(tiles.length, 28, '7 enabled GPCs x 2x2 tiles = 28 tiles (teaching count, NOT 108 SMs)');
+});
+test('Round 14 A100 SM sub-cells: Figure 5 band order, no overlaps, inside tile', function () {
+  var box = M.boxFor('gemm', S.JOURNEYS.gemm.nodes.filter(function (n) { return n.id === 'sm'; })[0], 'a100');
+  var cells = M.a100SmSubCells(box);
+  assert.strictEqual(cells.length, 420, '28 tiles x 15 sub-cells = 420');
+  function byRole(r) { return cells.filter(function (c) { return c.role === r; }); }
+  assert.strictEqual(byRole('l0').length, 28, 'one L0 strip per tile');
+  assert.strictEqual(byRole('scheduler').length, 28, 'one warp scheduler per tile');
+  assert.strictEqual(byRole('dispatch').length, 28, 'one dispatch unit per tile');
+  assert.strictEqual(byRole('register').length, 28, 'one register file per tile');
+  assert.strictEqual(byRole('tensor').length, 28, 'one tensor core per tile (4 per SM in the article; one per tile here)');
+  assert.strictEqual(byRole('ldst').length, 112, '4 LD/ST per tile');
+  assert.strictEqual(byRole('sfu').length, 28, 'one SFU per tile');
+  var t0 = cells.filter(function (c) { return c.tile === 0; });
+  function band(role) { var cs = t0.filter(function (c) { return c.role === role; }); return { lo: Math.min.apply(null, cs.map(function (c) { return c.dz - c.d / 2; })), hi: Math.max.apply(null, cs.map(function (c) { return c.dz + c.d / 2; })) }; }
+  assert.ok(band('l0').hi < band('scheduler').lo, 'L0 must sit north of the scheduler');
+  assert.ok(band('scheduler').hi < band('dispatch').lo, 'scheduler must sit north of dispatch');
+  assert.ok(band('dispatch').hi < band('register').lo, 'dispatch must sit north of the register file');
+  assert.ok(band('register').hi < band('int32').lo, 'register file must sit north of the datapath row');
+  assert.ok(band('int32').hi < band('ldst').lo, 'datapath row must sit north of the LD/ST+SFU foot row');
+  cells.forEach(function (c) {
+    assert.ok(Math.abs(c.dx) + c.w / 2 <= box.w / 2 + 0.001, c.role + ' must fit inside the SM region in x');
+    assert.ok(Math.abs(c.dz) + c.d / 2 <= box.d / 2 + 0.001, c.role + ' must fit inside the SM region in z');
+  });
+});
+test('Round 14 A100 layout differs from default and default is unchanged', function () {
+  var a = {}, d = {};
+  M.boxesFor('gemm', S.JOURNEYS.gemm, 'a100').forEach(function (b) { a[b.id] = b; });
+  M.boxesFor('gemm', S.JOURNEYS.gemm).forEach(function (b) { d[b.id] = b; });
+  assert.ok(a['sm'].z === 0 && a['smem'].z > a['sm'].z, 'A100 smem must sit south of the SM region');
+  assert.ok(a['warp'].z < a['sm'].z, 'A100 warp must sit north of the SM region');
+  assert.ok(a['a-tile'].x < d['a-tile'].x, 'A100 inputs must sit further west (HBM controller gap)');
+  assert.ok(d['sm'].x === 2.5 && d['sm'].z === -0.9, 'default (H100 teaching) layout must be untouched by Round 14');
+  assert.ok(d['smem'].z === 3.6, 'default smem position must be untouched');
+});
+test('Round 14 model notes are tagged by exact model, no 140B figure anywhere', function () {
+  assert.ok(/GA100\/Ampere/.test(S.MODELS.a100.note), 'A100 note must tag GA100/Ampere');
+  assert.ok(/GH100\/Hopper/.test(S.MODELS.h100.note), 'H100 note must tag GH100/Hopper');
+  assert.ok(!/140/.test(S.MODELS.h100.note + S.MODELS.a100.note + S.MODELS.rtx5090.note), 'no 140B leak/rumor figure in model notes');
+});
+
 test('Round 11 die journeys: heights raised, footprints unchanged', function () {
   ['pagetable', 'pixel'].forEach(function (key) {
     M.boxesFor(key, S.JOURNEYS[key]).forEach(function (b) {

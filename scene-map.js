@@ -107,6 +107,143 @@
       'gpu-block': { x: -6.9, z: 2.2, w: 3.2, d: 3.0, h: 0.9, y: 3.15 }
     }
   };
+  // Round 14 — A100 (GA100/Ampere) layout, ONLY when model === 'a100'.
+  // Source (official, NOT a leak): NVIDIA, "NVIDIA Ampere Architecture
+  // In-Depth", Figure 4 (GA100 full GPU) and Figure 5 (GA100 SM).
+  // Figure 4, transcribed from a fresh gpuserver Chrome screenshot
+  // (r14-fig4-ga100-full.png): top edge PCIe Gen4 Host Interface +
+  // GigaThread Engine with MIG Control; 8 GPCs in 4 top + 4 bottom
+  // rows; a central L2 Cache band across the full width, in 2
+  // partitions; HBM2 Memory Controllers on both flanks; bottom
+  // edge High-Speed Hub + NVLink strip. Text: full GA100 = 8 GPCs,
+  // 8 TPCs/GPC, 2 SMs/TPC, 16 SMs/GPC, 128 SMs; A100 = 7 GPCs,
+  // 108 SMs, 64 FP32/SM (6912 total), 32 FP64/SM (3456), 64 INT32/SM
+  // (6912), 4 Tensor Cores/SM (432), L1/shared 192KB/SM, L2 40MB in
+  // 2 partitions outside the GPCs, HBM2 5 stacks / 10 controllers /
+  // 40GB / 1555 GB/s, die 826 mm2, 54.2B transistors, TSMC 7nm.
+  // Figure 5, transcribed (r14-fig5-sm-full.png): one SM = 4
+  // subpartitions (2x2); each subpartition, top to bottom: L0
+  // Instruction Cache, Warp Scheduler (32 thread/clk), Dispatch
+  // Unit (32 thread/clk), Register File (16384 x 32-bit), datapath
+  // columns INT32 / FP32 / FP64 + a large TENSOR CORE, LD/ST +
+  // SFU at the foot; whole SM topped by L1 Instruction Cache and
+  // footed by 192KB L1 Data Cache / Shared Memory, then Tex units.
+  // Teaching simplifications, labelled here and in the report, NOT
+  // as official specs: (a) the SM region shows 7 GPC groups, each
+  // with 2x2 = 4 SM tiles (28 tiles), NOT 108 SMs — 108 individual
+  // tiles would be unreadable dots and would break step mapping;
+  // the 8th GPC position is shown as an empty outline, because
+  // A100 uses 7 of the full GA100's 8 GPCs; (b) Shared Memory is
+  // shown as one die-level strip for step tracing — in Figure 5 it
+  // is 192KB per SM at the foot of each SM; (c) HBM stack
+  // distribution across the two flanks (2 west / 3 east) is a
+  // teaching arrangement — the official count is 5 stacks, the
+  // flank split is not stated in the article; (d) colours follow
+  // Figure 5's bands (light blue / orange / brown / teal / greens),
+  // not a photorealistic silicon colour.
+  // Other models keep their Round 13 layout: this table is never
+  // used unless model === 'a100', so GA100/Ampere can never leak
+  // into the H100 (GH100/Hopper), RTX 5090 (GB202/Blackwell) or
+  // MI300X diagrams.
+  var A100_LAYOUT = {
+    'a-tile': { x: -9.0, z: -2.4, w: 2.8, d: 2.0, h: 0.95 },
+    'b-tile': { x: -9.0, z: 2.4, w: 2.8, d: 2.0, h: 0.95 },
+    warp:     { x: 0,    z: -4.0, w: 12.0, d: 0.8, h: 1.0 },
+    sm:       { x: 0,    z: 0,    w: 12.0, d: 6.4, h: 1.1 },
+    smem:     { x: 0,    z: 4.0,  w: 12.0, d: 1.0, h: 0.85 },
+    'c-out':  { x: 9.0,  z: 0,    w: 2.4, d: 2.4, h: 1.0 }
+  };
+  // 7 GPC groups: north row 4 groups, south row 3 groups + 1 empty
+  // outline (the 8th, unused GPC position). Group centres in SM
+  // region coordinates (SM box centre = 0,0; region 12 x 6.4).
+  function a100GpcGroups() {
+    var out = [];
+    var gx = [-4.525, -1.575, 1.375, 4.325];
+    var i;
+    for (i = 0; i < 4; i++) out.push({ gpc: i, x: gx[i], z: -1.9, w: 2.75, d: 2.6, enabled: true });
+    for (i = 0; i < 3; i++) out.push({ gpc: 4 + i, x: gx[i], z: 1.9, w: 2.75, d: 2.6, enabled: true });
+    out.push({ gpc: 7, x: gx[3], z: 1.9, w: 2.75, d: 2.6, enabled: false });
+    return out;
+  }
+  // SM tiles inside the GPC groups: 2x2 per enabled group = 28 tiles.
+  function a100SmTiles(box) {
+    var groups = a100GpcGroups();
+    var out = [];
+    groups.forEach(function (g) {
+      if (!g.enabled) return;
+      var tw = (g.w - 3 * 0.12) / 2, td = (g.d - 3 * 0.12) / 2;
+      var ci, cj;
+      for (ci = 0; ci < 2; ci++) {
+        for (cj = 0; cj < 2; cj++) {
+          out.push({
+            gpc: g.gpc,
+            dx: g.x - g.w / 2 + 0.12 + tw / 2 + ci * (tw + 0.12),
+            dz: g.z - g.d / 2 + 0.12 + td / 2 + cj * (td + 0.12),
+            w: tw, d: td
+          });
+        }
+      }
+    });
+    return out;
+  }
+  var A100_SUB_COLOR = { l0: 0x7fb3d5, scheduler: 0xd9822b, dispatch: 0x8a5a2b, register: 0x2f6f7a, int32: 0x2e5a2e, fp32: 0x6fbf5a, fp64: 0x6a7a3a, tensor: 0x4f8a3a, ldst: 0x7a2e2e, sfu: 0xa83a3a };
+  // Figure 5 bands per SM tile, north to south: L0, warp scheduler,
+  // dispatch, register file, datapath (INT32/FP32/FP64 + tensor),
+  // LD/ST + SFU. Heights are relief steps on the tile top.
+  function a100SmSubCells(box) {
+    var tiles = a100SmTiles(box);
+    var out = [];
+    tiles.forEach(function (t, ti) {
+      var w = t.w - 0.08;
+      function strip(role, dz, d, h, color) { out.push({ role: role, tile: ti, gpc: t.gpc, dx: t.dx, dz: t.dz + dz, w: w, d: d, h: h, color: color }); }
+      strip('l0', -0.40, 0.12, 0.10, A100_SUB_COLOR.l0);
+      strip('scheduler', -0.26, 0.12, 0.10, A100_SUB_COLOR.scheduler);
+      strip('dispatch', -0.12, 0.12, 0.10, A100_SUB_COLOR.dispatch);
+      strip('register', 0.02, 0.12, 0.10, A100_SUB_COLOR.register);
+      // Datapath row: 2 INT32 + 2 FP32 + 1 FP64 + 1 tensor block.
+      var x0 = t.dx - w / 2, seg = w / 6;
+      [['int32', 0], ['int32', 1], ['fp32', 2], ['fp32', 3], ['fp64', 4]].forEach(function (p) {
+        out.push({ role: p[0], tile: ti, gpc: t.gpc, dx: x0 + (p[1] + 0.5) * seg, dz: t.dz + 0.20, w: seg - 0.03, d: 0.20, h: 0.10, color: A100_SUB_COLOR[p[0]] });
+      });
+      out.push({ role: 'tensor', tile: ti, gpc: t.gpc, dx: x0 + 5.5 * seg, dz: t.dz + 0.20, w: seg - 0.03, d: 0.20, h: 0.14, color: A100_SUB_COLOR.tensor });
+      // Foot row: 4 LD/ST + 1 SFU.
+      var fseg = w / 5;
+      var fi;
+      for (fi = 0; fi < 4; fi++) out.push({ role: 'ldst', tile: ti, gpc: t.gpc, dx: x0 + (fi + 0.5) * fseg, dz: t.dz + 0.40, w: fseg - 0.03, d: 0.14, h: 0.10, color: A100_SUB_COLOR.ldst });
+      out.push({ role: 'sfu', tile: ti, gpc: t.gpc, dx: x0 + 4.5 * fseg, dz: t.dz + 0.40, w: fseg - 0.03, d: 0.14, h: 0.10, color: A100_SUB_COLOR.sfu });
+    });
+    return out;
+  }
+  // Figure 4 scenery, A100 only: L2 in 2 partitions across the
+  // central band; HBM 5 stacks (2 west / 3 east, teaching split);
+  // HBM controllers on both flanks; NVLink 12 segments on the
+  // south edge; PCIe + GigaThread strips on the north edge.
+  function a100L2Partitions() {
+    return [
+      { x: -3.0, z: 0, w: 5.8, d: 1.2, h: 1.0, color: 0x8ecae6 },
+      { x: 3.0, z: 0, w: 5.8, d: 1.2, h: 1.0, color: 0x8ecae6 }
+    ];
+  }
+  function a100HbmStacks() {
+    return [
+      { x: -11.9, z: -2.2, w: 2.6, d: 3.0 }, { x: -11.9, z: 2.2, w: 2.6, d: 3.0 },
+      { x: 11.9, z: -2.7, w: 2.6, d: 2.0 }, { x: 11.9, z: 0, w: 2.6, d: 2.0 }, { x: 11.9, z: 2.7, w: 2.6, d: 2.0 }
+    ];
+  }
+  function a100HbmControllers() {
+    return [{ x: -7.0, z: 0, w: 0.8, d: 6.4 }, { x: 7.0, z: 0, w: 0.8, d: 6.4 }];
+  }
+  function a100Nvlink() {
+    var out = [], i;
+    for (i = 0; i < 12; i++) out.push({ x: -9.5 + i * 1.727, z: 4.7, w: 1.4, d: 0.3 });
+    return out;
+  }
+  function a100TopStrips() {
+    return [
+      { label: 'pcie', z: -4.7, w: 20.8, d: 0.3, color: 0x6a6a72 },
+      { label: 'gigathread', z: -4.35, w: 20.8, d: 0.3, color: 0xd9822b }
+    ];
+  }
   // Explode offsets per journey. Die: radial from the chip centre, so the
   // grid stays regular when opened. Stacking: layers rise monotonically
   // (nothing sinks below the slab) and side blocks slide outward.
@@ -117,9 +254,9 @@
       'cut-core': [1.8, 0.35, 0.6], 'gpu-block': [-1.8, 0.35, 0.6]
     }
   };
-  function boxFor(journeyId, node) {
+  function boxFor(journeyId, node, model) {
     var color = KIND_COLOR[node.kind] || 0x66707e;
-    var lay = LAYOUT[journeyId] && LAYOUT[journeyId][node.id];
+    var lay = (journeyId === 'gemm' && model === 'a100' && A100_LAYOUT[node.id]) || (LAYOUT[journeyId] && LAYOUT[journeyId][node.id]);
     if (lay) {
       var isStack = journeyId === 'stacking';
       var ex = EXPLODE.stacking && EXPLODE.stacking[node.id];
@@ -337,8 +474,8 @@
       z: box.z + box.explode[2] * t
     };
   }
-  function boxesFor(journeyId, journey) {
-    return journey.nodes.map(function (n) { return boxFor(journeyId, n); });
+  function boxesFor(journeyId, journey, model) {
+    return journey.nodes.map(function (n) { return boxFor(journeyId, n, model); });
   }
   function focusCentroid(journeyId, journey, step) {
     var boxes = boxesFor(journeyId, journey);
@@ -348,7 +485,7 @@
     active.forEach(function (b) { sx += b.x; sy += b.y; sz += b.z; });
     return { x: sx / active.length, y: sy / active.length, z: sz / active.length };
   }
-  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, SUB_COLOR: SUB_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails, stackingShelf: stackingShelf, floorplanL2: floorplanL2, smGridTiles: smGridTiles, smTileSubCells: smTileSubCells, l2Banks: l2Banks, hbmLayers: hbmLayers, interconnectBus: interconnectBus };
+  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, SUB_COLOR: SUB_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails, stackingShelf: stackingShelf, floorplanL2: floorplanL2, smGridTiles: smGridTiles, smTileSubCells: smTileSubCells, l2Banks: l2Banks, hbmLayers: hbmLayers, interconnectBus: interconnectBus, a100GpcGroups: a100GpcGroups, a100SmTiles: a100SmTiles, a100SmSubCells: a100SmSubCells, a100L2Partitions: a100L2Partitions, a100HbmStacks: a100HbmStacks, a100HbmControllers: a100HbmControllers, a100Nvlink: a100Nvlink, a100TopStrips: a100TopStrips };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerSceneMap = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));
