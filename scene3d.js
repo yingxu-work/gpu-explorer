@@ -28,6 +28,17 @@
 // readable; (3) stacking side blocks — a shared base shelf under
 // each side block spans the gap to the column face (see
 // M.stackingShelf), so they no longer float detached.
+//
+// Round 12 (GEMM only, shell/copy/budgets unchanged): the die stops
+// being a pipeline of solid-colour blocks and becomes a floorplan
+// (see scene-map.js: west HBM inputs, L2 band, SM grid, shared
+// front strip, east output). Surface detail is procedural, not
+// more solid colours: a canvas die texture (interconnect traces,
+// power grid, via dots, seal ring) on the slab, an instanced pin
+// fringe around the package, and the SM region drawn as one
+// InstancedMesh of 18 tiles (1 draw call) instead of one big
+// block. No Blender/glTF: the procedural route keeps the site
+// under 15MB and keeps step highlighting mapped to real nodes.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
@@ -74,6 +85,56 @@ function makeLabelSprite(text, colorHex) {
   return sprite;
 }
 function colorHex(hex) { return '#' + hex.toString(16).padStart(6, '0'); }
+
+// Round 12 procedural die texture (GEMM only): a 1024x472 canvas
+// painted with the surface a real die actually shows — fine
+// interconnect traces, a coarser power grid, via dots, subtle
+// material variation, and a seal ring at the edge. No text in the
+// texture (canvas-to-plane orientation would mirror it); the L2
+// band gets its own engraved-style sprite label instead. The
+// pattern is deterministic (seeded LCG), so screenshots are
+// reproducible and no image asset is added to the site.
+function makeDieTexture() {
+  var canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 472;
+  var ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#2a2e33'; ctx.fillRect(0, 0, 1024, 472);
+  var seed = 12345;
+  function rnd() { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+  var i;
+  for (i = 0; i < 900; i++) {
+    ctx.fillStyle = 'rgba(255,255,255,' + (rnd() * 0.03).toFixed(3) + ')';
+    ctx.fillRect(rnd() * 1024, rnd() * 472, 8 + rnd() * 40, 4 + rnd() * 20);
+  }
+  ctx.strokeStyle = 'rgba(61,67,77,0.55)'; ctx.lineWidth = 2;
+  for (i = 0; i <= 1024; i += 128) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 472); ctx.stroke(); }
+  for (i = 0; i <= 472; i += 118) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(1024, i); ctx.stroke(); }
+  var traceColors = ['#3a414c', '#4b5563', '#c9a86a'];
+  for (i = 0; i < 240; i++) {
+    var horiz = rnd() > 0.5;
+    var x0 = rnd() * 1024, y0 = rnd() * 472, len = 40 + rnd() * 200;
+    ctx.strokeStyle = traceColors[Math.floor(rnd() * 3)];
+    ctx.globalAlpha = ctx.strokeStyle === '#c9a86a' ? 0.30 : 0.45;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (horiz) { ctx.moveTo(x0, y0); ctx.lineTo(Math.min(x0 + len, 1024), y0); }
+    else { ctx.moveTo(x0, y0); ctx.lineTo(x0, Math.min(y0 + len, 472)); }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(155,155,164,0.20)';
+  for (var vx = 16; vx < 1024; vx += 32) for (var vy = 16; vy < 472; vy += 32) {
+    ctx.beginPath(); ctx.arc(vx, vy, 1.2, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.strokeStyle = 'rgba(74,74,82,0.7)'; ctx.lineWidth = 3;
+  ctx.strokeRect(6, 6, 1012, 460);
+  ctx.strokeStyle = 'rgba(74,74,82,0.35)'; ctx.lineWidth = 1;
+  ctx.strokeRect(18, 18, 988, 436);
+  var tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
 
 function SceneView(container, isCompare) {
   this.container = container;
@@ -169,7 +230,7 @@ SceneView.prototype.build = function (journeyId, journey) {
     if (c.geometry) c.geometry.dispose();
   }
   this.meshes = {}; this.labels = {}; this.flowLines = [];
-  this.details = []; this.tsvLines = [];
+  this.details = []; this.tsvLines = []; this.smGrid = null;
   this.journeyId = journeyId;
   var boxes = M.boxesFor(journeyId, journey);
   var isStack = journeyId === 'stacking';
@@ -189,6 +250,18 @@ SceneView.prototype.build = function (journeyId, journey) {
   dieSlab.position.set(0, -0.55, slabZ);
   dieSlab.receiveShadow = true;
   this.group.add(dieSlab);
+  // Round 12 (GEMM only): the die surface itself carries the
+  // detail — a thin textured plane just above the slab top, so
+  // blocks sit on traces and a power grid instead of on flat grey.
+  if (journeyId === 'gemm') {
+    var dieTex = new THREE.Mesh(
+      new THREE.PlaneGeometry(slabW, slabD),
+      new THREE.MeshStandardMaterial({ map: makeDieTexture(), roughness: 0.65, metalness: 0.35 }));
+    dieTex.rotation.x = -Math.PI / 2;
+    dieTex.position.set(0, -0.29, slabZ);
+    dieTex.receiveShadow = true;
+    this.group.add(dieTex);
+  }
   // Raised rim frame (4 thin bars, GEX-style): the die's edge, so the
   // blocks inside it read as one chip even at overview zoom.
   var self = this;
@@ -217,12 +290,34 @@ SceneView.prototype.build = function (journeyId, journey) {
   this.group.add(substrate);
   // Front pin bar (GEX): one fine gold line along the package front
   // edge, so the near-black package has a defined edge against the
-  // near-black background instead of dissolving into it.
-  var pinBar = new THREE.Mesh(
-    new THREE.BoxGeometry(subW - 1.5, 0.08, 0.15),
-    new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 0.4, metalness: 0.6 }));
-  pinBar.position.set(0, -1.12, slabZ + subD / 2 - 0.3);
-  this.group.add(pinBar);
+  // near-black background instead of dissolving into it. Round 12
+  // (GEMM only): a full instanced pin fringe around the package
+  // instead — ~90 pins, still 1 draw call — so the package reads
+  // as a real chip from every orbit angle, not just the front.
+  if (journeyId === 'gemm') {
+    var pinGeo = new THREE.BoxGeometry(0.22, 0.10, 0.55);
+    var pinMat = new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 0.4, metalness: 0.6 });
+    var pinCount = 0;
+    for (var px = -14; px <= 14; px += 0.9) pinCount += 2;
+    for (var pz = -5.5; pz <= 5.5; pz += 0.9) pinCount += 2;
+    var pins = new THREE.InstancedMesh(pinGeo, pinMat, pinCount);
+    var dummy = new THREE.Object3D(); var pi = 0;
+    for (var px2 = -14; px2 <= 14; px2 += 0.9) {
+      dummy.rotation.set(0, 0, 0); dummy.position.set(px2, -1.12, slabZ + subD / 2 - 0.3); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
+      dummy.position.set(px2, -1.12, slabZ - subD / 2 + 0.3); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
+    }
+    for (var pz2 = -5.5; pz2 <= 5.5; pz2 += 0.9) {
+      dummy.rotation.set(0, Math.PI / 2, 0); dummy.position.set(subW / 2 - 0.3, -1.12, slabZ + pz2); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
+      dummy.position.set(-subW / 2 + 0.3, -1.12, slabZ + pz2); dummy.updateMatrix(); pins.setMatrixAt(pi++, dummy.matrix);
+    }
+    this.group.add(pins);
+  } else {
+    var pinBar = new THREE.Mesh(
+      new THREE.BoxGeometry(subW - 1.5, 0.08, 0.15),
+      new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 0.4, metalness: 0.6 }));
+    pinBar.position.set(0, -1.12, slabZ + subD / 2 - 0.3);
+    this.group.add(pinBar);
+  }
   var self = this;
   if (journeyId === 'gemm') {
     // HBM package context (scenery, not selectable nodes): FLAT slabs
@@ -247,6 +342,29 @@ SceneView.prototype.build = function (journeyId, journey) {
         new THREE.MeshStandardMaterial({ color: 0xc9a86a, roughness: 0.4, metalness: 0.6 }));
       gold.position.set(tx + (tx < 0 ? -1.4 : 1.4), -0.05, 0); self.group.add(gold);
     });
+  }
+  // Round 12 (GEMM only): the central L2 band — scenery from
+  // scene-map.js, not a selectable node. A low grey strip west
+  // of the SM grid, with a small always-visible engraved-style
+  // label (scenery labels are not node labels, so the sparse
+  // node-label rule is unaffected). Without it the floorplan
+  // would read as inputs jumping straight into SMs.
+  if (journeyId === 'gemm') {
+    var l2 = M.floorplanL2();
+    var l2Mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(l2.w, l2.h, l2.d),
+      new THREE.MeshStandardMaterial({ color: l2.color, roughness: 0.6, metalness: 0.2 }));
+    l2Mesh.position.set(l2.x, l2.h / 2 - 0.25, l2.z);
+    l2Mesh.castShadow = true; l2Mesh.receiveShadow = true;
+    var l2Edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(l2Mesh.geometry),
+      new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.5 }));
+    l2Mesh.add(l2Edges);
+    self.group.add(l2Mesh);
+    var l2Sprite = makeLabelSprite('L2', '#9b9ba4');
+    l2Sprite.scale.set(2.2, 0.48, 1);
+    l2Sprite.position.set(l2.x, l2.h / 2 + 0.45, l2.z);
+    self.group.add(l2Sprite);
   }
   boxes.forEach(function (box) {
     var node = journey.nodes.filter(function (n) { return n.id === box.id; })[0];
@@ -315,25 +433,34 @@ SceneView.prototype.build = function (journeyId, journey) {
     sprite.position.set(box.x, box.y + box.h / 2 + (box.labelDy || 0.55), box.z + (box.labelZ || 0));
     self.group.add(sprite); self.labels[box.id] = sprite;
   });
-  // SM subpartition detail (GEMM only): non-pickable detail meshes
-  // from the pure mapping in scene-map.js. They follow the SM box on
-  // explode (see update) and dim with it (see applyHighlight).
+  // Round 12 SM grid (GEMM only): the SM region is drawn as one
+  // InstancedMesh of 18 tiles (pure offsets from scene-map.js),
+  // so the region reads as an array of SMs — the single most
+  // Lego-breaking change, since one big blue block was the
+  // clearest "toy brick" in Round 11. Non-pickable (not in the
+  // meshes dict, so raycasts still hit the SM region slab under
+  // it); it follows the SM box on explode (see update) and dims
+  // with it (see applyHighlight). The old 2x2 smDetails are kept
+  // in scene-map.js for tests but are no longer drawn: 4 giant
+  // subpartitions on an 8-wide region read as 4 more bricks.
   if (journeyId === 'gemm') {
     var smBox = boxes.filter(function (b) { return b.id === 'sm'; })[0];
     var smMesh = self.meshes['sm'];
     if (smBox && smMesh) {
-      M.smDetails(smBox).forEach(function (d) {
-        var dmat = new THREE.MeshStandardMaterial({ color: d.color, roughness: 0.6, metalness: 0.2 });
-        var dmesh = new THREE.Mesh(new THREE.BoxGeometry(d.w, d.h, d.d), dmat);
-        dmesh.receiveShadow = true;
-        var dedges = new THREE.LineSegments(
-          new THREE.EdgesGeometry(dmesh.geometry),
-          new THREE.LineBasicMaterial({ color: 0x161618, transparent: true, opacity: 0.5 }));
-        dmesh.add(dedges);
-        dmesh.userData = { baseColor: d.color, parentId: 'sm' };
-        self.group.add(dmesh);
-        self.details.push({ mesh: dmesh, box: smBox, dx: d.dx, dy: d.dy, dz: d.dz });
+      var tiles = M.smGridTiles(smBox);
+      var tileGeo = new THREE.BoxGeometry(tiles[0].w, 0.22, tiles[0].d);
+      var tileMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.25 });
+      var grid = new THREE.InstancedMesh(tileGeo, tileMat, tiles.length);
+      var gd = new THREE.Object3D(); var gc = new THREE.Color();
+      tiles.forEach(function (t, ti) {
+        gd.position.set(smBox.x + t.dx, smBox.y + smBox.h / 2 + 0.11, smBox.z + t.dz);
+        gd.updateMatrix(); grid.setMatrixAt(ti, gd.matrix);
+        var v = 0.92 + ((ti * 37) % 5) * 0.03;
+        grid.setColorAt(ti, gc.setHex(0x89b4fa).multiplyScalar(v));
       });
+      grid.castShadow = true; grid.receiveShadow = true;
+      self.group.add(grid);
+      self.smGrid = { mesh: grid, box: smBox, tiles: tiles };
     }
   }
   // TSV hints (stacking only): sparse vertical lines between
@@ -441,6 +568,14 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     d.mesh.material.emissive = new THREE.Color((parentSel || parentActive) ? ACTIVE_EMISSIVE : 0x000000);
     d.mesh.material.emissiveIntensity = (parentSel || parentActive) ? 0.20 : 0;
   });
+  // Round 12: the SM grid dims with its region slab the same way
+  // (material colour multiplies the per-tile instance colours).
+  if (this.smGrid) {
+    var gridActive = !!active['sm']; var gridSel = selectedId === 'sm';
+    this.smGrid.mesh.material.color.setScalar((gridActive || gridSel) ? 1 : DIM_FACTOR);
+    this.smGrid.mesh.material.emissive = new THREE.Color((gridSel || gridActive) ? ACTIVE_EMISSIVE : 0x000000);
+    this.smGrid.mesh.material.emissiveIntensity = (gridSel || gridActive) ? 0.20 : 0;
+  }
   if (step) {
     var live = {}; (step.flows || []).forEach(function (f) { live[f] = true; });
     this.flowLines.forEach(function (line) {
@@ -466,6 +601,17 @@ SceneView.prototype.update = function (journeyId, journey, step, selectedId, exp
     var p = M.explodePos(d.box, explodeT);
     d.mesh.position.set(p.x + d.dx, p.y + d.dy, p.z + d.dz);
   });
+  // Round 12: the SM grid rides its region slab on explode, as one
+  // instanced mesh (matrix update only, no new draw calls).
+  if (this.smGrid) {
+    var gp = M.explodePos(this.smGrid.box, explodeT);
+    var gd2 = new THREE.Object3D();
+    this.smGrid.tiles.forEach(function (t, ti) {
+      gd2.position.set(gp.x + t.dx, gp.y + this.smGrid.box.h / 2 + 0.11, gp.z + t.dz);
+      gd2.updateMatrix(); this.smGrid.mesh.setMatrixAt(ti, gd2.matrix);
+    }, this);
+    this.smGrid.mesh.instanceMatrix.needsUpdate = true;
+  }
   this.applyHighlight(step, selectedId);
   // Deliberately no camera move on step change: the active blocks are
   // highlighted in place and the inspector follows; the user keeps

@@ -37,20 +37,27 @@
   // logic band height (y 3.15) with cut-core forward (z 1.8 > 0).
   var LAYOUT = {
     gemm: {
-      // Round 10: one framed die, not a sprawl. Pipeline left -> right
-      // with constant ~0.9 gaps, all blocks flat (h <= 0.85, GEX/PC
-      // Anatomy: height ~15-20% of footprint). Shared Memory is the
-      // central spine block: tall in depth, spanning both input rows.
-      // Total span x -9.9..8.1, z -3.7..3.7, inside a 20.8 x 9.6 die.
-      // Round 11: heights raised ~30% (h 0.8..1.1, still flat slabs,
-      // not towers) because the Round 10 die read vertically thin
-      // at overview; footprints and gaps are unchanged.
-      'a-tile': { x: -8.0, z: -2.6, w: 3.8, d: 2.2, h: 0.95 },
-      'b-tile': { x: -8.0, z: 2.6, w: 3.8, d: 2.2, h: 0.95 },
-      smem:     { x: -3.2, z: 0,    w: 4.0, d: 5.6, h: 1.05 },
-      warp:     { x: 1.8,  z: -2.6, w: 3.6, d: 1.8, h: 0.8 },
-      sm:       { x: 1.8,  z: 2.6,  w: 3.6, d: 2.2, h: 1.1 },
-      'c-out':  { x: 6.6,  z: 0,    w: 3.0, d: 3.0, h: 1.0 }
+      // Round 12: PHYSICAL FLOORPLAN, not a pipeline. The Round 11
+      // layout read as Lego because it ordered blocks by step
+      // (A -> B -> smem -> SM -> output in a line). A real die
+      // orders blocks by place: inputs at the west HBM edge, a
+      // central L2 band (scenery, see floorplanL2) west of the SM
+      // array, SMs as one grid region in the centre-east, warp
+      // schedulers as a narrow dispatch strip on the grid's north
+      // edge, Shared Memory as the strip on the grid's front
+      // (south) edge — part of the SM tile, not a floating block
+      // in the middle of a pipeline — and output at the east
+      // HBM edge. Step highlighting is unchanged: each step still
+      // highlights its node, which now sits in its floorplan place
+      // (e.g. step 4 highlights smem + both input tiles at the
+      // west edge and the shared strip). All boxes stay inside
+      // the 20.8 x 9.6 die frame; heights stay flat slabs.
+      'a-tile': { x: -8.6, z: -2.4, w: 2.8, d: 2.0, h: 0.95 },
+      'b-tile': { x: -8.6, z: 2.4, w: 2.8, d: 2.0, h: 0.95 },
+      smem:     { x: 2.5,  z: 3.6,  w: 8.0, d: 1.2, h: 0.85 },
+      warp:     { x: 2.5,  z: -3.9, w: 7.2, d: 0.9, h: 1.0 },
+      sm:       { x: 2.5,  z: -0.9, w: 8.0, d: 4.2, h: 1.1 },
+      'c-out':  { x: 8.9,  z: 0,    w: 2.4, d: 2.4, h: 1.0 }
     },
     pagetable: {
       // Top row, evenly spaced left -> right; bottom row returns under
@@ -183,6 +190,41 @@
     out.push({ role: 'shared-strip', dx: 0, dy: 0, dz: box.d / 2 + 0.10, w: box.w, h: 0.5, d: 0.2, color: KIND_COLOR.memory });
     return out;
   }
+  // Round 12 floorplan scenery (GEMM only, pure geometry, no DOM).
+  // The central L2 band: a vertical strip immediately west of the
+  // SM grid, aligned with it in depth, so data flows west HBM ->
+  // L2 -> SM array. It is scenery, not a selectable node (no
+  // journey step names an L2 block), and scene3d.js draws it with
+  // an engraved-style label so the floorplan reads without adding
+  // a panel or a word to the inspector.
+  function floorplanL2() {
+    return { x: -3.4, z: -0.9, w: 1.5, d: 4.2, h: 0.7, color: KIND_COLOR.control };
+  }
+  // SM grid tiles (GEMM only): the tiles drawn inside the SM
+  // region box by one InstancedMesh in scene3d.js. Returns offsets
+  // relative to the SM box centre, all strictly inside the box,
+  // in a regular grid with constant gaps — the thing that makes
+  // the region read as an array of SMs instead of one big block.
+  // Default 6 columns x 3 rows = 18 tiles (teaching count, not a
+  // datasheet SM count for any model).
+  function smGridTiles(box, cols, rows) {
+    var c = (typeof cols === 'number') ? cols : 6;
+    var r = (typeof rows === 'number') ? rows : 3;
+    var gap = 0.18;
+    var tw = (box.w - (c + 1) * gap) / c;
+    var td = (box.d - (r + 1) * gap) / r;
+    var out = [], i, j;
+    for (i = 0; i < c; i++) {
+      for (j = 0; j < r; j++) {
+        out.push({
+          dx: -box.w / 2 + gap + tw / 2 + i * (tw + gap),
+          dz: -box.d / 2 + gap + td / 2 + j * (td + gap),
+          w: tw, d: td
+        });
+      }
+    }
+    return out;
+  }
   // Round 11 shared base for a stacking side block: a flat shelf
   // under the block, spanning from the column face (x +/-4.3, the
   // column width is 8.6) to the block's outer edge, its top exactly
@@ -218,7 +260,7 @@
     active.forEach(function (b) { sx += b.x; sy += b.y; sz += b.z; });
     return { x: sx / active.length, y: sy / active.length, z: sz / active.length };
   }
-  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails, stackingShelf: stackingShelf };
+  var api = { KIND_COLOR: KIND_COLOR, TENSOR_COLOR: TENSOR_COLOR, clamp01: clamp01, boxFor: boxFor, explodePos: explodePos, boxesFor: boxesFor, focusCentroid: focusCentroid, smDetails: smDetails, stackingShelf: stackingShelf, floorplanL2: floorplanL2, smGridTiles: smGridTiles };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerSceneMap = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

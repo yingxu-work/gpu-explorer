@@ -71,15 +71,31 @@ test('step active ids always map to boxes', function () {
   });
 });
 
-test('GEMM layout reads as one pipeline, not scattered boxes', function () {
+test('Round 12 GEMM layout is a physical floorplan, not a pipeline', function () {
   var boxes = M.boxesFor('gemm', S.JOURNEYS.gemm);
   var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
-  assert.ok(byId['a-tile'].x < byId['smem'].x, 'inputs must sit left of shared memory');
-  assert.ok(byId['smem'].x < byId['warp'].x && byId['warp'].x < byId['c-out'].x, 'smem -> compute -> output must run left to right');
-  assert.ok(Math.abs(byId['smem'].z) < 0.01 && Math.abs(byId['c-out'].z) < 0.01, 'smem and output must sit on the central spine');
+  var l2 = M.floorplanL2();
+  assert.ok(byId['a-tile'].x < l2.x && byId['b-tile'].x < l2.x, 'inputs must sit at the west HBM edge, west of L2');
+  assert.ok(l2.x < byId['sm'].x, 'L2 band must sit west of the SM grid');
+  assert.ok(Math.abs(l2.z - byId['sm'].z) < 0.01, 'L2 band must align with the SM grid in depth');
+  assert.ok(byId['sm'].x < byId['c-out'].x, 'output must sit at the east edge, east of the SM grid');
   assert.ok(Math.abs(byId['a-tile'].z + byId['b-tile'].z) < 0.01, 'A row and B column must be symmetric about the spine');
-  assert.ok(Math.abs(byId['warp'].z + byId['sm'].z) < 0.01, 'compute grid must be symmetric about the spine');
-  assert.ok(byId['smem'].w > byId['warp'].w, 'shared memory must read as one distinct central block');
+  assert.ok(byId['warp'].d < 1.0 && byId['warp'].z < byId['sm'].z - byId['sm'].d / 2, 'warp must be a narrow strip on the grid north edge');
+  assert.ok(byId['smem'].d <= 1.5 && byId['smem'].z > byId['sm'].z + byId['sm'].d / 2, 'smem must be a strip on the grid front (south) edge, part of the SM tile');
+  assert.ok(Math.abs(byId['smem'].x - byId['sm'].x) < 0.01 && Math.abs(byId['smem'].w - byId['sm'].w) < 0.01, 'smem strip must span the same width as the SM grid');
+});
+test('Round 12 SM grid tiles: regular grid inside the SM region', function () {
+  var box = M.boxFor('gemm', S.JOURNEYS.gemm.nodes.filter(function (n) { return n.id === 'sm'; })[0]);
+  var tiles = M.smGridTiles(box);
+  assert.strictEqual(tiles.length, 18, 'grid must be 6 x 3 tiles');
+  tiles.forEach(function (t) {
+    assert.ok(Math.abs(t.dx) + t.w / 2 <= box.w / 2 + 0.001, 'tile must fit inside the SM region in x');
+    assert.ok(Math.abs(t.dz) + t.d / 2 <= box.d / 2 + 0.001, 'tile must fit inside the SM region in z');
+  });
+  var xs = {}; tiles.forEach(function (t) { xs[t.dx.toFixed(3)] = true; });
+  var zs = {}; tiles.forEach(function (t) { zs[t.dz.toFixed(3)] = true; });
+  assert.strictEqual(Object.keys(xs).length, 6, 'tiles must form 6 columns');
+  assert.strictEqual(Object.keys(zs).length, 3, 'tiles must form 3 rows');
 });
 test('stacking layout is one centred column with symmetric side blocks', function () {
   var boxes = M.boxesFor('stacking', S.JOURNEYS.stacking);
@@ -125,17 +141,15 @@ test('Round 9 SM detail: 4 subpartitions, tensor + scheduler + register each, sh
   assert.ok(byRole('shared-strip')[0].dz > box.d / 2, 'shared strip must sit at the SM front face');
   assert.ok(byRole('tensor')[0].color !== M.KIND_COLOR.compute, 'tensor uses the darker compute shade');
 });
-test('Round 10 GEMM: one framed die — flat blocks inside 20.8 x 9.6, constant pipeline order', function () {
+test('Round 10 GEMM: one framed die — flat blocks inside 20.8 x 9.6, floorplan order (Round 12)', function () {
   var boxes = M.boxesFor('gemm', S.JOURNEYS.gemm);
   var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
   boxes.forEach(function (b) {
-    // Round 11: heights raised to 0.8..1.1 (was <= 0.85) so the die
-    // reads at overview; still flat slabs, not towers (<= 1.15).
     assert.ok(b.h >= 0.8 && b.h <= 1.15, b.id + ' must be a taller flat slab, not thin or a tower (h=' + b.h + ')');
     assert.ok(Math.abs(b.x) + b.w / 2 <= 10.5, b.id + ' must fit inside the die frame in x');
     assert.ok(Math.abs(b.z) + b.d / 2 <= 4.9, b.id + ' must fit inside the die frame in z');
   });
-  assert.ok(byId['smem'].d > byId['sm'].d, 'smem spine must be deeper than the SM block');
+  assert.ok(byId['sm'].w > byId['smem'].d, 'SM grid region must be the largest block on the die');
   assert.ok(byId['c-out'].x - byId['c-out'].w / 2 > byId['sm'].x + byId['sm'].w / 2, 'output must sit right of compute with a gap');
 });
 
@@ -165,11 +179,11 @@ test('Round 11 die journeys: heights raised, footprints unchanged', function () 
   });
 });
 
-test('Round 9 GEMM: warp is a narrow dispatch strip, smem the wide central block', function () {
+test('Round 9 GEMM: warp is a narrow dispatch strip, smem the front strip (Round 12)', function () {
   var boxes = M.boxesFor('gemm', S.JOURNEYS.gemm);
   var byId = {}; boxes.forEach(function (b) { byId[b.id] = b; });
   assert.ok(byId['warp'].d < byId['sm'].d, 'warp strip must be narrower than the SM block');
-  assert.ok(byId['smem'].w > byId['warp'].w, 'smem must stay the wide central block');
+  assert.ok(byId['smem'].d < byId['sm'].d, 'smem must be a strip, not a block');
 });
 
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');
