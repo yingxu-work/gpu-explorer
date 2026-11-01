@@ -117,3 +117,5 @@ pre { background: #161618; color: #F4F4F5; font-family: ui-monospace, "SF Mono",
   .canvas-panel { padding: 16px 14px 8px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.disclaimer { font-size: 12px; color: #9b9ba4; padding: 8px 16px; }

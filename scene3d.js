@@ -255,6 +255,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
   this.journeyId = journeyId;
   this.model = model || 'h100';
   var isA100 = journeyId === 'gemm' && this.model === 'a100';
+  this.renderer.toneMapping = isA100 ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
   var boxes = M.boxesFor(journeyId, journey, this.model);
   var isStack = journeyId === 'stacking';
   // Package stack, contiguous, die slab top at -0.30 (where die
@@ -360,7 +361,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
       base.position.set(st.x, -0.18, st.z); base.receiveShadow = true; self.group.add(base);
       var slab = new THREE.Mesh(
         new THREE.BoxGeometry(st.w, 0.6, st.d),
-        new THREE.MeshStandardMaterial({ color: 0x94e2d5, roughness: 0.7, metalness: 0.1 }));
+        new THREE.MeshStandardMaterial({ color: 0x313131, roughness: 0.7, metalness: 0.1 }));
       slab.position.set(st.x, 0.05, st.z); slab.castShadow = true; slab.receiveShadow = true;
       self.group.add(slab);
       var li;
@@ -368,7 +369,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
     });
     hbmLayersByLevel.forEach(function (level) {
       var im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.14, 1),
-        new THREE.MeshStandardMaterial({ color: 0x7fb8ad, roughness: 0.45, metalness: 0.30 }), level.length);
+        new THREE.MeshStandardMaterial({ color: 0x404040, roughness: 0.45, metalness: 0.30 }), level.length);
       var dd = new THREE.Object3D();
       level.forEach(function (ly, li) {
         dd.position.set(ly.x, ly.y, ly.z); dd.scale.set(ly.w, 1, ly.d); dd.updateMatrix(); im.setMatrixAt(li, dd.matrix);
@@ -379,7 +380,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
     M.a100HbmControllers().forEach(function (ct) {
       var strip = new THREE.Mesh(
         new THREE.BoxGeometry(ct.w, 0.6, ct.d),
-        new THREE.MeshStandardMaterial({ color: 0x2e2e33, roughness: 0.5, metalness: 0.5 }));
+        new THREE.MeshStandardMaterial({ color: 0x404040, roughness: 0.5, metalness: 0.5 }));
       strip.position.set(ct.x, 0.05, ct.z); strip.castShadow = true; strip.receiveShadow = true;
       self.group.add(strip);
     });
@@ -396,7 +397,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
     // NVLink: 12 segments as one InstancedMesh (1 draw call).
     var nvSegs = M.a100Nvlink();
     var nvIm = new THREE.InstancedMesh(new THREE.BoxGeometry(nvSegs[0].w, 0.5, nvSegs[0].d),
-      new THREE.MeshStandardMaterial({ color: 0x4f8a3a, roughness: 0.6, metalness: 0.2 }), nvSegs.length);
+      new THREE.MeshStandardMaterial({ color: 0x00cc00, roughness: 0.6, metalness: 0.2 }), nvSegs.length);
     var nvD = new THREE.Object3D();
     nvSegs.forEach(function (nv, ni) {
       nvD.position.set(nv.x, 0, nv.z); nvD.updateMatrix(); nvIm.setMatrixAt(ni, nvD.matrix);
@@ -462,7 +463,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
     // disabled outline has no tiles inside it.
     M.a100GpcGroups().forEach(function (g) {
       var frameGeo = new THREE.BoxGeometry(g.w, 0.06, g.d);
-      var frameMat = new THREE.LineBasicMaterial({ color: g.enabled ? 0x4a4a52 : 0x3a3a40, transparent: true, opacity: g.enabled ? 0.9 : 0.5 });
+      var frameMat = new THREE.LineBasicMaterial({ color: 0x404040, transparent: true, opacity: g.enabled ? 0.9 : 0.5 });
       var frame = new THREE.LineSegments(new THREE.EdgesGeometry(frameGeo), frameMat);
       frame.position.set(g.x, 0.62, g.z);
       self.group.add(frame);
@@ -599,7 +600,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
         gd.position.set(smBox.x + t.dx, smBox.y + smBox.h / 2 + 0.11, smBox.z + t.dz);
         gd.updateMatrix(); grid.setMatrixAt(ti, gd.matrix);
         var v = 0.92 + ((ti * 37) % 5) * 0.03;
-        grid.setColorAt(ti, gc.setHex(0x89b4fa).multiplyScalar(v));
+        grid.setColorAt(ti, gc.setHex(isA100 ? 0x598b00 : 0x89b4fa).multiplyScalar(isA100 ? 1 : v));
       });
       grid.castShadow = true; grid.receiveShadow = true;
       self.group.add(grid);
@@ -624,7 +625,7 @@ SceneView.prototype.build = function (journeyId, journey, model) {
           d2.position.set(smBox.x + c.dx, smBox.y + smBox.h / 2 + 0.22 + c.h / 2, smBox.z + c.dz);
           d2.scale.set(c.w, c.h, c.d); d2.updateMatrix(); im.setMatrixAt(ci, d2.matrix);
           var v = 0.92 + ((ci * 37) % 5) * 0.03;
-          im.setColorAt(ci, cc.setHex(c.color).multiplyScalar(v));
+          im.setColorAt(ci, cc.setHex(c.color).multiplyScalar(isA100 ? 1 : v));
         });
         im.castShadow = true; im.receiveShadow = true;
         self.group.add(im);
@@ -688,6 +689,7 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
   step = this.lastStep; selectedId = this.lastSelected;
   var active = {};
   if (step) (step.active || []).forEach(function (id) { active[id] = true; });
+  var noDim = this.journeyId === 'gemm' && this.model === 'a100';
   Object.keys(this.meshes).forEach(function (id) {
     var mesh = self.meshes[id]; var base = new THREE.Color(mesh.userData.baseColor);
     var isActive = !!active[id]; var isSel = selectedId === id; var isHover = self.hovered === id;
@@ -695,7 +697,7 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     // Gentle dim for non-active blocks; active pops via full colour
     // + amber emissive only (indigo is reserved for explicit selection,
     // so active never turns into muddy lavender over teal/blue).
-    var dim = (!isActive && !isSel) ? (isHover ? 0.92 : DIM_FACTOR) : 1;
+    var dim = noDim ? 1 : ((!isActive && !isSel) ? (isHover ? 0.92 : DIM_FACTOR) : 1);
     if (dim !== 1) mesh.material.color.multiplyScalar(dim);
     if (mesh.userData.plinthMat) { mesh.userData.plinthMat.color.copy(mesh.userData.plinthBase); if (dim !== 1) mesh.userData.plinthMat.color.multiplyScalar(dim); }
     if (mesh.userData.topMat) { mesh.userData.topMat.color.copy(mesh.userData.topBase); if (dim !== 1) mesh.userData.topMat.color.multiplyScalar(dim); }
@@ -704,7 +706,7 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     // toward cream under amber + a brightened top plate. The pop
     // is now the top-face frame below, not the emissive.
     mesh.material.emissive = new THREE.Color(isSel ? SELECT_EMISSIVE : (isActive ? ACTIVE_EMISSIVE : 0x000000));
-    mesh.material.emissiveIntensity = isSel ? 0.30 : (isActive ? 0.20 : 0);
+    mesh.material.emissiveIntensity = noDim ? 0 : (isSel ? 0.30 : (isActive ? 0.20 : 0));
     mesh.scale.setScalar((isSel || isHover) ? 1.05 : 1);
     var frame = mesh.userData.frame;
     if (frame) {
@@ -734,17 +736,17 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     var parentActive = !!active[d.mesh.userData.parentId];
     var parentSel = selectedId === d.mesh.userData.parentId;
     d.mesh.material.color.setHex(d.mesh.userData.baseColor);
-    if (!parentActive && !parentSel) d.mesh.material.color.multiplyScalar(DIM_FACTOR);
+    if (!parentActive && !parentSel && !noDim) d.mesh.material.color.multiplyScalar(DIM_FACTOR);
     d.mesh.material.emissive = new THREE.Color((parentSel || parentActive) ? ACTIVE_EMISSIVE : 0x000000);
-    d.mesh.material.emissiveIntensity = (parentSel || parentActive) ? 0.20 : 0;
+    d.mesh.material.emissiveIntensity = noDim ? 0 : ((parentSel || parentActive) ? 0.20 : 0);
   });
   // Round 12: the SM grid dims with its region slab the same way
   // (material colour multiplies the per-tile instance colours).
   if (this.smGrid) {
     var gridActive = !!active['sm']; var gridSel = selectedId === 'sm';
-    this.smGrid.mesh.material.color.setScalar((gridActive || gridSel) ? 1 : DIM_FACTOR);
+    this.smGrid.mesh.material.color.setScalar(noDim ? 1 : ((gridActive || gridSel) ? 1 : DIM_FACTOR));
     this.smGrid.mesh.material.emissive = new THREE.Color((gridSel || gridActive) ? ACTIVE_EMISSIVE : 0x000000);
-    this.smGrid.mesh.material.emissiveIntensity = (gridSel || gridActive) ? 0.20 : 0;
+    this.smGrid.mesh.material.emissiveIntensity = noDim ? 0 : ((gridSel || gridActive) ? 0.20 : 0);
   }
   // Round 13: sub-cells dim with their SM region, L2 banks stay
   // neutral scenery (no step names L2, so no highlight of it).
@@ -752,9 +754,9 @@ SceneView.prototype.applyHighlight = function (step, selectedId) {
     var subActive = !!active['sm']; var subSel = selectedId === 'sm';
     Object.keys(this.smSub.meshes).forEach(function (role) {
       var mm = self.smSub.meshes[role].mesh;
-      mm.material.color.setScalar((subActive || subSel) ? 1 : DIM_FACTOR);
+      mm.material.color.setScalar(noDim ? 1 : ((subActive || subSel) ? 1 : DIM_FACTOR));
       mm.material.emissive = new THREE.Color((subSel || subActive) ? ACTIVE_EMISSIVE : 0x000000);
-      mm.material.emissiveIntensity = (subSel || subActive) ? 0.20 : 0;
+      mm.material.emissiveIntensity = noDim ? 0 : ((subSel || subActive) ? 0.20 : 0);
     });
   }
   if (step) {

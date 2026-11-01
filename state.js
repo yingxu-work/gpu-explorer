@@ -10,7 +10,7 @@
 (function (root) {
   const MODELS = {
     h100: { name: 'H100 (Hopper)', kind: 'GPU · 计算', note: 'H100（GH100/Hopper，教学变体）：与 A100 模型区分；具体规格以 NVIDIA Hopper 官方文章为准，本图为教学示意。' },
-    a100: { name: 'A100 (Ampere)', kind: 'GPU · 计算', note: 'A100（GA100/Ampere，官方）：7 GPC、108 SM、L2 40MB 分 2 区、HBM2 5 叠；本图为教学示意。' },
+    a100: { name: 'A100 (Ampere)', kind: 'GPU · 计算', note: 'A100（GA100/Ampere，规格来源：NVIDIA 官方文章）：7 GPC、108 SM、L2 40MB 分 2 区、HBM2 5 叠；本图为教学示意。' },
     rtx5090: { name: 'RTX 5090', kind: 'GPU · 消费级', note: '消费级示例：图形与计算共享同一组结构、工作与数据视角（教学示意，与 Ampere/Hopper 模型区分）。' },
     mi300x: { name: 'AMD MI300X', kind: 'GPU · 芯粒/堆叠', note: '比较示例：多芯粒与堆叠组织下同一问题的另一种分工（教学示意）。' },
     a20pro: { name: 'Apple A20 Pro（示意）', kind: 'SoC · CPU/内存', note: 'CPU/SoC 示例：重点为 CPU、页表与内存层级，具体规格为教学示意，非官方数据。' },

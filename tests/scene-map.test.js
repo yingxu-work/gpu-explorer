@@ -288,5 +288,32 @@ test('Round 9 GEMM: warp is a narrow dispatch strip, smem the front strip (Round
   assert.ok(byId['smem'].d < byId['sm'].d, 'smem must be a strip, not a block');
 });
 
+test('Round 15 A100 colours sampled from NVIDIA Figures 4/5, model note is spec-source phrasing', function () {
+  var box = M.boxFor('gemm', S.JOURNEYS.gemm.nodes.filter(function (n) { return n.id === 'sm'; })[0], 'a100');
+  var cells = M.a100SmSubCells(box);
+  var byRole = {};
+  cells.forEach(function (c) { byRole[c.role] = c.color; });
+  assert.strictEqual(byRole.l0, 0x73b3dd, 'L0 must be sampled Fig.5 light blue');
+  assert.strictEqual(byRole.scheduler, 0xf18712, 'Warp Scheduler must be sampled Fig.5 orange');
+  assert.strictEqual(byRole.dispatch, 0x9c4a09, 'Dispatch must be sampled Fig.5 brown');
+  assert.strictEqual(byRole.register, 0x205867, 'Register File must be sampled Fig.5 dark teal');
+  assert.strictEqual(byRole.int32, 0x598b00, 'INT32 must be sampled Fig.5 olive');
+  assert.strictEqual(byRole.fp32, 0x76b900, 'FP32 must be sampled Fig.5 lime');
+  assert.strictEqual(byRole.fp64, 0x3b5d00, 'FP64 must be sampled Fig.5 dark green');
+  assert.strictEqual(byRole.tensor, 0x598b00, 'Tensor Core must be sampled Fig.5 olive');
+  assert.strictEqual(byRole.ldst, 0x612621, 'LD/ST must be sampled Fig.5 dark red');
+  assert.strictEqual(byRole.sfu, 0x923931, 'SFU must be sampled Fig.5 red');
+  var l2 = M.a100L2Partitions();
+  assert.ok(l2.every(function (p) { return p.color === 0x73b3dd; }), 'L2 partitions must be sampled Fig.4 light blue');
+  var tops = M.a100TopStrips();
+  assert.ok(tops.every(function (t) { return t.color === 0xf3913f; }), 'PCIe + GigaThread must be sampled Fig.4 orange');
+  var boxes = {}; M.boxesFor('gemm', S.JOURNEYS.gemm, 'a100').forEach(function (b) { boxes[b.id] = b; });
+  assert.strictEqual(boxes.sm.color, 0x598b00, 'A100 SM region must be Fig.4 SM green');
+  assert.strictEqual(boxes.smem.color, 0x73b3dd, 'A100 Shared Memory must be Fig.5 192KB light blue');
+  assert.strictEqual(boxes.warp.color, 0xf18712, 'A100 warp must be Fig.5 Warp orange');
+  assert.ok(/规格来源/.test(S.MODELS.a100.note), 'A100 note must say spec source, not imply this site is official');
+  assert.ok(!/A100（GA100\/Ampere，官方）/.test(S.MODELS.a100.note), 'A100 note must not use bare official phrasing');
+});
+
 console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');
 if (failed) process.exit(1);

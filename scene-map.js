@@ -186,7 +186,7 @@
     });
     return out;
   }
-  var A100_SUB_COLOR = { l0: 0x7fb3d5, scheduler: 0xd9822b, dispatch: 0x8a5a2b, register: 0x2f6f7a, int32: 0x2e5a2e, fp32: 0x6fbf5a, fp64: 0x6a7a3a, tensor: 0x4f8a3a, ldst: 0x7a2e2e, sfu: 0xa83a3a };
+  var A100_SUB_COLOR = { l0: 0x73b3dd, scheduler: 0xf18712, dispatch: 0x9c4a09, register: 0x205867, int32: 0x598b00, fp32: 0x76b900, fp64: 0x3b5d00, tensor: 0x598b00, ldst: 0x612621, sfu: 0x923931 };
   // Figure 5 bands per SM tile, north to south: L0, warp scheduler,
   // dispatch, register file, datapath (INT32/FP32/FP64 + tensor),
   // LD/ST + SFU. Heights are relief steps on the tile top.
@@ -220,8 +220,8 @@
   // south edge; PCIe + GigaThread strips on the north edge.
   function a100L2Partitions() {
     return [
-      { x: -3.0, z: 0, w: 5.8, d: 1.2, h: 1.0, color: 0x8ecae6 },
-      { x: 3.0, z: 0, w: 5.8, d: 1.2, h: 1.0, color: 0x8ecae6 }
+      { x: -3.0, z: 0, w: 5.8, d: 1.2, h: 1.0, color: 0x73b3dd },
+      { x: 3.0, z: 0, w: 5.8, d: 1.2, h: 1.0, color: 0x73b3dd }
     ];
   }
   function a100HbmStacks() {
@@ -240,8 +240,8 @@
   }
   function a100TopStrips() {
     return [
-      { label: 'pcie', z: -4.7, w: 20.8, d: 0.3, color: 0x6a6a72 },
-      { label: 'gigathread', z: -4.35, w: 20.8, d: 0.3, color: 0xd9822b }
+      { label: 'pcie', z: -4.7, w: 20.8, d: 0.3, color: 0xf3913f },
+      { label: 'gigathread', z: -4.35, w: 20.8, d: 0.3, color: 0xf3913f }
     ];
   }
   // Explode offsets per journey. Die: radial from the chip centre, so the
@@ -256,6 +256,10 @@
   };
   function boxFor(journeyId, node, model) {
     var color = KIND_COLOR[node.kind] || 0x66707e;
+    if (journeyId === 'gemm' && model === 'a100') {
+      var a100NodeColor = { sm: 0x598b00, smem: 0x73b3dd, warp: 0xf18712 };
+      if (a100NodeColor[node.id] !== undefined) color = a100NodeColor[node.id];
+    }
     var lay = (journeyId === 'gemm' && model === 'a100' && A100_LAYOUT[node.id]) || (LAYOUT[journeyId] && LAYOUT[journeyId][node.id]);
     if (lay) {
       var isStack = journeyId === 'stacking';
