@@ -97,6 +97,21 @@ test('HBM, power and interconnect have independent breadcrumbs and return to the
     ui=act(ui,'ENTER_GUIDE',{}, {...base,stepIndex:1});cleanGuide(ui,'hbm');
   }
 });
+test('scene level changes reconcile camera preset, while same-level notifications preserve it', () => {
+  for (const preset of ['top','side']) {
+    for (const level of ['die','sm','hbm','power','interconnect']) {
+      let ui = I.create({mode:'explore',level:'package'},base);
+      ui = act(ui,'CAMERA',{preset});
+      ui = act(ui,'SCENE_LEVEL',{level:'package'});
+      assert.equal(ui.cameraPreset,preset,'same-level notification must not change the camera');
+      ui = act(ui,'SCENE_LEVEL',{level});
+      assert.equal(ui.level,level);
+      assert.equal(ui.cameraPreset,'three-quarter','new level is fitted in the oblique view');
+      assert.equal(ui.mode,'explore');
+      assert.equal(ui.playback,'paused');
+    }
+  }
+});
 test('replay cancels sequence advancement and stays on the same domain step', () => {
   const context = { ...base, stepIndex: 5 };
   let ui = act(I.create({}, context), 'ENTER_GUIDE', { playback: 'sequence' }, context);

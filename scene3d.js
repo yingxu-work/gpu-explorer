@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102j';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102j';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102k';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102k';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared

@@ -71,7 +71,10 @@ export function lessonPresentation(level, stepIndex, model = 'h100') {
       marker('assigned-sm', 'gpu-die', sm, 'SM / Shared', 'a', 'target', [.32, .45]);
       for (const [i, z] of [[0, -2.6], [1, 0]]) {
         add('hbm-to-edge-' + i, 'package', ['HBM', 'memory controller'], [[-3.75, .88, z], [-2.7, .88, z], [-2.7, .59, z]], i ? 'b' : 'a', 'transfer', i * .06);
-        add('edge-to-cache-' + i, 'gpu-die', ['memory controller', 'L2', 'SM'], [[-2.7, .59, z], [0, .59, z], [0, .59, -.89], sm], i ? 'b' : 'a', 'transfer', .18 + i * .06);
+        // Two illustrative lanes stay separately readable through the cache.
+        // They are a teaching bus, not a claim about physical metal routing.
+        const cacheX=i?.12:-.12, targetZ=i?-.75:-1.03;
+        add('edge-to-cache-' + i, 'gpu-die', ['memory controller', 'L2', 'SM'], [[-2.7, .59, z], [cacheX, .59, z], [cacheX, .59, targetZ], [-1.55, .59, targetZ]], i ? 'b' : 'a', 'transfer', .18 + i * .06);
       }
     } else if (stepIndex === 7) {
       marker('assigned-sm', 'gpu-die', sm, 'SM · acc = 37', 'c', 'source', [.32, .45]);
@@ -123,15 +126,17 @@ export function createTeachingVisuals(T, hardware, presentation) {
   function mesh(parent, x, y, z, w, h, d, material) {
     const m = new T.Mesh(unit, material); m.position.set(x,y,z); m.scale.set(w,h,d); m.userData.teachingSignal = true; parent.add(m); return m;
   }
-  function material(color, opacity=1) {
-    const m = new T.MeshBasicMaterial({ color, transparent: opacity<1, opacity, depthWrite:false, side:T.DoubleSide }); materials.add(m); return m;
+  function material(color, opacity=1, options={}) {
+    const m = new T.MeshBasicMaterial({ color, transparent: opacity<1, opacity, depthWrite:false, side:T.DoubleSide, ...options }); materials.add(m); return m;
   }
   for (const route of presentation.routes) {
     const host = hardware.components[route.host]?.group; if (!host) continue;
     const group = new T.Group(); group.userData.teachingSignal = true; host.add(group); allGroups.push(group);
     const color = FLOW_COLORS[route.color] || FLOW_COLORS.a;
-    const railMaterial = material(color, route.dashed ? .65 : .85);
-    const underMaterial = material(0x081a1c, .86);
+    // Solid signals render as opaque inlays. Transparent rails could be
+    // sorted behind the translucent physical cap or their own dark borders.
+    const railMaterial = material(color, route.dashed ? .65 : 1, {depthWrite:!route.dashed,toneMapped:false});
+    const underMaterial = material(0x071418, 1, {depthWrite:true,toneMapped:false});
     for (let i=1; i<route.points.length; i++) {
       const a=route.points[i-1], b=route.points[i], distance=Math.hypot(...b.map((v,k)=>v-a[k])); if(distance<.001)continue;
       const count=route.dashed?Math.max(1,Math.ceil(distance/.44)):1;
@@ -140,16 +145,17 @@ export function createTeachingVisuals(T, hardware, presentation) {
         const start=a.map((v,k)=>v+(b[k]-v)*t0), end=a.map((v,k)=>v+(b[k]-v)*t1), centre=start.map((v,k)=>(v+end[k])/2);
         const dims=start.map((v,k)=>Math.max(k===1?.034:route.width,Math.abs(v-end[k])));
         mesh(group,...centre,...dims,railMaterial);
-        if(!route.dashed)mesh(group,centre[0],centre[1]-.015,centre[2],dims[0]+.07,dims[1],dims[2]+.07,underMaterial);
+        if(!route.dashed)mesh(group,centre[0],centre[1]-.042,centre[2],dims[0]+.075,.016,dims[2]+.075,underMaterial);
       }
     }
     const length=pathLength(route.points), count=Math.max(2,Math.floor(length/.8));
-    const arrowMaterial=material(color,.92); const arrows=new T.InstancedMesh(arrowGeometry,arrowMaterial,count);
+    const arrowColor=new T.Color(color).lerp(new T.Color(0xf0fff5),.42);
+    const arrowMaterial=material(arrowColor,1,{depthWrite:true,toneMapped:false}); const arrows=new T.InstancedMesh(arrowGeometry,arrowMaterial,count);
     arrows.userData.teachingSignal=true;
     for(let n=0;n<count;n++) {
       const f=(n+.5)/count,p=samplePath(route.points,f),next=samplePath(route.points,Math.min(1,f+.002));
       tmp.position.set(p[0],p[1]+.035,p[2]);tmp.rotation.set(0,-Math.atan2(next[2]-p[2],next[0]-p[0]),0);
-      tmp.scale.setScalar(route.width/.105*(route.dashed?.90:1.15));tmp.updateMatrix();arrows.setMatrixAt(n,tmp.matrix);
+      tmp.scale.setScalar(Math.min(2,route.width/.105*(route.dashed?.90:1.08)));tmp.updateMatrix();arrows.setMatrixAt(n,tmp.matrix);
     }
     group.add(arrows);
     const pulseMaterial=material(0xf1fff5,1);const packets=new T.InstancedMesh(unit,pulseMaterial,4);packets.userData.teachingSignal=true;group.add(packets);
@@ -172,7 +178,7 @@ export function createTeachingVisuals(T, hardware, presentation) {
     visuals, markers:markerGroups,
     update(progress) {
       for(const item of visuals) {
-        const state=routeState(item.route,progress);item.railMaterial.opacity=state.opacity;
+        const state=routeState(item.route,progress);item.railMaterial.opacity=item.route.dashed?state.opacity:1;
         const head=state.fraction;
         for(let n=0;n<4;n++){
           const f=head-n*.055,p=samplePath(item.route.points,clamp(f)),next=samplePath(item.route.points,Math.min(1,clamp(f)+.003));
