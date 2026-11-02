@@ -1,0 +1,282 @@
+{
+  "date": "2026-11-02",
+  "timezone": "Asia/Singapore",
+  "browser": "Chrome / WebGL",
+  "candidates": [
+    "bec85a8",
+    "c388c19",
+    "c9b1bf7"
+  ],
+  "automatedChecks": 161,
+  "httpIntegration": "pass",
+  "checks": [
+    {
+      "test": "completed-step01-pause-camera",
+      "before": {
+        "motion": "paused",
+        "p": "1.000",
+        "phase": "14.0693",
+        "revision": "1",
+        "step": "01 / 08"
+      },
+      "after": {
+        "motion": "paused",
+        "p": "1.000",
+        "phase": "14.0693",
+        "revision": "1",
+        "step": "01 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "completed-step-loop-pause-resume",
+      "s": 0,
+      "before": {
+        "cycle": "1.3986",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "2",
+        "step": "01 / 08"
+      },
+      "frozen": "1.6884",
+      "paused": "1.6884",
+      "after": {
+        "cycle": "2.0000",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "2",
+        "step": "01 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "completed-step-loop-pause-resume",
+      "s": 1,
+      "before": {
+        "cycle": "1.3551",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "3",
+        "step": "02 / 08"
+      },
+      "frozen": "1.6450",
+      "paused": "1.6450",
+      "after": {
+        "cycle": "1.8850",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "3",
+        "step": "02 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "completed-step-loop-pause-resume",
+      "s": 2,
+      "before": {
+        "cycle": "1.4493",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "4",
+        "step": "03 / 08"
+      },
+      "frozen": "1.7392",
+      "paused": "1.7392",
+      "after": {
+        "cycle": "2.0798",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "4",
+        "step": "03 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "completed-step-loop-pause-resume",
+      "s": 3,
+      "before": {
+        "cycle": "1.4204",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "5",
+        "step": "04 / 08"
+      },
+      "frozen": "1.6748",
+      "paused": "1.6748",
+      "after": {
+        "cycle": "1.9364",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "5",
+        "step": "04 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "completed-step-loop-pause-resume",
+      "s": 4,
+      "before": {
+        "cycle": "1.4421",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "6",
+        "step": "05 / 08"
+      },
+      "frozen": "1.8334",
+      "paused": "1.8334",
+      "after": {
+        "cycle": "2.2683",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "6",
+        "step": "05 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "completed-step-loop-pause-resume",
+      "s": 5,
+      "before": {
+        "cycle": "1.4413",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "7",
+        "step": "06 / 08"
+      },
+      "frozen": "1.7174",
+      "paused": "1.7174",
+      "after": {
+        "cycle": "2.0354",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "7",
+        "step": "06 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "completed-step-loop-pause-resume",
+      "s": 6,
+      "before": {
+        "cycle": "1.5363",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "8",
+        "step": "07 / 08"
+      },
+      "frozen": "1.8189",
+      "paused": "1.8189",
+      "after": {
+        "cycle": "2.1015",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "8",
+        "step": "07 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "completed-step-loop-pause-resume",
+      "s": 7,
+      "before": {
+        "cycle": "1.4783",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "9",
+        "step": "08 / 08"
+      },
+      "frozen": "1.7464",
+      "paused": "1.7464",
+      "after": {
+        "cycle": "1.9937",
+        "motion": "running",
+        "p": "1.000",
+        "revision": "9",
+        "step": "08 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "partial-pause-orbit-wheel",
+      "partial": {
+        "cycle": "0.0797",
+        "motion": "paused",
+        "p": "0.071",
+        "revision": "10",
+        "step": "05 / 08"
+      },
+      "stopped": {
+        "cycle": "0.0797",
+        "motion": "paused",
+        "p": "0.071",
+        "revision": "10",
+        "step": "05 / 08"
+      },
+      "pass": true
+    },
+    {
+      "test": "anatomy-stops-and-guide-resets-cycle",
+      "anatomy": {
+        "cycle": "0.1757",
+        "mode": "explore",
+        "playback": "off"
+      },
+      "anatomy2": {
+        "cycle": "0.1757",
+        "mode": "explore",
+        "playback": "off"
+      },
+      "clean": {
+        "cycle": "0.0600",
+        "level": "sm",
+        "motion": "running",
+        "p": "0.053",
+        "x": "0.000"
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-top-viewport-width",
+      "mobile": {
+        "elevation": "89.7",
+        "level": "sm",
+        "scrollWidth": 375,
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-top-home-restores-oblique",
+      "after": {
+        "camera": "3d",
+        "elevation": "35.2",
+        "level": "sm",
+        "scrollWidth": 375,
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "a100-typography-model-swap",
+      "after": {
+        "hero": "A100 · SM",
+        "level": "sm",
+        "model": "a100"
+      },
+      "pass": true
+    },
+    {
+      "test": "complete-autoplay-stops-advancing-and-keeps-final-route-looping",
+      "after": {
+        "motion": "running",
+        "p": "1.000",
+        "phase": "33.2621",
+        "playback": "paused",
+        "result": "C[3,7] = 19 + 18 = 37",
+        "step": "08 / 08"
+      },
+      "pass": true
+    }
+  ],
+  "console": []
+}

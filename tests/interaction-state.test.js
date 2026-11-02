@@ -192,6 +192,7 @@ test('ordinary sequence stops at the last step rather than looping', () => {
     if(ui.advanceRequested){stepIndex++;ui=act(ui,'ENTER_GUIDE',{playback:'sequence'},{...context,stepIndex});}
   }
   assert.equal(stepIndex,7);assert.equal(ui.progress,1);assert.equal(ui.playback,'paused');
+  assert.equal(ui.motionPlaying,true,'the final route continues while sequence advancement stops');
 });
 test('Play restarts from the last step even while its single-step animation is unfinished', () => {
   const final={...base,stepIndex:7,atEnd:true};
