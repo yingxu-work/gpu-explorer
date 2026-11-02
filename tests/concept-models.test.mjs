@@ -187,3 +187,23 @@ for(const [journey,steps] of Object.entries(stages))test(`${journey}: fixed fitt
   }
   model.dispose();
 });
+
+
+test('layer separation keeps physically looping after completion and freezes with the visual clock',()=>{
+  const model=createConceptModel(T,'stacking'),parts=resources(model.root),ids=['lid','logic-top','bond','logic-low','mem-layer','substrate'];
+  const positions=()=>ids.map(id=>parts.get(id).position.y);
+  const status=model.update(2,1,2.0),closed=positions();
+  model.update(2,1,2.5);const open=positions();
+  assert.ok(open[0]-closed[0]>.5,'the lid must move enough to make the breathing separation visible');
+  assert.ok(open[1]>closed[1]&&open[2]>closed[2]&&open[3]>closed[3]&&open[4]>closed[4]);
+  assert.equal(open[5],closed[5],'the substrate remains the fixed reference plane');
+  model.update(2,1,2.5);assert.deepEqual(positions(),open,'paused visual phase must freeze the actual layer positions');
+  model.update(2,1,3.0);assert.deepEqual(positions(),closed,'a full visual cycle returns to the same separation');
+  for(let i=0;i<=40;i++){
+    const result=model.update(2,1,i/20);const ys=positions();
+    assert.equal(result.progress,status.progress);assert.equal(result.complete,true,'the mathematical step never rewinds');
+    for(let j=1;j<ys.length;j++)assert.ok(ys[j-1]>ys[j],'breathing must retain the six-layer order');
+    assert.ok(model.bounds.containsBox(new T.Box3().setFromObject(model.root)),'the loop remains inside the fixed camera envelope');
+  }
+  model.dispose();
+});

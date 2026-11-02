@@ -173,12 +173,15 @@ export function createConceptModel(T,journey){
     route('lateral',[[-.30,2.93,.60],[3.70,2.93,.60],[3.70,2.93,2.75],[3.70,1.78,2.75],[-.30,1.78,2.75],[-.30,1.78,.60]],gold,{delay:.16});
     route('heat',[[-2.25,1.78,-.60],[-2.25,3.65,-.60],[-2.25,4.17,-.60]],red,{kind:'heat'});
     label(root,'SHORT VERTICAL',-.4,.01,3.18,3.0,.20,'#85b5a7');label(root,'LONG LATERAL',3.2,.01,3.18,2.5,.20,'#bda67e');
-    specialize=(step,p)=>{
-      layers.forEach(([id],i)=>resources[id].group.position.y=resources[id].baseY+(step===2?(5-i)*.25*p:0));
+    specialize=(step,p,phase)=>{
+      // Progress opens the exhibit; a separate visual clock keeps the layer
+      // spacing breathing after the lesson has completed, without reordering it.
+      const separation=step===2?p*(.78-.22*Math.cos(phase*Math.PI*2)):0;
+      layers.forEach(([id],i)=>resources[id].group.position.y=resources[id].baseY+(5-i)*.25*separation);
       cut.group.visible=step===1;cut.group.userData.disabled=step===1;cut.group.userData.physicallyPresent=true;
       if(step===1)cut.materials[0].color.set(0x41474a);
       if(step===7){for(const id of ['logic-top','logic-low'])resources[id].materials[0].emissive.set(red);resources['logic-low'].materials[0].emissiveIntensity=.10+.08*p;}
-      root.userData.stack={layerCount:6,disabledCorePhysicallyPresent:true,layerSeparation:step===2?p:0,distanceComparison:'geometric, not measured latency',thermalTradeoff:step===7,progress:p};
+      root.userData.stack={layerCount:6,disabledCorePhysicallyPresent:true,layerSeparation:separation,distanceComparison:'geometric, not measured latency',thermalTradeoff:step===7,progress:p};
     };
   }
 
