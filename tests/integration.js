@@ -33,7 +33,7 @@ server.listen(0, '127.0.0.1', async () => {
     for (const id of ['model-select','compare-select','scene3d','component-tree','journey-lab',
       'explode-slider','explode-auto-btn','block-list','overview','play-btn','prev-btn','next-btn',
       'focus-btn','isolate-btn','home-btn','labels-btn','follow-camera','replay-btn','motion-btn',
-      'help-dialog','sources-dialog','crumb','teaching-status','route-phase','route-nodes','route-caption','explore-title','explore-description']) {
+      'help-dialog','sources-dialog','crumb','teaching-status','route-phase','route-nodes','route-caption','explore-title','explore-description','rotate-btn','pan-btn','sm-resource-legend','sm-resource-items']) {
       assert.ok(index.body.includes('id="' + id + '"'), 'missing public control: ' + id);
     }
     for (const level of ['board','package','die','sm','hbm','power','interconnect']) {

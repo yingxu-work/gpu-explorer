@@ -11,7 +11,7 @@
     board: { title: '一块模组，各司其职。', body: '从计算、存储到供电与互连，沿着部件走进机器内部。', features: [['计算与存储','进入封装、裸片、SM 或 HBM。'],['支撑计算的部件','查看多相供电、PCB 层叠与 SXM 连接器。']] },
     package: { title: '连接计算与存储。', body: '裸片、HBM、中介层与基板，共同组成 GPU 封装。', features: [['硅中介层','近距离连接 GPU 和 HBM，承载大量并行信号。'],['封装基板','将封装内的连接引到模组 PCB。']] },
     die: { title: '从 L2，走到 SM。', body: '查看计算阵列、共享 L2 与片上互连的功能组织。', features: [['一组组计算资源','线程块被分发到 SM，而不是沿流水线依次经过所有 SM。'],['数据共享层级','L2 在多个 SM 之间共享；L1 与 Shared 位于各个 SM 内。']] },
-    sm: { title: '一个 SM，四个子分区。', body: '顺着调度、派发、运算和 LD/ST，看它们如何协作。', features: [['指令与数据分开看','调度器发射指令，操作数通过寄存器、LD/ST 和内部互连流动。'],['共享的片上存储','四个子分区共用 L1 数据缓存与 Shared Memory。']] },
+    sm: { title: '一个 SM，四个子分区。', body: '按颜色辨认运算与存储资源，点下方图例查看作用。', features: [['绿色是 FP32 运算通道','蓝色为 FP64，青色为 INT32，金色为 Tensor Core；图例标明每 SM 的数量。'],['紫色是寄存器存储','保存线程操作数与累加器，不是 FP16 计算核心。']] },
     hbm: { title: '把存储，纵向堆起来。', body: '展开 DRAM 叠层、垂直互连和底部接口，理解 HBM 如何连接 GPU。', features: [['垂直与横向','TSV 穿过硅片，微凸点连接层间，中介层把数据横向送往 GPU。'],['并行通道','通道为存取提供并行性；本剖面用简化分区展示组织。']] },
     power: { title: '电压变低，电流变大。', body: '沿多相 Buck 的开关级、电感和电容，看电源如何被转换与稳定。', features: [['多相协作','多组功率级与电感交错工作，分担输出电流。'],['控制与去耦','控制回路调节输出；输入与输出电容抑制电压波动。']] },
     interconnect: { title: '信号要有去路，也有回路。', body: '切开 PCB，看铜层、通孔、差分对和 SXM 接触阵列。', features: [['跨越 PCB 层','普通通孔连接铜层；它与 HBM 内的硅通孔 TSV 是不同结构。'],['连接到系统','SXM 接触阵列承担模组的电源与高速连接，图中不对应真实引脚定义。']] }
@@ -39,7 +39,9 @@
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let state = S.decodeState(location.hash);
   let ui;
-  let labels = true;
+  let labels = false;
+  let navigationMode = 'rotate';
+  let lastLegendKey = '';
   let applyingScene = false;
   let applied = {};
   let lastTreeKey = '';
@@ -48,6 +50,7 @@
   let lastHashFrame = 0;
   let toastTimer;
   const scene = () => window.GpuExplorer3D;
+  const conceptActive = () => ui.mode === 'learn' && state.journey !== 'gemm';
   const context = () => ({ journey: state.journey, stepIndex: state.stepIndex,
     atEnd: S.isAtEnd(state), reducedMotion, speed: Number($('speed-select').value) || 1 });
 
@@ -159,6 +162,7 @@
         applied.camera = ui.cameraPreset;
       }
       sc.setLabels(labels);
+      sc.setNavigationMode?.(navigationMode);
       sc.setProgress?.(ui.progress);
       $('scene-loading').hidden = true;
     } finally { applyingScene = false; }
@@ -167,7 +171,9 @@
     document.body.dataset.level = ui.level;
     const crumb = $('crumb');
     crumb.replaceChildren();
-    I.breadcrumbs(ui.level).forEach((level, i) => {
+    if(conceptActive()){
+      const title=document.createElement('span');title.textContent={pagetable:'x86-64 地址翻译',pixel:'通用图形管线',stacking:'3D 堆叠概念实验'}[state.journey];crumb.append(title);
+    }else I.breadcrumbs(ui.level).forEach((level, i) => {
       if (i) { const sep = document.createElement('span'); sep.textContent = '›'; crumb.append(sep); }
       const button = document.createElement('button');
       button.textContent = LEVEL_NAMES[level];
@@ -175,7 +181,7 @@
       crumb.append(button);
     });
     document.querySelectorAll('[data-level]').forEach(button => {
-      const active = button.dataset.level === ui.level;
+      const active = !conceptActive() && button.dataset.level === ui.level;
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
     });
@@ -187,7 +193,7 @@
     $('selection-card').hidden = !info || ui.mode !== 'explore';
     if (info) {
       $('component-name').textContent = info.label;
-      $('component-detail').textContent = info.description || info.detail || '';
+      $('component-detail').textContent = (info.description || info.detail || '')+(info.precisionNote?'\n'+info.precisionNote:'');
     }
     document.querySelectorAll('[data-component]').forEach(button => button.classList.toggle('active', button.dataset.component === ui.selection));
   }
@@ -204,6 +210,25 @@
       button.dataset.component = item.id;
       button.onclick = () => exploreAction({ type: 'SELECT', id: item.id });
       $('component-tree').append(button);
+    });
+  }
+  function renderResourceLegend() {
+    const legend=$('sm-resource-legend'),visible=ui.level==='sm'&&!conceptActive();legend.hidden=!visible;
+    if(!visible)return;
+    const ids=['fp32','fp64','int32','sfu','tensor','registers','lsu','smem'];
+    const components=scene()?.getComponents?.()||[];
+    const entries=ids.map(id=>components.find(item=>item.id===id)).filter(Boolean);
+    const key=state.model+entries.map(item=>item.id+item.countPerSM+item.color).join();
+    if(key===lastLegendKey)return;lastLegendKey=key;
+    const list=$('sm-resource-items');list.replaceChildren();
+    entries.forEach(item=>{
+      const button=document.createElement('button');button.dataset.component=item.id;
+      const swatch=document.createElement('i');swatch.style.background=item.color||'#8ba6a0';
+      const name=document.createElement('span');name.textContent=item.shortLabel||item.label;
+      button.append(swatch,name);
+      if(item.countPerSM||item.capacityKB){const count=document.createElement('b');count.textContent=item.id==='registers'?'256 KiB':item.capacityKB?item.capacityKB+' KB':item.countPerSM;button.append(count);}
+      button.title=(item.description||'')+(item.precisionNote?' '+item.precisionNote:'');
+      button.onclick=()=>exploreAction({type:'SELECT',id:item.id});list.append(button);
     });
   }
   function renderCompare() {
@@ -238,7 +263,7 @@
     if (made !== undefined) { const p2 = document.createElement('p'); p2.className = 'pred-feedback'; p2.textContent = made === p.answer ? p.explain : '再想一下：' + p.explain; $('predict').append(p2); }
   }
   function renderBlocks() {
-    $('block-list').hidden = state.journey !== 'gemm';
+    $('block-list').hidden = state.journey !== 'gemm' || ui.level === 'sm';
     const focusedBlockId = document.activeElement?.dataset?.nodeId;
     $('block-list').replaceChildren();
     S.currentJourney(state).nodes.forEach(node => {
@@ -286,18 +311,23 @@
     $('diagram').dataset.explode = ui.explode.toFixed(3);
     $('diagram').dataset.guideRevision = ui.guideRevision;
     document.body.dataset.motion = moving && ui.mode === 'learn' ? 'running' : 'paused';
-    if (state.journey === 'gemm') {
-      const story = window.GpuExplorerStory.forStep(state.stepIndex);
+    {
+      const story = state.journey==='gemm'?window.GpuExplorerStory.forStep(state.stepIndex):{complete:'本步已完成'};
       $('route-status').textContent = ui.progress >= 1 ? story.complete + (moving ? ' · 循环演示' : ' · 已暂停') : moving ? '循环演示' : '已暂停';
       $('teaching-status').dataset.state = ui.progress >= 1 ? 'complete' : ui.playback === 'paused' ? 'paused' : 'running';
       $('teaching-status').dataset.motion = moving ? 'running' : 'paused';
     }
   }
   function renderGuideStatus() {
-    const visible = ui.mode === 'learn' && state.journey === 'gemm';
+    const visible = ui.mode === 'learn';
     $('teaching-status').hidden = !visible;
     if (!visible) return;
-    const story = window.GpuExplorerStory.forStep(state.stepIndex);
+    const step=S.currentStep(state);
+    const story = state.journey==='gemm'?window.GpuExplorerStory.forStep(state.stepIndex):{
+      kind:state.journey,phase:S.currentStepChip(state)?.label||step.title,
+      caption:{pagetable:'x86-64 四级页表与 4 KiB 页的独立示例。',pixel:'通用图形管线的独立示例。',stacking:'逻辑堆叠的概念剖面与取舍。'}[state.journey],
+      nodes:step.active.map(id=>S.currentJourney(state).nodes.find(node=>node.id===id)?.label||id)
+    };
     $('teaching-status').dataset.kind = story.kind;
     $('route-phase').textContent = story.phase;
     $('route-caption').textContent = story.caption;
@@ -312,6 +342,9 @@
     const journey = S.currentJourney(state), step = S.currentStep(state), spec = SPECS[state.model];
     const lesson = state.journey === 'gemm' ? LESSONS[state.stepIndex] : null;
     document.body.dataset.mode = ui.mode;
+    document.body.dataset.concept = String(conceptActive());
+    document.querySelector('.dissection-controls').hidden=conceptActive();
+    $('model-select').disabled=conceptActive();
     $('learn-content').hidden = ui.mode !== 'learn';
     $('explore-content').hidden = ui.mode !== 'explore';
     $('inspector-label').textContent = ui.mode === 'learn' ? TITLES[state.journey] : '自由探索';
@@ -324,10 +357,15 @@
     $('main-model-name').textContent = 'NVIDIA · ' + spec.arch;
     $('hero-title').textContent = ['sm','hbm','power','interconnect'].includes(ui.level) ? ({ sm: spec.name + ' · SM', hbm: spec.hbm, power: 'VRM', interconnect: 'PCB / SXM' })[ui.level] : spec.name;
     $('hero-subtitle').textContent = ui.level === 'sm' ? '功能布局示意，不代表物理距离' : '';
+    if(conceptActive()){
+      $('main-model-name').textContent='INTERACTIVE CONCEPT LAB';
+      $('hero-title').textContent={pagetable:'地址翻译',pixel:'像素旅程',stacking:'3D 堆叠'}[state.journey];
+      $('hero-subtitle').textContent={pagetable:'x86-64 · 四级页表',pixel:'通用图形管线',stacking:'逻辑层与垂直连接'}[state.journey];
+    }
     $('step-counter').textContent = ui.mode === 'explore' ? String(LEVELS.indexOf(ui.level) + 1).padStart(2, '0') + ' / ' + String(LEVELS.length).padStart(2, '0') : String(state.stepIndex + 1).padStart(2, '0') + ' / ' + String(journey.steps.length).padStart(2, '0');
     $('chapter-kicker').textContent = String(state.stepIndex + 1).padStart(2, '0');
     $('step-title').textContent = lesson ? lesson.title : step.title;
-    $('step-body').textContent = lesson ? lesson.body : '独立概念实验：' + step.body;
+    $('step-body').textContent = lesson ? lesson.body : step.body;
     $('fact').textContent = state.journey === 'gemm' && state.stepIndex === 7 ? 'C[3,7] = 19 + 18 = 37' : step.trace || '';
     $('hardware-note').textContent = lesson ? lesson.hardware : SCOPE[state.journey];
     $('journey-caveat').textContent = SCOPE[state.journey] || '小矩阵解释数学；SM 几何是功能框图，不反映晶体管版图或实际距离。动画不是硬件时序。';
@@ -337,7 +375,7 @@
     $('timeline-title').textContent = TITLES[state.journey];
     $('phase-gloss').textContent = S.currentStepChip(state)?.gloss || '';
     $('progress-fill').style.width = (state.stepIndex + 1) / journey.steps.length * 100 + '%';
-    $('interaction-hint').textContent = ui.mode === 'learn' ? '自由转动或切换视角，计算继续' : ui.level === 'sm' ? 'SM 功能布局示意 · 间距不代表真实物理距离' : '拖动旋转 · 双击进入部件';
+    $('interaction-hint').textContent = navigationMode==='pan'?'拖动平移 · 滚轮缩放': '拖动旋转 · Shift 拖动平移 · 滚轮缩放';
     const info = VIEW_INFO[ui.level];
     $('explore-title').textContent = info.title;
     $('explore-description').textContent = info.body;
@@ -348,7 +386,7 @@
     const key = state.journey + ':' + state.stepIndex + ':' + state.model;
     window.GpuExplorerLab?.render($('journey-lab'), state, step, ui.progress);
     if (key !== lastContentKey) { $('code-panel').textContent = step.code.join('\n'); renderPrediction(); lastContentKey = key; }
-    renderCrumb(); renderTree(); renderSelection(); renderBlocks(); renderCompare(); renderTimeline(); renderGuideStatus(); renderPlayback(); syncHash();
+    renderCrumb(); renderTree(); renderResourceLegend(); renderSelection(); renderBlocks(); renderCompare(); renderTimeline(); renderGuideStatus(); renderPlayback(); syncHash();
   }
 
   function focusSelected() {
@@ -379,6 +417,7 @@
     if (!applyingScene && ui.selection !== id) { transition({ type: 'SELECT', id, level: scene()?.getLevel?.() }); render(); }
   };
   window.__gpuExplorerMoveSelection = dir => {
+    if(conceptActive()){enterGuide({index:state.stepIndex+dir});return;}
     const components = (scene()?.getComponents?.() || []).filter(item => item.level === ui.level);
     if (!components.length) return;
     const current = components.findIndex(item => item.id === ui.selection);
@@ -432,6 +471,11 @@
   $('explode-slider').oninput = e => exploreAction({ type: 'EXPLODE_SET', value: Number(e.target.value) / 100 });
   $('explode-auto-btn').onclick = () => exploreAction({ type: 'EXPLODE_TOGGLE' });
   $('labels-btn').onclick = () => { labels = !labels; scene()?.setLabels(labels); $('labels-btn').classList.toggle('active', labels); $('labels-btn').setAttribute('aria-pressed', String(labels)); };
+  for(const mode of ['rotate','pan'])$(mode+'-btn').onclick=()=>{
+    navigationMode=mode;scene()?.setNavigationMode?.(mode);
+    for(const key of ['rotate','pan']){$(key+'-btn').classList.toggle('active',key===mode);$(key+'-btn').setAttribute('aria-pressed',String(key===mode));}
+    $('interaction-hint').textContent=mode==='pan'?'拖动平移 · 滚轮缩放':'拖动旋转 · Shift 拖动平移 · 滚轮缩放';
+  };
   $('focus-btn').onclick = focusSelected;
   $('isolate-btn').onclick = () => { if (!ui.selection) { toast('先选中一个部件，再聚焦或隔离。'); return; } exploreAction({ type: 'ISOLATE' }); };
   $('home-btn').onclick = resetCamera;
@@ -487,7 +531,8 @@
       window.GpuExplorerLab?.setProgress($('journey-lab'), ui.progress); scene()?.setProgress?.(ui.progress);
     }
     $('journey-lab').dataset.progress = ui.progress.toFixed(3);
-    if (ui.mode === 'learn' && state.journey === 'gemm') {
+    window.GpuExplorerLab?.setVisualPhase?.($('journey-lab'),ui.visualPhase,ui.progress);
+    if (ui.mode === 'learn') {
       const nodes = $('route-nodes').querySelectorAll('span');
       const active = Math.min(nodes.length - 1, Math.floor((ui.visualPhase % 1) * nodes.length));
       nodes.forEach((node, i) => node.classList.toggle('route-active', i === active));

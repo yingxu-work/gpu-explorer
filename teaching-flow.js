@@ -178,7 +178,7 @@ export function createTeachingVisuals(T, hardware, presentation) {
       tmp.scale.setScalar(Math.min(2,route.width/.105*(route.dashed?.90:1.08)));tmp.updateMatrix();arrows.setMatrixAt(n,tmp.matrix);arrows.setColorAt(n,arrowColor);
     }
     group.add(arrows);
-    const pulseMaterial=material(0xf1fff5,1);const packets=new T.InstancedMesh(unit,pulseMaterial,4);packets.userData.teachingSignal=true;group.add(packets);
+    const pulseMaterial=material(new T.Color(color).lerp(new T.Color(0xf1fff5),.42),1);const packets=new T.InstancedMesh(unit,pulseMaterial,4);packets.userData.teachingSignal=true;group.add(packets);
     visuals.push({route,group,railMaterial,arrows,packets,pulseMaterial,dashMeshes,emphasisMaterial,arrowColor,arrowEmphasisColor});
   }
   for (const marker of presentation.markers) {
@@ -212,14 +212,14 @@ export function createTeachingVisuals(T, hardware, presentation) {
         }
         // A short, restrained train repeats along real transfer/control buses.
         // The visual cycle keeps moving after the mathematical step reaches 1.
-        const packetCount=pathLength(item.route.points)<1.6?1:3;
+        const packetCount=pathLength(item.route.points)<1.6?1:2;
         for(let n=0;n<4;n++){
           const travel=cycle.fraction-n*.045, f=travel-Math.floor(travel);
           const p=samplePath(item.route.points,f),next=samplePath(item.route.points,Math.min(1,f+.003));
           tmp.position.set(p[0],p[1]+.045,p[2]);tmp.rotation.set(0,-Math.atan2(next[2]-p[2],next[0]-p[0]),0);
           const show=cycle.mode==='packet'&&cycle.started&&n<packetCount&&(cycle.elapsed>=1||travel>=0);
-          const packetLength=Math.min(.30,Math.max(.075,pathLength(item.route.points)*.20));
-          tmp.scale.set(show?packetLength:0,show?.055:0,show?item.route.width*1.45:0);tmp.updateMatrix();item.packets.setMatrixAt(n,tmp.matrix);
+          const packetLength=Math.min(.12,Math.max(.035,pathLength(item.route.points)*.08));
+          tmp.scale.set(show?packetLength:0,show?.020:0,show?item.route.width*.65:0);tmp.updateMatrix();item.packets.setMatrixAt(n,tmp.matrix);
         }
         item.packets.instanceMatrix.needsUpdate=true;
       }

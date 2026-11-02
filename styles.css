@@ -85,3 +85,14 @@ body[data-mode=learn] .dissection-controls{padding-top:11px;padding-bottom:11px}
 .route-nodes>span.route-active{background:#385f5066;border-color:#a4ddbe;box-shadow:inset 0 0 0 1px #b4e4cd25}
 .teaching-status[data-kind=placement] .route-nodes>span.route-active{border-color:#dfcda3;background:#77633544}
 @media(prefers-reduced-motion:reduce){.route-nodes>span{transition:none}}
+
+/* A clean canvas: resources are named in a dock, details live in the inspector. */
+.stage-toolbar button{padding-top:5px;padding-bottom:5px}.stage-toolbar small{font-size:8px}
+.inspector .selection-card{position:relative;inset:auto;width:100%;max-width:none;max-height:none;margin:0 0 20px;padding:15px 26px 15px 14px;box-shadow:none;backdrop-filter:none}
+.inspector .selection-card p{font-size:12px;line-height:1.75;white-space:pre-line}.inspector .selection-card strong{font-size:16px}
+.sm-resource-legend{flex:none;background:#101a1e;border-top:1px solid var(--line);padding:9px 24px 10px}
+.resource-legend-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.resource-legend-heading strong{font-size:10px;font-weight:500}.resource-legend-heading span{font-size:8px;color:#8da3a0}
+#sm-resource-items{display:flex;flex-wrap:wrap;gap:5px}#sm-resource-items button{display:flex;align-items:center;gap:5px;font-size:9px;line-height:1.4;padding:4px 7px;color:#b7c7c2;background:#18262a;border-color:#34474a;border-radius:3px}#sm-resource-items button.active{border-color:#b7d8a8;color:#dfedd9;background:#293e32}
+#sm-resource-items i{display:block;flex:none;width:7px;height:7px;border-radius:1px}#sm-resource-items b{font:9px var(--mono);color:#d6dfdc;margin-left:2px}
+body[data-concept=true] .specimen-section{display:none}body[data-concept=true] .specimen-title h1{font-size:34px;letter-spacing:-1px}body[data-concept=true] .specimen-title{top:48px}body[data-concept=true] .specimen-title>p:last-child{display:block}
+@media(max-width:980px){.sm-resource-legend{padding:10px 16px}.stage-toolbar{top:55px}.stage-toolbar button{padding:5px 7px}.resource-legend-heading strong{font-size:11px}.resource-legend-heading span{font-size:9px}#sm-resource-items button{font-size:10px}body[data-concept=true] .specimen-title h1{font-size:29px}}

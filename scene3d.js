@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102o';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102o';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102p';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102p';
+import { createConceptModel } from './concept-models.js?v=20261102p';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -29,6 +30,7 @@ function environment(renderer) {
 class HardwareScene {
   constructor(container, compare = false) {
     this.container=container;this.compare=compare;this.level='board';this.model='h100';this.selected=null;this.hovered=null;this.explode=0;this.explodeTarget=0;this.progress=0;this.labelsVisible=true;this.isolated=false;this.flowObjects=[];this.labelNodes=[];this.picking=true;this.lastStep='';this.userSelection=false;this.autoFrame=true;
+    this.labelsVisible=false;this.navigationMode='rotate';this.conceptModel=null;this.conceptShowing=false;
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.75));
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -36,12 +38,13 @@ class HardwareScene {
     this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     const canvas=this.renderer.domElement;
     canvas.style.cssText='display:block;width:100%;height:100%;touch-action:none;outline:none;';
-    canvas.tabIndex=0;canvas.setAttribute('role','img');canvas.setAttribute('aria-label','可交互 GPU 三维模型。拖动旋转，滚轮缩放，右键平移，双击进入。F 聚焦，I 隔离，R 复位。');
+    canvas.tabIndex=0;canvas.setAttribute('role','img');canvas.setAttribute('aria-label','可交互三维模型。拖动旋转，Shift 拖动或切换平移工具来平移，滚轮缩放，双击进入。F 聚焦，I 隔离，R 复位。');
     container.appendChild(canvas);
     this.scene=new THREE.Scene();
     this.scene.fog=new THREE.FogExp2(0x11191b,.011);
     this.camera=new THREE.PerspectiveCamera(38,1,.08,180);this.camera.position.set(16,18.2,21.8);
     this.controls=new OrbitControls(this.camera,canvas);this.controls.target.set(0,.2,0);this.controls.enableDamping=true;this.controls.dampingFactor=.075;this.controls.minDistance=2.8;this.controls.maxDistance=52;this.controls.maxPolarAngle=Math.PI*.86;this.controls.panSpeed=.7;this.controls.rotateSpeed=.65;this.controls.zoomSpeed=.9;
+    this.controls.enablePan=true;this.controls.screenSpacePanning=true;this.controls.touches.TWO=THREE.TOUCH.DOLLY_PAN;
     this.controls.addEventListener('start',()=>{this.cameraTween=null;this.controls.enabled=true;this.autoFrame=false;this.container.dataset.cameraPreset='free';this.userNavigate('orbit');});
     this.environment=environment(this.renderer);this.scene.environment=this.environment.texture;
     this.scene.add(new THREE.HemisphereLight(0xdce8f2,0x363c2c,1.25));
@@ -79,11 +82,26 @@ class HardwareScene {
 
   bind() {
     const canvas=this.renderer.domElement;
-    canvas.addEventListener('pointerdown',event=>{this.dragStart={x:event.clientX,y:event.clientY};this.cameraTween=null;});
+    const pointers=new Set();
+    this.container.addEventListener('contextmenu',event=>event.preventDefault());
+    canvas.addEventListener('pointerdown',event=>{
+      pointers.add(event.pointerId);
+      const modifier=event.shiftKey||event.ctrlKey||event.metaKey;
+      // OrbitControls swaps Rotate/Pan when a modifier is down. Keep every
+      // Shift+drag a pan, including while the explicit Pan tool is selected.
+      this.controls.mouseButtons.LEFT=modifier?THREE.MOUSE.ROTATE:this.navigationMode==='pan'?THREE.MOUSE.PAN:THREE.MOUSE.ROTATE;
+      this.controls.mouseButtons.RIGHT=modifier?THREE.MOUSE.ROTATE:THREE.MOUSE.PAN;
+      if(pointers.size===1)this.dragStart={pointerId:event.pointerId,x:event.clientX,y:event.clientY,canPick:event.button===0&&!modifier&&this.navigationMode==='rotate'};
+      else if(this.dragStart)this.dragStart.canPick=false;
+      this.cameraTween=null;canvas.style.cursor='grabbing';
+      const tip=document.getElementById('tooltip');if(tip)tip.hidden=true;
+    },{capture:true});
     canvas.addEventListener('pointerup',event=>{
-      if(!this.dragStart||Math.hypot(event.clientX-this.dragStart.x,event.clientY-this.dragStart.y)>5)return;
+      pointers.delete(event.pointerId);const start=this.dragStart;this.dragStart=null;canvas.style.cursor='grab';
+      if(!start||!start.canPick||start.pointerId!==event.pointerId||Math.hypot(event.clientX-start.x,event.clientY-start.y)>5)return;
       const hit=this.pick(event);if(hit)this.selectComponent(hit);
     });
+    canvas.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);this.dragStart=null;canvas.style.cursor='grab';});
     canvas.addEventListener('dblclick',event=>{
       const id=this.pick(event);if(!id)return;this.userNavigate('double-click');
       this.selectComponent(id);
@@ -96,6 +114,8 @@ class HardwareScene {
       else this.focusSelected();
     });
     canvas.addEventListener('pointermove',event=>{
+      if(pointers.size||event.buttons){canvas.style.cursor='grabbing';return;}
+      if(this.navigationMode==='pan'){canvas.style.cursor='grab';const tip=document.getElementById('tooltip');if(tip){tip.hidden=true;tip.style.display='none';}return;}
       const hit=this.pick(event);this.hovered=hit;canvas.style.cursor=hit?'pointer':'grab';
       const tip=document.getElementById('tooltip');
       if(tip&&hit){const info=this.hardware.components[hit];tip.textContent=info?`${info.label} · 双击聚焦`:hit;tip.hidden=false;tip.style.display='block';tip.style.left=`${Math.min(event.clientX+14,window.innerWidth-250)}px`;tip.style.top=`${Math.min(event.clientY+15,window.innerHeight-65)}px`;}
@@ -110,7 +130,7 @@ class HardwareScene {
       else if(key==='i'){const button=document.getElementById('isolate-btn');if(button)button.click();else this.isolateSelected();}
       else if(key==='r'){const button=document.getElementById('home-btn');if(button)button.click();else this.resetView();}
       else if(key==='escape'){if(this.isolated){const button=document.getElementById('isolate-btn');if(button)button.click();else this.isolateSelected(false);}this.selected=null;this.userSelection=false;this.outline.visible=false;window.dispatchEvent(new CustomEvent('gpu-isolation-change',{detail:{isolated:false,selected:null}}));}
-      else if(key==='backspace'){this.userNavigate('back');this.setLevel(PARENT_LEVEL[this.level]||'board');}
+      else if(key==='backspace'){if(this.conceptShowing)window.__gpuExplorerMoveSelection?.(-1);else{this.userNavigate('back');this.setLevel(PARENT_LEVEL[this.level]||'board');}}
     });
   }
 
@@ -119,6 +139,7 @@ class HardwareScene {
     this.width=width;this.height=height;this.renderer.setSize(width,height,false);this.camera.aspect=width/height;this.camera.updateProjectionMatrix();
     // A resize wins over the old hierarchy transition. Otherwise the next
     // animation frame would restore a camera target fitted to the old aspect.
+    if(!this.autoFrame)return;
     this.cameraTween=null;
     if(this.hardware){
       const preset=this.container.dataset.cameraPreset;
@@ -129,6 +150,7 @@ class HardwareScene {
   }
 
   pick(event) {
+    if(this.conceptShowing)return null;
     const rect=this.renderer.domElement.getBoundingClientRect();
     this.pointer.set((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);
     const hits=this.raycaster.intersectObject(this.hardware.root,true);
@@ -144,7 +166,15 @@ class HardwareScene {
   }
 
   getComponents() {
-    return Object.values(this.hardware.components).map(({id,label,description,level,parent})=>({id,label,description,level,parent}));
+    return Object.values(this.hardware.components).map(({group,...info})=>info);
+  }
+
+  setNavigationMode(mode) {
+    this.navigationMode=mode==='pan'?'pan':'rotate';
+    this.controls.mouseButtons.LEFT=this.navigationMode==='pan'?THREE.MOUSE.PAN:THREE.MOUSE.ROTATE;
+    this.controls.mouseButtons.RIGHT=THREE.MOUSE.PAN;
+    this.controls.touches.ONE=this.navigationMode==='pan'?THREE.TOUCH.PAN:THREE.TOUCH.ROTATE;
+    this.container.dataset.navigationMode=this.navigationMode;
   }
 
   selectComponent(id,notify=true) {
@@ -219,7 +249,8 @@ class HardwareScene {
     // a fixed camera distance clips it on a narrow phone viewport.
     hw.setExplode(this.explodeTarget);hw.root.updateMatrixWorld(true);
     let bounds;
-    if(this.isolated&&this.selected&&hw.components[this.canonical(this.selected)])bounds=new THREE.Box3().setFromObject(hw.components[this.canonical(this.selected)].group);
+    if(this.conceptShowing&&this.conceptModel)bounds=this.conceptModel.bounds?.clone()||new THREE.Box3().setFromObject(this.conceptModel.fitObject);
+    else if(this.isolated&&this.selected&&hw.components[this.canonical(this.selected)])bounds=new THREE.Box3().setFromObject(hw.components[this.canonical(this.selected)].group);
     else if(this.level==='board')bounds=new THREE.Box3().setFromObject(hw.pcb).union(new THREE.Box3().setFromObject(hw.serial));
     else if(this.level==='package')bounds=new THREE.Box3().setFromObject(hw.serial);
     else if(this.level==='die')bounds=new THREE.Box3().setFromObject(hw.components['gpu-die'].group);
@@ -267,12 +298,11 @@ class HardwareScene {
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.style.cssText='position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;';this.labelLayer.appendChild(svg);
     for(const id of LABELS[this.level]||[]){
       const info=this.hardware.components[id];if(!info)continue;
-      const node=document.createElement('button');node.type='button';node.className='hardware-label';node.dataset.component=id;
+      const node=document.createElement('span');node.className='hardware-label';node.dataset.component=id;
       const short={ 'gpu-die':this.hardware.specification.die+' GPU',hbm:`5 × ${this.hardware.specification.hbm}`,power:'VRM / POWER',interposer:'SILICON INTERPOSER',sm:this.hardware.specification.sm+' ACTIVE SMs',l2:this.hardware.specification.l2+' L2',warp:'WARP SCHEDULER',registers:'REGISTER FILE',tensor:'TENSOR CORE',smem:'L1 DATA / SHARED' };
       node.textContent=short[id]||info.label;
-      node.setAttribute('aria-label',info.label+'，点击选中');
-      node.style.cssText='position:absolute;pointer-events:auto;transform:translate(-50%,-50%);white-space:nowrap;background:rgba(15,24,26,.88);color:#c8d2cb;border:1px solid rgba(174,195,177,.27);border-radius:3px;padding:6px 9px;font:500 10px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.055em;box-shadow:0 2px 12px #0003;cursor:pointer;';
-      node.addEventListener('click',()=>this.selectComponent(id));node.addEventListener('dblclick',()=>{this.userNavigate('double-click');this.selectComponent(id);if(id==='sm')this.setLevel('sm');else if(id==='gpu-die')this.setLevel('die');else if(id==='hbm'||id==='hbm-stack')this.setLevel('hbm');else if(id==='power')this.setLevel('power');else if(id==='sxm')this.setLevel('interconnect');else this.focusSelected();});
+      node.setAttribute('aria-label',info.label);
+      node.style.cssText='position:absolute;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap;background:rgba(15,24,26,.82);color:#c8d2cb;border:1px solid rgba(174,195,177,.22);border-radius:3px;padding:4px 7px;font:500 9px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.025em;';
       const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('stroke','rgba(174,195,177,.5)');line.setAttribute('stroke-width','1');svg.appendChild(line);
       const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');dot.setAttribute('r','2');dot.setAttribute('fill','#c7b484');svg.appendChild(dot);
       this.labelLayer.appendChild(node);this.labelNodes.push({id,node,line,dot});
@@ -325,6 +355,7 @@ class HardwareScene {
   syncDomState() {
     const eye=this.camera.position.clone().sub(this.controls.target);
     this.container.dataset.cameraElevation=(Math.atan2(eye.y,Math.hypot(eye.x,eye.z))*180/Math.PI).toFixed(1);
+    this.container.dataset.cameraTarget=this.controls.target.toArray().map(v=>v.toFixed(3)).join(',');
     const values={isolated:String(this.isolated),explode:this.explode.toFixed(3),explodeTarget:this.explodeTarget.toFixed(3),selected:this.selected||'',userSelected:String(this.userSelection),presentationMode:this.state?.presentationMode||'explore'};
     for(const [key,value]of Object.entries(values))if(this.container.dataset[key]!==value)this.container.dataset[key]=value;
   }
@@ -366,6 +397,17 @@ class HardwareScene {
     this.journey=journey;this.step=step;this.state=state;
     const flowKey=`${state.model}:${state.journey}:${state.stepIndex}:${state.presentationMode}:${this.level}`;
     if(state.model!==this.model)this.makeModel(state.model);
+    const conceptActive=state.presentationMode==='learn'&&state.journey!=='gemm';
+    const conceptChanged=conceptActive!==this.conceptShowing||(conceptActive&&this.conceptJourney!==state.journey);
+    if(conceptActive&&this.conceptJourney!==state.journey){
+      if(this.conceptModel){this.scene.remove(this.conceptModel.root);this.conceptModel.dispose?.();}
+      this.conceptModel=createConceptModel(THREE,state.journey);this.conceptJourney=state.journey;this.scene.add(this.conceptModel.root);
+    }
+    this.conceptShowing=conceptActive;this.hardware.root.visible=!conceptActive;
+    if(this.conceptModel)this.conceptModel.root.visible=conceptActive;
+    this.ground.visible=!conceptActive&&this.level==='board';
+    this.container.dataset.sceneKind=conceptActive?state.journey:'hardware';
+    if(conceptChanged){this.autoFrame=true;this.makeLabels();this.fitView(0,false);}
     // User inspection is sticky while a step animates, but changing steps
     // returns the highlight to the lesson's active physical location.
     const key=`${state.journey}:${state.stepIndex}`;
@@ -391,13 +433,20 @@ class HardwareScene {
     this.syncDomState();
     // Selection uses a fine engineering bounding frame, so silicon and PCB
     // retain their actual material colours rather than turning into neon blocks.
-    const component=this.selected&&this.hardware.components[this.canonical(this.selected)];
+    const component=!this.conceptShowing&&this.selected&&this.hardware.components[this.canonical(this.selected)];
     if(component){let visible=true,cursor=component.group;while(cursor){if(!cursor.visible)visible=false;cursor=cursor.parent;}this.outline.visible=visible&&(!this.guideActive()||this.userSelection);if(this.outline.visible){this.outline.box.setFromObject(component.group);this.outline.box.expandByScalar(.04);}}
     else this.outline.visible=false;
     const progress=Number.isFinite(window.__gpuExplorerStepProgress)?clamp(window.__gpuExplorerStepProgress):this.progress;
-    const teachingActive=this.guideActive()&&!this.isolated;
+    const teachingActive=this.state?.presentationMode==='learn'&&!this.isolated;
     const visualPhase=Number.isFinite(window.__gpuExplorerVisualPhase)?window.__gpuExplorerVisualPhase:progress;
     const motionPlaying=teachingActive&&!!window.__gpuExplorerMotionPlaying;
+    if(this.conceptShowing&&this.conceptModel){
+      const view=this.conceptModel.update(this.state.stepIndex,progress,visualPhase);
+      this.container.dataset.conceptStage=view?.stage||this.conceptModel.stepInfo[this.state.stepIndex]?.title||'';
+      this.container.dataset.conceptStep=String(this.state.stepIndex);
+      this.container.dataset.conceptActive=(view?.activeResources||[]).join(',');
+      this.container.dataset.flowKind=this.state.journey;this.container.dataset.flowVisible='true';this.container.dataset.flowPhase=this.container.dataset.conceptStage;
+    }
     this.flowVisual?.update(progress,visualPhase);
     this.container.dataset.flowCycle=visualPhase.toFixed(4);
     this.container.dataset.flowMotion=motionPlaying?'running':'paused';
@@ -410,7 +459,7 @@ class HardwareScene {
     const flowOccupied=[];let visibleFlowMarkers=0;
     for(const item of this.flowMarkerNodes){
       const world=item.host.localToWorld(new THREE.Vector3(...item.marker.point));const point=world.clone().project(this.camera);
-      let visible=teachingActive&&point.z>=-1&&point.z<=1;if(visible)visibleFlowMarkers++;
+      let visible=this.labelsVisible&&teachingActive&&point.z>=-1&&point.z<=1;if(visible)visibleFlowMarkers++;
       const x=Math.max(62,Math.min(this.width-62,(point.x*.5+.5)*this.width));
       let y=(-point.y*.5+.5)*this.height+(item.marker.role==='target'?27:-29);
       for(const previous of flowOccupied)if(Math.abs(previous.x-x)<128&&Math.abs(previous.y-y)<29)y=previous.y+31;
@@ -423,7 +472,7 @@ class HardwareScene {
     // avoidance. Labels behind the camera and hidden isolated parts disappear.
     const occupied=[];
     for(const label of this.labelNodes){
-      const item=this.hardware.components[this.canonical(label.id)];let visible=!!item&&!(teachingActive&&this.flowMarkerNodes.length),cursor=item?.group;while(cursor){if(!cursor.visible)visible=false;cursor=cursor.parent;}
+      const item=this.hardware.components[this.canonical(label.id)];let visible=this.labelsVisible&&!!item&&!(teachingActive&&this.flowMarkerNodes.length),cursor=item?.group;while(cursor){if(!cursor.visible)visible=false;cursor=cursor.parent;}
       const point=this.anchor(label.id).project(this.camera);if(point.z>1||point.z< -1)visible=false;
       let x=(point.x*.5+.5)*this.width,y=(-point.y*.5+.5)*this.height;const anchorX=x,anchorY=y;
       const offset={ 'gpu-die':[-30,-52],hbm:[-42,-25],power:[42,-35],interposer:[20,40],sm:[-18,-25],l2:[80,10],warp:[0,-30],registers:[-42,0],tensor:[-20,10],smem:[0,38] }[label.id]||[0,0];x+=offset[0];y+=offset[1];
@@ -449,6 +498,7 @@ if(container){
       setLevel(level){main.setLevel(level);compare?.setLevel(level);},
       focusSelected(){main.focusSelected();},isolateSelected(value){return main.isolateSelected(value);},
       resetView(){main.resetView();},setLabels(value){return main.setLabels(value);},
+      setNavigationMode(mode){main.setNavigationMode(mode);compare?.setNavigationMode(mode);},
       clearSelection(){main.clearSelection();compare?.clearSelection();},
       prepareGuide(options){main.prepareGuide(options);compare?.prepareGuide(options);},
       getComponents(){return main.getComponents();},selectComponent(id){main.selectComponent(id);},

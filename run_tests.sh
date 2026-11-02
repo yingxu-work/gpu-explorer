@@ -10,5 +10,6 @@ node --test tests/interaction-state.test.js
 node --test tests/lesson-story.test.js
 node --test tests/hardware-scene.test.mjs
 node --test tests/hbm-model.test.mjs tests/support-components.test.mjs tests/teaching-flow.test.mjs
+node --test tests/concept-models.test.mjs
 node tests/integration.js
 echo "ALL TESTS PASSED"

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as THREE from '../three/three.module.js';
-import { createHardwareModel,calculateCameraFit,isolateHardwareSubtree,teachingRouteSpecs,sampleSignalPath } from '../hardware-model.js';
+import { createHardwareModel,calculateCameraFit,isolateHardwareSubtree,teachingRouteSpecs,sampleSignalPath,getSMResourceLegend } from '../hardware-model.js';
 
 // Textures are deliberately mocked: this test verifies real Three geometry,
 // projection, orbit limits and isolation rather than a browser/WebGL renderer.
@@ -66,3 +66,43 @@ test('teaching transmission follows orthogonal local bus traces and memory hiera
     if(step<3)assert.equal(routes.length,0,'dependency selection has no invented data transfer');
   }
 });
+
+for(const model of ['h100','a100']){
+  test(`${model}: coloured arithmetic resources carry accurate semantic counts`,()=>{
+    const hw=createHardwareModel(THREE,model),a=model==='a100';
+    const expected={fp32:a?64:128,fp64:a?32:64,int32:64,sfu:16,lsu:32};
+    for(const [id,total]of Object.entries(expected)){
+      const component=hw.components[id];assert.equal(component.parent,'sm-detail');assert.equal(component.category==='execution'||id==='lsu',true);
+      assert.equal(component.countPerSM,total);assert.equal(component.countPerPartition,total/4);
+      let actual=0;const partitionCounts=[0,0,0,0];
+      component.group.traverse(mesh=>{if(mesh.userData.resourceId!==id)return;assert.ok(mesh.isInstancedMesh);actual+=mesh.count;
+        for(let instance=0;instance<mesh.count;instance++){
+          const matrix=new THREE.Matrix4();mesh.getMatrixAt(instance,matrix);const position=new THREE.Vector3().setFromMatrixPosition(matrix);
+          const distances=hw.partitionOrigins.map(p=>(position.x-p.x)**2+(position.z-p.z)**2);partitionCounts[distances.indexOf(Math.min(...distances))]++;
+        }
+      });
+      assert.equal(actual,total,`${id} must render the claimed actual lane/unit count`);
+      assert.deepEqual(partitionCounts,[total/4,total/4,total/4,total/4]);
+    }
+    for(const id of ['tensor','warp','dispatch','l0-instruction-cache','texture']){
+      let actual=0;hw.components[id].group.traverse(mesh=>{actual+=mesh.userData.unitCount||0;});assert.equal(actual,4,`${id} has four real outer units, not its decorative cell count`);
+    }
+    assert.equal(hw.components.registers.category,'storage');assert.equal(hw.components.registers.countPerSM,65536);
+    assert.equal(hw.components.registers.countPerPartition,16384);assert.equal(hw.components.registers.countUnit,'32-bit registers');
+    assert.equal(hw.components.registers.color,'#a79bc7');assert.ok(!hw.components.fp16,'must not invent a dedicated FP16 block');
+    assert.ok(hw.components.fp32.precisionNote.includes('FP16'));assert.ok(hw.components.tensor.description.includes('FP16'));
+    const legend=getSMResourceLegend(model);assert.equal(new Set(legend.map(item=>item.id)).size,legend.length);
+    for(const item of legend){assert.equal(hw.components[item.id].color,item.color);assert.ok(item.sourceUrls.every(url=>/^https:\/\/(docs|developer)\.nvidia\.com\//.test(url)));}
+  });
+  test(`${model}: raycasting coloured execution cells selects their named resource`,()=>{
+    const hw=createHardwareModel(THREE,model);hw.setLevel('sm');hw.root.updateMatrixWorld(true);
+    for(const id of ['fp32','fp64','int32','sfu','lsu']){
+      let first;hw.components[id].group.traverse(o=>{if(o.userData.resourceId===id)first=o;});
+      const matrix=new THREE.Matrix4();first.getMatrixAt(0,matrix);const centre=new THREE.Vector3().setFromMatrixPosition(matrix);
+      const ray=new THREE.Raycaster(new THREE.Vector3(centre.x,5,centre.z),new THREE.Vector3(0,-1,0));
+      const hit=ray.intersectObject(hw.smRoot,true)[0];assert.ok(hit,'semantic cell must be pickable');
+      let actual=null;for(let node=hit.object;node;node=node.parent)if(!actual&&node.userData.componentId)actual=node.userData.componentId;
+      assert.equal(actual,id,`${id} must not fall back to generic SM assembly`);
+    }
+  });
+}
