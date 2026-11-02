@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0b1014">
 <meta name="description" content="拆开一颗 GPU，跟着数据走完一次计算。可交互硬件解剖、逐步动画与数值实验。"><title>GPU Explorer — 走进一颗 GPU</title>
-<link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css?v=20261102t">
+<link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css?v=20261102u">
 <script type="importmap">{"imports":{"three":"./three/three.module.js","three/addons/":"./three/addons/"}}</script></head>
 <body>
 <header class="topbar">
@@ -17,7 +17,7 @@
    <button data-level="board" class="active"><span>01</span><div><strong>SXM 模组</strong><small>板卡、供电与互连</small></div><i>↗</i></button>
    <button data-level="package"><span>02</span><div><strong>芯片封装</strong><small>GPU、HBM 与中介层</small></div><i>↗</i></button>
    <button data-level="die"><span>03</span><div><strong>GPU Die</strong><small>计算阵列与 L2 缓存</small></div><i>↗</i></button>
-   <button data-level="sm"><span>04</span><div><strong>Streaming Multiprocessor</strong><small>线程、寄存器与 Tensor Core</small></div><i>↗</i></button>
+   <button data-level="sm"><span>04</span><div><strong>SM</strong><small>线程、寄存器与 Tensor Core</small></div><i>↗</i></button>
    <button data-level="hbm"><span>05</span><div><strong>HBM 内存</strong><small>DRAM 叠层、TSV 与通道</small></div><i>↗</i></button>
    <button data-level="power"><span>06</span><div><strong>供电模块</strong><small>功率级、电感与去耦</small></div><i>↗</i></button>
    <button data-level="interconnect"><span>07</span><div><strong>PCB / SXM 互连</strong><small>铜层、通孔与接触阵列</small></div><i>↗</i></button>
@@ -66,5 +66,5 @@
 <div id="tooltip" class="tooltip" hidden></div><div id="toast" class="toast" role="status"></div>
 <dialog id="help-dialog"><button class="dialog-close" aria-label="关闭帮助">×</button><span class="section-label">A HANDS-ON FIELD GUIDE</span><h2>用手探索，用眼睛理解。</h2><dl><dt>旋转 / 平移工具</dt><dd>旋转工具中左键拖动旋转；平移工具中左键拖动平移。Shift + 拖动或右键拖动也可平移；触屏双指平移</dd><dt>滚轮 / 双指缩放</dt><dd>缩放模型</dd><dt>点击 / 双击</dt><dd>选中部件 / 聚焦部件</dd><dt>F / I / R</dt><dd>聚焦 / 隔离 / 相机与拆解复位</dd><dt>← → / 空格</dt><dd>切换步骤 / 自动播放或暂停</dd></dl><p>「解剖硬件」中选择尺度、部件与拆解；「跟着算一次」中选择流程和步骤。旋转、平移和切换视角会保留当前步骤。动画持续循环，数值计算完成后保留结果。</p><button id="help-sources" class="text-link">查看来源与模型说明 ↗</button></dialog>
 <dialog id="sources-dialog"><button class="dialog-close" aria-label="关闭来源">×</button><span class="section-label">SOURCES & ARCHITECTURE</span><h2>来源与模型说明</h2><p><b>H100 SXM 80GB：</b>132 SM、50MB L2、80GB HBM3。每 SM 包含四个子分区，统一 L1 / Shared 容量为 256KB。</p><p><b>A100 SXM 80GB：</b>108 SM、40MB L2、80GB HBM2e。每 SM 的统一 L1 / Shared 容量为 192KB。</p><p>地址翻译展示 x86-64 四级页表；像素旅程展示光栅图形管线；芯片堆叠展示逻辑、存储、垂直互连与散热。</p><p>下列资料用于核对硬件规格、资源组织与工作原理。</p><a href="https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Hopper Architecture In-Depth ↗</a><a href="https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Ampere Architecture In-Depth ↗</a><a href="https://developer.nvidia.com/blog/supercharging-worlds-fastest-ai-supercomputing-platform-on-hgx-a100-80gb-gpus/" target="_blank" rel="noopener">NVIDIA A100 80GB / HBM2e ↗</a><a href="https://www.synopsys.com/designware-ip/interface-ip/hbm/hbm3-phy.html" target="_blank" rel="noopener">Synopsys HBM3 通道与接口 ↗</a><a href="https://docs.amd.com/r/en-US/pg313-network-on-chip/HBM-Topology" target="_blank" rel="noopener">AMD HBM2 / HBM2e 通道组织 ↗</a><a href="https://www.ti.com/document-viewer/lit/html/SSZTC61/GUID-0C11D72C-F6B3-479F-81D7-D5EFA802CA64" target="_blank" rel="noopener">TI 多相供电原理 ↗</a><a href="https://www.ti.com/lit/an/sbaa405a/sbaa405a.pdf" target="_blank" rel="noopener">TI 通用 PCB 参考平面与回流 ↗</a><p>交互设计参考 PC Anatomy 与 LLM Visualization。</p></dialog>
-<script src="state.js?v=20261102t"></script><script src="scene-map.js?v=20261102t"></script><script src="journey-lab.js?v=20261102t"></script><script src="interaction-state.js?v=20261102t"></script><script src="lesson-story.js?v=20261102t"></script><script src="app.js?v=20261102t"></script><script type="module" src="scene3d.js?v=20261102t"></script>
+<script src="state.js?v=20261102u"></script><script src="scene-map.js?v=20261102u"></script><script src="journey-lab.js?v=20261102u"></script><script src="interaction-state.js?v=20261102u"></script><script src="lesson-story.js?v=20261102u"></script><script src="app.js?v=20261102u"></script><script type="module" src="scene3d.js?v=20261102u"></script>
 </body></html>
