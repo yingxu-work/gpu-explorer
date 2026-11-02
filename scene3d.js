@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102u';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102u';
-import { createConceptModel } from './concept-models.js?v=20261102u';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102v';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102v';
+import { createConceptModel } from './concept-models.js?v=20261102v';
+import { createSelectionFeedback } from './selection-feedback.js?v=20261102v';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -54,7 +55,8 @@ class HardwareScene {
     const ground=new THREE.Mesh(new THREE.PlaneGeometry(160,160),new THREE.ShadowMaterial({opacity:.27}));ground.rotation.x=-Math.PI/2;ground.position.y=-.86;ground.receiveShadow=true;this.scene.add(ground);
     this.ground=ground;
     this.flowGroup=new THREE.Group();this.scene.add(this.flowGroup);
-    this.outline=new THREE.Box3Helper(new THREE.Box3(),0xeac27a);this.outline.material.transparent=true;this.outline.material.opacity=.82;this.outline.material.depthTest=false;this.outline.renderOrder=12;this.outline.visible=false;this.scene.add(this.outline);
+    this.container.dataset.selectionStyle='surface';
+    this.reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();this.dragStart=null;
     this.labelLayer=document.createElement('div');this.labelLayer.className='hardware-label-layer';this.labelLayer.style.cssText='position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:3;';container.appendChild(this.labelLayer);
     this.flowVisual=null;this.flowMarkerNodes=[];this.flowMarkerLayer=document.createElement('div');this.flowMarkerLayer.className='teaching-marker-layer';this.flowMarkerLayer.style.cssText='position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:4;';container.appendChild(this.flowMarkerLayer);
@@ -65,11 +67,13 @@ class HardwareScene {
 
   makeModel(model) {
     this.clearFlows();this.lastFlowKey='';
+    this.selectionFeedback?.dispose();
     if(this.hardware){this.scene.remove(this.hardware.root);this.disposeObject(this.hardware.root);}
     // The old isolation paths and user-picked groups belong to the disposed model.
-    this.isolationHidden=[];this.isolated=false;this.selected=null;this.userSelection=false;this.lastStateSelection=null;this.lastStep='';
+    this.isolationHidden=[];this.isolated=false;this.selected=null;this.userSelection=false;this.lastStateSelection=null;this.lastStep='';this.hovered=null;
     this.model=model;
     this.hardware=createHardwareModel(THREE,model==='a100'?'a100':'h100');
+    this.selectionFeedback=createSelectionFeedback(this.hardware.root,{reducedMotion:this.reducedMotion});
     this.scene.add(this.hardware.root);this.hardware.setExplode(this.explode);this.setVisibility();this.makeLabels();
     this.container.dataset.model=model;this.container.dataset.level=this.level;
   }
@@ -93,32 +97,34 @@ class HardwareScene {
       this.controls.mouseButtons.RIGHT=modifier?THREE.MOUSE.ROTATE:THREE.MOUSE.PAN;
       if(pointers.size===1)this.dragStart={pointerId:event.pointerId,x:event.clientX,y:event.clientY,canPick:event.button===0&&!modifier&&this.navigationMode==='rotate'};
       else if(this.dragStart)this.dragStart.canPick=false;
-      this.cameraTween=null;canvas.style.cursor='grabbing';
+      this.cameraTween=null;this.hovered=null;canvas.style.cursor='grabbing';
       const tip=document.getElementById('tooltip');if(tip)tip.hidden=true;
     },{capture:true});
     canvas.addEventListener('pointerup',event=>{
       pointers.delete(event.pointerId);const start=this.dragStart;this.dragStart=null;canvas.style.cursor='grab';
       if(!start||!start.canPick||start.pointerId!==event.pointerId||Math.hypot(event.clientX-start.x,event.clientY-start.y)>5)return;
-      const hit=this.pick(event);if(hit)this.selectComponent(hit);
+      if(this.state?.presentationMode==='learn')return;
+      const hit=this.pick(event);this.lastClickPick={id:hit,x:event.clientX,y:event.clientY,time:performance.now()};
+      if(hit&&hit!==this.selected)this.selectComponent(hit);
+      else this.clearSelection(true);
     });
     canvas.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);this.dragStart=null;canvas.style.cursor='grab';});
     canvas.addEventListener('dblclick',event=>{
-      const id=this.pick(event);if(!id)return;this.userNavigate('double-click');
+      if(this.state?.presentationMode==='learn')return;
+      const last=this.lastClickPick;
+      const id=last&&performance.now()-last.time<500&&Math.hypot(event.clientX-last.x,event.clientY-last.y)<5?last.id:this.pick(event);
+      if(!id)return;this.hovered=null;this.userNavigate('double-click');
       this.selectComponent(id);
-      if(id==='gpu-die')this.setLevel('die');
-      else if(id==='sm')this.setLevel('sm');
-      else if(id==='hbm'||id==='hbm-stack')this.setLevel('hbm');
-      else if(id==='power')this.setLevel('power');
-      else if(id==='sxm')this.setLevel('interconnect');
-      else if(id==='package'||id==='interposer')this.setLevel('package');
+      const target={'gpu-die':'die',sm:'sm',hbm:'hbm','hbm-stack':'hbm',power:'power',sxm:'interconnect',package:'package',interposer:'package'}[id];
+      if(target&&target!==this.level){this.clearSelection(true);this.setLevel(target);}
       else this.focusSelected();
     });
     canvas.addEventListener('pointermove',event=>{
       if(pointers.size||event.buttons){canvas.style.cursor='grabbing';return;}
-      if(this.navigationMode==='pan'){canvas.style.cursor='grab';const tip=document.getElementById('tooltip');if(tip){tip.hidden=true;tip.style.display='none';}return;}
+      if(this.navigationMode==='pan'){this.hovered=null;canvas.style.cursor='grab';const tip=document.getElementById('tooltip');if(tip){tip.hidden=true;tip.style.display='none';}return;}
       const hit=this.pick(event);this.hovered=hit;canvas.style.cursor=hit?'pointer':'grab';
       const tip=document.getElementById('tooltip');
-      if(tip&&hit){const info=this.hardware.components[hit];tip.textContent=info?`${info.label} · 双击聚焦`:hit;tip.hidden=false;tip.style.display='block';tip.style.left=`${Math.min(event.clientX+14,window.innerWidth-250)}px`;tip.style.top=`${Math.min(event.clientY+15,window.innerHeight-65)}px`;}
+      if(tip&&hit){const info=this.hardware.components[hit];tip.textContent=info?.label||hit;tip.hidden=false;tip.style.display='block';tip.style.left=`${Math.min(event.clientX+14,window.innerWidth-250)}px`;tip.style.top=`${Math.min(event.clientY+15,window.innerHeight-65)}px`;}
       else if(tip){tip.hidden=true;tip.style.display='none';}
     });
     canvas.addEventListener('pointerleave',()=>{this.hovered=null;const tip=document.getElementById('tooltip');if(tip){tip.hidden=true;tip.style.display='none';}});
@@ -129,7 +135,7 @@ class HardwareScene {
       if(key==='f'){const button=document.getElementById('focus-btn');if(button)button.click();else this.focusSelected();}
       else if(key==='i'){const button=document.getElementById('isolate-btn');if(button)button.click();else this.isolateSelected();}
       else if(key==='r'){const button=document.getElementById('home-btn');if(button)button.click();else this.resetView();}
-      else if(key==='escape'&&this.state?.presentationMode!=='learn'){if(this.isolated){const button=document.getElementById('isolate-btn');if(button)button.click();else this.isolateSelected(false);}this.selected=null;this.userSelection=false;this.outline.visible=false;window.dispatchEvent(new CustomEvent('gpu-isolation-change',{detail:{isolated:false,selected:null}}));}
+      else if(key==='escape'&&this.state?.presentationMode!=='learn')this.clearSelection(true);
       else if(key==='backspace'){if(this.state?.presentationMode==='learn')window.__gpuExplorerMoveSelection?.(-1);else{this.userNavigate('back');this.setLevel(PARENT_LEVEL[this.level]||'board');}}
     });
   }
@@ -170,7 +176,7 @@ class HardwareScene {
   }
 
   setNavigationMode(mode) {
-    this.navigationMode=mode==='pan'?'pan':'rotate';
+    this.navigationMode=mode==='pan'?'pan':'rotate';if(this.navigationMode==='pan')this.hovered=null;
     this.controls.mouseButtons.LEFT=this.navigationMode==='pan'?THREE.MOUSE.PAN:THREE.MOUSE.ROTATE;
     this.controls.mouseButtons.RIGHT=THREE.MOUSE.PAN;
     this.controls.touches.ONE=this.navigationMode==='pan'?THREE.TOUCH.PAN:THREE.TOUCH.ROTATE;
@@ -216,11 +222,12 @@ class HardwareScene {
       const keep=hw.components[this.canonical(this.selected)]?.group;
       if(keep)this.isolationHidden=isolateHardwareSubtree(hw.root,keep);
     }
+    this.selectionFeedback?.refresh();
   }
 
   setLevel(level,animate=true) {
     if(!LEVELS.includes(level))return;
-    const changed=this.level!==level,wasIsolated=this.isolated;this.level=level;this.isolated=false;this.setVisibility();this.makeLabels();this.container.dataset.level=level;
+    const changed=this.level!==level,wasIsolated=this.isolated;this.hovered=null;this.level=level;this.isolated=false;this.setVisibility();this.makeLabels();this.container.dataset.level=level;
     this.lastFlowKey='';
     this.autoFrame=true;this.container.dataset.cameraPreset='3d';this.fitView(animate?850:0);
     if(wasIsolated&&!this.compare)window.dispatchEvent(new CustomEvent('gpu-isolation-change',{detail:{isolated:false}}));
@@ -291,7 +298,11 @@ class HardwareScene {
   }
 
   resetView() {this.isolated=false;this.selected=null;this.userSelection=false;this.setLevel(this.level);}
-  clearSelection() {this.selected=null;this.userSelection=false;this.lastStateSelection=this.state?.selected;this.outline.visible=false;}
+  clearSelection(notify=false) {
+    const wasIsolated=this.isolated;this.selected=null;this.hovered=null;this.userSelection=false;this.isolated=false;this.lastStateSelection=this.state?.selected;
+    if(wasIsolated)this.setVisibility();
+    if(notify&&!this.compare)window.dispatchEvent(new CustomEvent('gpu-component-select',{detail:{id:null,level:this.level}}));
+  }
 
   makeLabels() {
     this.labelLayer.replaceChildren();this.labelNodes=[];
@@ -338,7 +349,7 @@ class HardwareScene {
     // computing the guide camera, otherwise a quick drag→Learn shifts that fit.
     const damping=this.controls.enableDamping;
     this.controls.enableDamping=false;this.controls.update();this.controls.enableDamping=damping;
-    this.cameraTween=null;this.isolated=false;this.selected=null;this.userSelection=false;this.outline.visible=false;
+    this.cameraTween=null;this.isolated=false;this.selected=null;this.userSelection=false;this.hovered=null;this.selectionFeedback?.reset();
     this.explode=0;this.explodeTarget=0;this.progress=0;this.lastStateSelection=null;
     this.hardware.setExplode(0);this.clearFlows();this.lastStep='';this.lastFlowKey='';
     this.setLevel(LEVELS.includes(options.level)?options.level:'board',options.animate!==false);
@@ -394,6 +405,7 @@ class HardwareScene {
   }
 
   update(journey,step,state) {
+    if(state.presentationMode==='learn'){this.hovered=null;this.selectionFeedback?.set({enabled:false});}
     this.journey=journey;this.step=step;this.state=state;
     const flowKey=`${state.model}:${state.journey}:${state.stepIndex}:${state.presentationMode}:${this.level}`;
     if(state.model!==this.model)this.makeModel(state.model);
@@ -431,11 +443,16 @@ class HardwareScene {
     else if(this.explode!==this.explodeTarget){this.explode=this.explodeTarget;this.hardware.setExplode(this.explode);}
     this.controls.update();this.hardware.root.updateMatrixWorld(true);
     this.syncDomState();
-    // Selection uses a fine engineering bounding frame, so silicon and PCB
-    // retain their actual material colours rather than turning into neon blocks.
-    const component=!this.conceptShowing&&this.selected&&this.hardware.components[this.canonical(this.selected)];
-    if(component){let visible=true,cursor=component.group;while(cursor){if(!cursor.visible)visible=false;cursor=cursor.parent;}this.outline.visible=visible&&(!this.guideActive()||this.userSelection);if(this.outline.visible){this.outline.box.setFromObject(component.group);this.outline.box.expandByScalar(.04);}}
-    else this.outline.visible=false;
+    const inspecting=this.state?.presentationMode==='explore'&&!this.conceptShowing;
+    const selected=inspecting&&this.userSelection?this.hardware.components[this.canonical(this.selected)]?.group||null:null;
+    const hovered=inspecting?this.hardware.components[this.canonical(this.hovered)]?.group||null:null;
+    this.selectionFeedback.set({selected,hovered,enabled:inspecting});
+    this.selectionFeedback.update(this.lastFeedbackFrame?Math.min(now-this.lastFeedbackFrame,100):16);
+    this.lastFeedbackFrame=now;
+    const feedback=this.selectionFeedback.stats;
+    this.container.dataset.hovered=inspecting?this.hovered||'':'';
+    this.container.dataset.highlightedMeshes=String(feedback.selectedMeshes||0);
+    this.container.dataset.hoveredMeshes=String(feedback.hoveredMeshes||0);
     const progress=Number.isFinite(window.__gpuExplorerStepProgress)?clamp(window.__gpuExplorerStepProgress):this.progress;
     const teachingActive=this.state?.presentationMode==='learn'&&!this.isolated;
     const visualPhase=Number.isFinite(window.__gpuExplorerVisualPhase)?window.__gpuExplorerVisualPhase:progress;
@@ -480,7 +497,7 @@ class HardwareScene {
       for(const previous of occupied)if(Math.abs(previous.x-x)<145&&Math.abs(previous.y-y)<31)y=previous.y+34;
       occupied.push({x,y});label.node.style.left=`${x}px`;label.node.style.top=`${Math.min(this.height-22,y)}px`;label.node.style.display=visible?'':'none';
       label.line.setAttribute('x1',anchorX);label.line.setAttribute('y1',anchorY);label.line.setAttribute('x2',x);label.line.setAttribute('y2',Math.min(this.height-22,y));label.line.style.display=visible?'':'none';label.dot.setAttribute('cx',anchorX);label.dot.setAttribute('cy',anchorY);label.dot.style.display=visible?'':'none';
-      label.node.style.borderColor=this.selected===label.id?'#eac27a':'rgba(174,195,177,.27)';
+      label.node.style.borderColor=this.selected===label.id?'#abcac2':'rgba(174,195,177,.27)';
     }
     this.renderer.render(this.scene,this.camera);
   }

@@ -191,6 +191,9 @@
     const node = S.currentJourney(state).nodes.find(item => item.id === ui.selection);
     const info = component || node;
     $('selection-card').hidden = !info || ui.mode !== 'explore';
+    const detailLevel={'gpu-die':'die',sm:'sm',hbm:'hbm','hbm-stack':'hbm',power:'power',sxm:'interconnect',package:'package',interposer:'package'}[ui.selection];
+    $('selection-enter').hidden=!info||!detailLevel||detailLevel===ui.level;
+    $('selection-enter').dataset.level=detailLevel||'';
     if (info) {
       $('component-name').textContent = info.label;
       $('component-detail').textContent = (info.description || info.detail || '')+(info.precisionNote?'\n'+info.precisionNote:'');
@@ -455,6 +458,7 @@
   $('focus-btn').onclick = focusSelected;
   $('isolate-btn').onclick = () => { if (!ui.selection) { toast('先选中一个部件，再聚焦或隔离。'); return; } exploreAction({ type: 'ISOLATE' }); };
   $('home-btn').onclick = resetCamera;
+  $('selection-enter').onclick = () => { const level=$('selection-enter').dataset.level;if(LEVELS.includes(level))exploreAction({type:'LEVEL',level}); };
   $('selection-close').onclick = () => { state.selected = null; exploreAction({ type: 'SELECT', id: null }); };
   $('fullscreen-btn').onclick = async () => {
     try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.querySelector('.canvas-panel').requestFullscreen(); }

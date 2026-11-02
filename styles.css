@@ -125,3 +125,5 @@ body[data-mode=explore] .inspector-head{padding-bottom:20px}
 body[data-mode=explore] .inspector-head{display:none}body[data-mode=explore] #explore-content{padding-top:28px}
 .scale-nav button[data-level=sm] strong{font-size:11px}.scale-nav button[data-level=sm] strong:after{content:none}
 @media(max-width:980px){body[data-mode=learn]{padding-bottom:98px}.bottombar{position:fixed;left:0;right:0;bottom:0}.scale-nav button[data-level=sm] strong{font-size:9px}.canvas-panel:fullscreen{display:flex}}
+
+.selection-card .selection-enter{position:static;display:flex;align-items:center;justify-content:space-between;gap:24px;border:1px solid #6e998455;border-radius:4px;color:#bdd9cb;background:#263b312e;font-size:11px;padding:7px 11px;margin-top:15px;width:100%;text-align:left}.selection-card .selection-enter span{font-size:13px}.selection-card .selection-enter:hover{background:#294235;border-color:#83b49a}
