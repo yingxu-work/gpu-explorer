@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102v';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102v';
-import { createConceptModel } from './concept-models.js?v=20261102v';
-import { createSelectionFeedback } from './selection-feedback.js?v=20261102v';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102w';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102w';
+import { createConceptModel } from './concept-models.js?v=20261102w';
+import { createSelectionFeedback } from './selection-feedback.js?v=20261102w';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -46,7 +46,7 @@ class HardwareScene {
     this.camera=new THREE.PerspectiveCamera(38,1,.08,180);this.camera.position.set(16,18.2,21.8);
     this.controls=new OrbitControls(this.camera,canvas);this.controls.target.set(0,.2,0);this.controls.enableDamping=true;this.controls.dampingFactor=.075;this.controls.minDistance=2.8;this.controls.maxDistance=52;this.controls.maxPolarAngle=Math.PI*.86;this.controls.panSpeed=.7;this.controls.rotateSpeed=.65;this.controls.zoomSpeed=.9;
     this.controls.enablePan=true;this.controls.screenSpacePanning=true;this.controls.touches.TWO=THREE.TOUCH.DOLLY_PAN;
-    this.controls.addEventListener('start',()=>{this.cameraTween=null;this.controls.enabled=true;this.autoFrame=false;this.container.dataset.cameraPreset='free';this.userNavigate('orbit');});
+    this.controls.addEventListener('start',()=>{this.hovered=null;this.cameraTween=null;this.controls.enabled=true;this.autoFrame=false;this.container.dataset.cameraPreset='free';this.userNavigate('orbit');});
     this.environment=environment(this.renderer);this.scene.environment=this.environment.texture;
     this.scene.add(new THREE.HemisphereLight(0xdce8f2,0x363c2c,1.25));
     const key=new THREE.DirectionalLight(0xfff1d7,3.5);key.position.set(-8,16,10);key.castShadow=true;key.shadow.mapSize.set(2048,2048);key.shadow.camera.left=-15;key.shadow.camera.right=15;key.shadow.camera.top=15;key.shadow.camera.bottom=-15;key.shadow.camera.near=1;key.shadow.camera.far=55;key.shadow.normalBias=.035;key.shadow.bias=-.0002;this.scene.add(key);
@@ -110,7 +110,7 @@ class HardwareScene {
     });
     canvas.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);this.dragStart=null;canvas.style.cursor='grab';});
     canvas.addEventListener('dblclick',event=>{
-      if(this.state?.presentationMode==='learn')return;
+      if(this.state?.presentationMode==='learn'||this.navigationMode==='pan'||event.shiftKey||event.ctrlKey||event.metaKey)return;
       const last=this.lastClickPick;
       const id=last&&performance.now()-last.time<500&&Math.hypot(event.clientX-last.x,event.clientY-last.y)<5?last.id:this.pick(event);
       if(!id)return;this.hovered=null;this.userNavigate('double-click');
