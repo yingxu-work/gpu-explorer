@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102m';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102m';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102n';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102n';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -13,6 +13,7 @@ const LABELS = { board: ['gpu-die', 'hbm', 'power'], package: ['gpu-die', 'hbm',
 const LEVEL_INFO = { board:'SXM MODULE', package:'GPU PACKAGE', die:'SILICON FLOORPLAN', sm:'STREAMING MULTIPROCESSOR',hbm:'HBM STACK CUTAWAY',power:'POWER DELIVERY',interconnect:'SXM / PACKAGE INTERCONNECT' };
 const EASE = t => 1 - Math.pow(1 - t, 3);
 const clamp = n => Math.max(0, Math.min(1, Number(n) || 0));
+const cameraDirection = name => name==='top'?new THREE.Vector3(0,1,.0001):name==='side'?new THREE.Vector3(1,.18,1.05).normalize():new THREE.Vector3(.62,.83,1).normalize();
 
 function environment(renderer) {
   const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 512;
@@ -119,7 +120,12 @@ class HardwareScene {
     // A resize wins over the old hierarchy transition. Otherwise the next
     // animation frame would restore a camera target fitted to the old aspect.
     this.cameraTween=null;
-    if(this.hardware)this.fitView(0,true);
+    if(this.hardware){
+      const preset=this.container.dataset.cameraPreset;
+      // Showing the lesson HUD changes the canvas height during its camera
+      // transition. Fit the chosen preset, rather than freezing the old angle.
+      this.fitView(0,preset==='free',preset==='free'?null:cameraDirection(preset));
+    }
   }
 
   pick(event) {
@@ -225,7 +231,7 @@ class HardwareScene {
   }
 
   setCamera(name) {
-    const direction=name==='top'?new THREE.Vector3(0,1,.0001):name==='side'?new THREE.Vector3(1,.18,1.05).normalize():new THREE.Vector3(.62,.83,1).normalize();
+    const direction=cameraDirection(name);
     // Each preset fits the actual current assembly. Reusing the old oblique
     // distance can clip tall HBM layers or the connector's underside in SIDE.
     this.autoFrame=true;this.container.dataset.cameraPreset=['top','side'].includes(name)?name:'3d';this.fitView(800,false,direction);
@@ -311,6 +317,8 @@ class HardwareScene {
   }
 
   syncDomState() {
+    const eye=this.camera.position.clone().sub(this.controls.target);
+    this.container.dataset.cameraElevation=(Math.atan2(eye.y,Math.hypot(eye.x,eye.z))*180/Math.PI).toFixed(1);
     const values={isolated:String(this.isolated),explode:this.explode.toFixed(3),explodeTarget:this.explodeTarget.toFixed(3),selected:this.selected||'',userSelected:String(this.userSelection),presentationMode:this.state?.presentationMode||'explore'};
     for(const [key,value]of Object.entries(values))if(this.container.dataset[key]!==value)this.container.dataset[key]=value;
   }

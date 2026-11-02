@@ -1,6 +1,6 @@
-import { createHBMDetail } from './hbm-model.js?v=20261102m';
-import { createPowerDetail } from './power-model.js?v=20261102m';
-import { createInterconnectDetail } from './interconnect-model.js?v=20261102m';
+import { createHBMDetail } from './hbm-model.js?v=20261102n';
+import { createPowerDetail } from './power-model.js?v=20261102n';
+import { createInterconnectDetail } from './interconnect-model.js?v=20261102n';
 
 // Hide every sibling subtree along the selected object's ancestor path.
 // Ancestors remain as paths, without retaining their unselected own meshes.
@@ -360,13 +360,13 @@ export function createHardwareModel(T, model = 'h100') {
   const fp32=[],registers=[],registerStrips=[],lsuCells=[],laneContacts=[],registerWordlines=[],tensorArrays=[],tensorBus=[];
   const partitionOrigins=[{x:-2.65,z:-1.72},{x:2.65,z:-1.72},{x:-2.65,z:1.08},{x:2.65,z:1.08}];
   box(instruction,0,.23,-3.65,10.15,.12,.40,mats.register);
-  surfaceText(instruction,'L1 INSTRUCTION CACHE',0,.296,-3.65,8.5,.32,'#d0dfeb','500 32px monospace');
+  surfaceText(instruction,'L1 INSTRUCTION CACHE',0,.296,-3.65,8.5,.32,'#172632','600 32px monospace');
   for(let partition=0;partition<4;partition++) {
     const {x,z}=partitionOrigins[partition];
     box(smAssembly,x,.13,z,4.95,.08,2.62,mats.black);
     box(smAssembly,x,.225,z-1.10,4.65,.07,.15,mats.register);
     box(scheduler,x,.255,z-.87,4.65,.14,.32,mats.scheduler);
-    surfaceText(scheduler,`SMSP ${partition}  ·  WARP SCHEDULER`,x,.332,z-.87,4.27,.28,'#eee2cb','500 31px monospace');
+    surfaceText(scheduler,`SMSP ${partition}  ·  WARP SCHEDULER`,x,.332,z-.87,4.27,.28,'#302415','600 31px monospace');
     box(dispatch,x,.25,z-.64,4.65,.10,.13,mats.copper);
     for(let row=0;row<2;row++)for(let bank=0;bank<16;bank++){
       const bx=x-2.14+bank*.285,bz=z-.43+row*.16;
@@ -374,7 +374,7 @@ export function createHardwareModel(T, model = 'h100') {
       registerWordlines.push({x:bx,y:.307,z:bz,w:.16,h:.012,d:.018});
     }
     registerStrips.push({x,y:.33,z:z-.11,w:4.40,h:.025,d:.20});
-    surfaceText(registerGroup,'REGISTER FILE',x,.354,z-.11,3.10,.18,'#d1deea','500 31px monospace');
+    surfaceText(registerGroup,'REGISTER FILE',x,.354,z-.11,3.10,.18,'#172632','600 31px monospace');
     // The small green cells retain the correct FP32 lane count (32/16 per partition).
     for(let row=0;row<(ampere?2:4);row++)for(let lane=0;lane<8;lane++){
       const lx=x-1.52+lane*.31,lz=z+.10+row*.19;
@@ -386,7 +386,7 @@ export function createHardwareModel(T, model = 'h100') {
     box(tensor,x+1.80,.27,z+.39,.98,.22,.93,mats.tensor);
     for(let row=0;row<4;row++)for(let col=0;col<4;col++)tensorArrays.push({x:x+1.48+col*.21,y:.391,z:z+.08+row*.20,w:.14,h:.02,d:.13});
     tensorBus.push({x:x+1.80,y:.408,z:z+.39,w:.84,h:.016,d:.035},{x:x+1.80,y:.408,z:z+.39,w:.035,h:.016,d:.80});
-    surfaceText(tensor,'TENSOR',x+1.80,.426,z+.39,.89,.20,'#f1e4c8','600 34px monospace');
+    surfaceText(tensor,'TENSOR',x+1.80,.426,z+.39,.89,.20,'#302415','600 34px monospace');
     for(let lane=0;lane<8;lane++)lsuCells.push({x:x-2.10+lane*.47,y:.25,z:z+1.02,w:.37,h:.12,d:.17});
     box(smAssembly,x+1.98,.25,z+1.02,.56,.12,.17,mats.scheduler);
     // Branches terminate at the central interconnect, rather than crossing scheduler boxes.
@@ -399,11 +399,14 @@ export function createHardwareModel(T, model = 'h100') {
   box(smBus,0,.18,.50,.065,.035,3.75,mats.trace,false);
   box(smBus,0,.18,2.40,10.1,.035,.07,mats.trace,false);
   const tma=ampere?null:component('tma','Tensor Memory Accelerator','Hopper 的 TMA 异步搬运张量，可将全局内存的数据搬入共享内存。它是数据搬运硬件，和 warp 调度器不同。','sm',smAssembly,'sm-detail');
-  if(!ampere){box(tma,0,.24,2.65,10.05,.10,.28,mats.activeSM);surfaceText(tma,'TENSOR MEMORY ACCELERATOR',0,.296,2.65,8.5,.25,'#d6e9ce','500 32px monospace');}
+  if(!ampere){box(tma,0,.24,2.65,10.05,.10,.28,mats.activeSM);surfaceText(tma,'TENSOR MEMORY ACCELERATOR',0,.296,2.65,8.5,.25,'#183023','600 32px monospace');}
   box(smem,0,.25,3.20,10.09,.25,.66,mats.smem);
   const sharedBanks=[];for(let bank=0;bank<32;bank++)sharedBanks.push({x:-4.79+bank*.309,y:.39,z:3.20,w:.20,h:.025,d:.39});
   instances(smem,sharedBanks,mats.darkMetal);
-  surfaceText(smem,`${ampere?'192':'256'} KB  L1 DATA CACHE / SHARED MEMORY`,0,.43,3.20,9.25,.42,'#d6efea','500 32px monospace');
+  // A separate nameplate leaves all 32 bank cells visually unobstructed.
+  // Its top remains below the teaching signal route at y=.56.
+  box(smem,0,.36,3.63,9.86,.12,.30,mats.smem);
+  surfaceText(smem,`${ampere?'192':'256'} KB  ·  L1 DATA / SHARED`,0,.428,3.63,9.25,.26,'#12302d','600 32px monospace');
   for(let unit=0;unit<4;unit++)box(smAssembly,-3.84+unit*2.56,.21,3.86,2.32,.10,.24,mats.register);
   surfaceText(smAssembly,`${specification.name}  /  SM FUNCTIONAL ORGANIZATION`,0,.12,-4.03,9.6,.23,'#aab9ba','400 28px monospace');
   const hbmDetail=createHBMDetail(T,model),powerDetail=createPowerDetail(T,model),interconnectDetail=createInterconnectDetail(T,model);
