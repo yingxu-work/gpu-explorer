@@ -1,0 +1,268 @@
+{
+  "date": "2026-11-02",
+  "assetVersion": "20261102x",
+  "checks": [
+    {
+      "kind": "hover",
+      "error": null,
+      "hovered": "gpu-die",
+      "hoveredMeshes": "32",
+      "selected": "",
+      "style": "surface",
+      "userSelected": "false",
+      "version": "app.js?v=20261102w"
+    },
+    {
+      "kind": "reclick-clears",
+      "cardHidden": true,
+      "meshes": "0",
+      "selected": ""
+    },
+    {
+      "kind": "blank-clears",
+      "cardHidden": true,
+      "meshes": "0",
+      "selected": ""
+    },
+    {
+      "kind": "double-click-drills",
+      "level": "die",
+      "meshes": "0",
+      "selected": ""
+    },
+    {
+      "kind": "sm-resource",
+      "id": "fp32",
+      "error": null,
+      "level": "sm",
+      "meshes": 10,
+      "selected": "fp32"
+    },
+    {
+      "kind": "sm-resource",
+      "id": "registers",
+      "error": null,
+      "level": "sm",
+      "meshes": 7,
+      "selected": "registers"
+    },
+    {
+      "kind": "sm-resource",
+      "id": "tensor",
+      "error": null,
+      "level": "sm",
+      "meshes": 10,
+      "selected": "tensor"
+    },
+    {
+      "kind": "sm-resource",
+      "id": "smem",
+      "error": null,
+      "level": "sm",
+      "meshes": 4,
+      "selected": "smem"
+    },
+    {
+      "kind": "isolate-roundtrip",
+      "isolated": {
+        "isolated": "true",
+        "meshes": "10",
+        "selected": "fp32"
+      },
+      "restored": {
+        "isolated": "false",
+        "meshes": "10",
+        "selected": "fp32"
+      }
+    },
+    {
+      "kind": "escape-clears",
+      "isolated": "false",
+      "meshes": "0",
+      "selected": ""
+    },
+    {
+      "kind": "level-selection",
+      "requested": "board",
+      "id": "power",
+      "error": null,
+      "level": "board",
+      "meshes": 24,
+      "selected": "power"
+    },
+    {
+      "kind": "level-selection",
+      "requested": "package",
+      "id": "hbm",
+      "error": null,
+      "level": "package",
+      "meshes": 61,
+      "selected": "hbm"
+    },
+    {
+      "kind": "level-selection",
+      "requested": "die",
+      "id": "sm",
+      "error": null,
+      "level": "die",
+      "meshes": 20,
+      "selected": "sm"
+    },
+    {
+      "kind": "level-selection",
+      "requested": "sm",
+      "id": "fp32",
+      "error": null,
+      "level": "sm",
+      "meshes": 10,
+      "selected": "fp32"
+    },
+    {
+      "kind": "level-selection",
+      "requested": "hbm",
+      "id": "hbm-dram",
+      "error": null,
+      "level": "hbm",
+      "meshes": 72,
+      "selected": "hbm-dram"
+    },
+    {
+      "kind": "level-selection",
+      "requested": "power",
+      "id": "power-inductor",
+      "error": null,
+      "level": "power",
+      "meshes": 43,
+      "selected": "power-inductor"
+    },
+    {
+      "kind": "level-selection",
+      "requested": "interconnect",
+      "id": "link-vias",
+      "error": null,
+      "level": "interconnect",
+      "meshes": 24,
+      "selected": "link-vias"
+    },
+    {
+      "kind": "returned-orbit-drag",
+      "mode": "explore",
+      "selected": "",
+      "version": "app.js?v=20261102x",
+      "outcome": "inconclusive",
+      "reason": "Initial selection was not checked immediately after navigation; retested with observed precondition."
+    },
+    {
+      "kind": "returned-orbit-drag-observed",
+      "before": {
+        "meshes": "32",
+        "selected": "gpu-die"
+      },
+      "after": {
+        "meshes": "32",
+        "mode": "explore",
+        "selected": "gpu-die"
+      }
+    },
+    {
+      "kind": "pan-double-click",
+      "level": "board",
+      "selected": "gpu-die"
+    },
+    {
+      "kind": "toolbar-focused-escape",
+      "cardHidden": true,
+      "isolated": "false",
+      "selected": ""
+    },
+    {
+      "kind": "enter-internal-button",
+      "level": "die",
+      "meshes": "0",
+      "selected": ""
+    },
+    {
+      "kind": "model-replacement",
+      "error": null,
+      "meshes": "0",
+      "model": "h100",
+      "selected": ""
+    },
+    {
+      "kind": "learn-cutaway-neutral",
+      "cutaway": "true",
+      "flow": "true",
+      "meshes": "0",
+      "mode": "learn"
+    },
+    {
+      "kind": "learn-return-selection",
+      "cutaway": "false",
+      "meshes": "24",
+      "mode": "explore",
+      "selected": "power"
+    },
+    {
+      "kind": "exploded-hbm-feedback",
+      "explode": "100",
+      "level": "hbm",
+      "meshes": "72",
+      "selected": "hbm-dram"
+    },
+    {
+      "kind": "mobile-enter-button",
+      "before": {
+        "enterHidden": false,
+        "overflow": false,
+        "selected": "power",
+        "viewport": 390
+      },
+      "after": {
+        "level": "power",
+        "overflow": false,
+        "selected": ""
+      }
+    },
+    {
+      "kind": "learn-journey-neutral",
+      "journey": "gemm",
+      "error": null,
+      "flow": "true",
+      "hoveredMeshes": "0",
+      "meshes": "0",
+      "mode": "learn",
+      "scene": "hardware"
+    },
+    {
+      "kind": "learn-journey-neutral",
+      "journey": "pagetable",
+      "error": null,
+      "flow": "true",
+      "hoveredMeshes": "0",
+      "meshes": "0",
+      "mode": "learn",
+      "scene": "pagetable"
+    },
+    {
+      "kind": "learn-journey-neutral",
+      "journey": "pixel",
+      "error": null,
+      "flow": "true",
+      "hoveredMeshes": "0",
+      "meshes": "0",
+      "mode": "learn",
+      "scene": "pixel"
+    },
+    {
+      "kind": "learn-journey-neutral",
+      "journey": "stacking",
+      "error": null,
+      "flow": "true",
+      "hoveredMeshes": "0",
+      "meshes": "0",
+      "mode": "learn",
+      "scene": "stacking"
+    }
+  ],
+  "console": []
+}
