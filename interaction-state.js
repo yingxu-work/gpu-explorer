@@ -25,9 +25,16 @@
     if (ui.mode === 'learn' && ui.progress < 1) return 'resume';
     return 'replay';
   }
+  function anatomyContext(ui = {}) {
+    const selection = typeof ui.selection === 'string' ? ui.selection : null;
+    return { level: LEVELS.includes(ui.level) ? ui.level : 'board',
+      selection, isolated: !!selection && !!ui.isolated, explode: clamp(ui.explode),
+      cameraPreset: ui.cameraPreset || 'three-quarter' };
+  }
   function enterGuide(ui, context, playback) {
+    const anatomy = ui.mode === 'explore' ? anatomyContext(ui) : ui.anatomy || anatomyContext();
     return {
-      ...ui, mode: 'learn', level: guideLevel(context), selection: null,
+      ...ui, anatomy, mode: 'learn', level: guideLevel(context), selection: null,
       isolated: false, explode: 0, explodeAuto: false, explodePhase: 0,
       progress: context.reducedMotion ? 1 : 0, dwell: 0,
       visualPhase: 0, motionPlaying: !context.reducedMotion,
@@ -40,22 +47,28 @@
     return { ...ui, mode: 'explore', playback: 'paused', motionPlaying: false, dwell: 0,
       explodeAuto: false, advanceRequested: false };
   }
+  function returnToAnatomy(ui) {
+    const next = explore(ui);
+    return ui.mode === 'learn' ? { ...next, ...anatomyContext(ui.anatomy) } : next;
+  }
   function create(options = {}, context = {}) {
     const ui = {
-      mode: 'explore', level: LEVELS.includes(options.level) ? options.level : 'board',
+      mode: options.mode === 'explore' ? 'explore' : 'learn',
+      anatomy: anatomyContext(),
+      level: LEVELS.includes(options.level) ? options.level : 'board',
       selection: typeof options.selection === 'string' ? options.selection : null,
       isolated: false, explode: clamp(options.explode), explodeAuto: false, explodePhase: 0,
       progress: context.reducedMotion ? 1 : 0, playback: 'paused', dwell: 0,
       visualPhase: 0, motionPlaying: false,
       cameraPreset: 'three-quarter', guideRevision: 0, advanceRequested: false
     };
-    return options.mode === 'explore' ? ui : enterGuide(ui, context, 'step');
+    return options.mode === 'explore' ? { ...ui, anatomy: anatomyContext(ui) } : enterGuide(ui, context, 'step');
   }
   function transition(current, event, context = {}) {
     let ui = { ...current, advanceRequested: false };
     switch (event.type) {
       case 'ENTER_GUIDE': return enterGuide(ui, context, event.playback);
-      case 'ENTER_EXPLORE': return explore(ui);
+      case 'ENTER_EXPLORE': return returnToAnatomy(ui);
       case 'LEVEL':
         ui = explore(ui);
         return { ...ui, level: LEVELS.includes(event.level) ? event.level : ui.level,

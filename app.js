@@ -158,7 +158,7 @@
           changedLevel = true;
           if (applied.explode !== ui.explode) { sc.setExplode(ui.explode); applied.explode = ui.explode; }
         }
-        if (!changedLevel && ui.cameraPreset !== 'free' && applied.camera !== ui.cameraPreset) sc.setCamera(ui.cameraPreset);
+        if (ui.cameraPreset !== 'free' && (changedLevel || applied.camera !== ui.cameraPreset)) sc.setCamera(ui.cameraPreset);
         applied.camera = ui.cameraPreset;
       }
       sc.setLabels(labels);
@@ -175,12 +175,12 @@
       const title=document.createElement('span');title.textContent={pagetable:'x86-64 地址翻译',pixel:'通用图形管线',stacking:'3D 芯片堆叠'}[state.journey];crumb.append(title);
     }else I.breadcrumbs(ui.level).forEach((level, i) => {
       if (i) { const sep = document.createElement('span'); sep.textContent = '›'; crumb.append(sep); }
-      const button = document.createElement('button');
+      const button = document.createElement(ui.mode === 'learn' ? 'span' : 'button');
       button.textContent = LEVEL_NAMES[level];
-      button.onclick = () => exploreAction({ type: 'LEVEL', level });
+      if (ui.mode === 'explore') button.onclick = () => exploreAction({ type: 'LEVEL', level });
       crumb.append(button);
     });
-    document.querySelectorAll('[data-level]').forEach(button => {
+    document.querySelectorAll('.scale-nav [data-level]').forEach(button => {
       const active = !conceptActive() && button.dataset.level === ui.level;
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
@@ -218,17 +218,17 @@
     const ids=['fp32','fp64','int32','sfu','tensor','registers','lsu','smem'];
     const components=scene()?.getComponents?.()||[];
     const entries=ids.map(id=>components.find(item=>item.id===id)).filter(Boolean);
-    const key=state.model+entries.map(item=>item.id+item.countPerSM+item.color).join();
+    const key=ui.mode+state.model+entries.map(item=>item.id+item.countPerSM+item.color).join();
     if(key===lastLegendKey)return;lastLegendKey=key;
     const list=$('sm-resource-items');list.replaceChildren();
     entries.forEach(item=>{
-      const button=document.createElement('button');button.dataset.component=item.id;
+      const button=document.createElement(ui.mode==='learn'?'span':'button');button.className='resource-item';if(ui.mode==='explore')button.dataset.component=item.id;
       const swatch=document.createElement('i');swatch.style.background=item.color||'#8ba6a0';
       const name=document.createElement('span');name.textContent=item.shortLabel||item.label;
       button.append(swatch,name);
       if(item.countPerSM||item.capacityKB){const count=document.createElement('b');count.textContent=item.id==='registers'?'256 KiB':item.capacityKB?item.capacityKB+' KB':item.countPerSM;button.append(count);}
       button.title=(item.description||'')+(item.precisionNote?' '+item.precisionNote:'');
-      button.onclick=()=>exploreAction({type:'SELECT',id:item.id});list.append(button);
+      if(ui.mode==='explore')button.onclick=()=>exploreAction({type:'SELECT',id:item.id});list.append(button);
     });
   }
   function renderCompare() {
@@ -262,19 +262,6 @@
     });
     if (made !== undefined) { const p2 = document.createElement('p'); p2.className = 'pred-feedback'; p2.textContent = made === p.answer ? p.explain : '再想一下：' + p.explain; $('predict').append(p2); }
   }
-  function renderBlocks() {
-    $('block-list').hidden = state.journey !== 'gemm' || ui.level === 'sm';
-    const focusedBlockId = document.activeElement?.dataset?.nodeId;
-    $('block-list').replaceChildren();
-    S.currentJourney(state).nodes.forEach(node => {
-      const b = document.createElement('button'); b.textContent = node.label; b.dataset.nodeId = node.id;
-      b.setAttribute('aria-pressed', String(ui.mode === 'explore' && ui.selection === node.id));
-      b.classList.toggle('active', ui.mode === 'explore' && ui.selection === node.id);
-      b.onclick = () => { S.select(state, node.id); exploreAction({ type: 'SELECT', id: node.id }); };
-      $('block-list').append(b);
-    });
-    if (focusedBlockId) $('block-list').querySelector('[data-node-id="' + focusedBlockId + '"]')?.focus({ preventScroll: true });
-  }
   function renderTimeline() {
     const focused = document.activeElement?.dataset?.step;
     $('overview').replaceChildren();
@@ -294,7 +281,7 @@
     document.body.dataset.playback = ui.playback;
     $('play-btn').textContent = state.playing ? 'Ⅱ' : '▷';
     $('play-btn').setAttribute('aria-label', state.playing ? '暂停自动播放' : '自动播放全部步骤');
-    $('play-status').textContent = ui.mode === 'explore' ? '自由探索 · 点上方返回第 ' + (state.stepIndex + 1) + ' 步' : state.playing ? '自动播放全部步骤' : ui.motionPlaying ? '路径循环演示 · 随时可暂停' : '已暂停 · 继续或切换步骤';
+
     const moving = ui.motionPlaying;
     $('motion-btn').textContent = moving ? 'Ⅱ 暂停动画' : '▷ 继续动画';
     $('motion-btn').setAttribute('aria-label', moving ? '暂停当前步骤动画' : '继续当前步骤动画');
@@ -311,12 +298,8 @@
     $('diagram').dataset.explode = ui.explode.toFixed(3);
     $('diagram').dataset.guideRevision = ui.guideRevision;
     document.body.dataset.motion = moving && ui.mode === 'learn' ? 'running' : 'paused';
-    {
-      const story = state.journey==='gemm'?window.GpuExplorerStory.forStep(state.stepIndex):{complete:'本步已完成'};
-      $('route-status').textContent = ui.progress >= 1 ? story.complete + (moving ? ' · 循环演示' : ' · 已暂停') : moving ? '循环演示' : '已暂停';
-      $('teaching-status').dataset.state = ui.progress >= 1 ? 'complete' : ui.playback === 'paused' ? 'paused' : 'running';
-      $('teaching-status').dataset.motion = moving ? 'running' : 'paused';
-    }
+    $('teaching-status').dataset.state = ui.progress >= 1 ? 'complete' : ui.playback === 'paused' ? 'paused' : 'running';
+    $('teaching-status').dataset.motion = moving ? 'running' : 'paused';
   }
   function renderGuideStatus() {
     const visible = ui.mode === 'learn';
@@ -329,8 +312,6 @@
       nodes:step.active.map(id=>S.currentJourney(state).nodes.find(node=>node.id===id)?.label||id)
     };
     $('teaching-status').dataset.kind = story.kind;
-    $('route-phase').textContent = story.phase;
-    $('route-caption').textContent = story.caption;
     const path = $('route-nodes'); path.replaceChildren();
     story.nodes.forEach((label, index) => {
       if (index) { const arrow = document.createElement('i'); arrow.textContent = story.kind === 'target' ? '·' : story.kind === 'dependency' && index === 1 ? '×' : '→'; path.append(arrow); }
@@ -339,29 +320,27 @@
   }
   function render() {
     updateScene();
-    const journey = S.currentJourney(state), step = S.currentStep(state), spec = SPECS[state.model];
+    const journey = S.currentJourney(state), step = S.currentStep(state);
     const lesson = state.journey === 'gemm' ? LESSONS[state.stepIndex] : null;
     document.body.dataset.mode = ui.mode;
     document.body.dataset.concept = String(conceptActive());
-    document.querySelector('.dissection-controls').hidden=conceptActive();
+    document.querySelector('.dissection-controls').hidden=ui.mode==='learn';
+    document.querySelector('.hierarchy-section').hidden=ui.mode==='learn';
+    document.querySelector('.components-section').hidden=ui.mode==='learn';
+    document.querySelector('.journey-section').hidden=ui.mode==='explore';
+    $('compare-controls').hidden=ui.mode==='learn';
+    document.querySelector('.bottombar').hidden=ui.mode==='explore';
+    document.querySelector('.specimen-section').hidden=conceptActive();
+    $('focus-btn').hidden=ui.mode==='learn';
+    $('isolate-btn').hidden=ui.mode==='learn';
     $('model-select').disabled=conceptActive();
     $('learn-content').hidden = ui.mode !== 'learn';
     $('explore-content').hidden = ui.mode !== 'explore';
     $('inspector-label').textContent = ui.mode === 'learn' ? TITLES[state.journey] : '自由探索';
-    document.querySelectorAll('[data-mode]').forEach(b => { const active = b.dataset.mode === ui.mode; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
+    document.querySelectorAll('.mode-switch [data-mode]').forEach(b => { const active = b.dataset.mode === ui.mode; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
     document.querySelectorAll('[data-journey]').forEach(b => { const active = b.dataset.journey === state.journey; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
     document.querySelector('[data-mode=learn]').title = '回到第 ' + (state.stepIndex + 1) + ' 步，复原装配与镜头';
     $('model-select').value = state.model;
-    $('model-meta').textContent = 'NVIDIA ' + spec.arch + ' · ' + spec.year;
-    $('stat-sm').textContent = spec.sm; $('stat-memory-type').textContent = spec.hbm + ' 显存';
-    $('main-model-name').textContent = 'NVIDIA · ' + spec.arch;
-    $('hero-title').textContent = ['sm','hbm','power','interconnect'].includes(ui.level) ? ({ sm: spec.name + ' · SM', hbm: spec.hbm, power: 'VRM', interconnect: 'PCB / SXM' })[ui.level] : spec.name;
-    $('hero-subtitle').textContent = '';
-    if(conceptActive()){
-      $('main-model-name').textContent='INTERACTIVE EXPLORER';
-      $('hero-title').textContent={pagetable:'地址翻译',pixel:'像素旅程',stacking:'3D 堆叠'}[state.journey];
-      $('hero-subtitle').textContent={pagetable:'x86-64 · 四级页表',pixel:'通用图形管线',stacking:'逻辑层与垂直连接'}[state.journey];
-    }
     $('step-counter').textContent = ui.mode === 'explore' ? String(LEVELS.indexOf(ui.level) + 1).padStart(2, '0') + ' / ' + String(LEVELS.length).padStart(2, '0') : String(state.stepIndex + 1).padStart(2, '0') + ' / ' + String(journey.steps.length).padStart(2, '0');
     $('chapter-kicker').textContent = String(state.stepIndex + 1).padStart(2, '0');
     $('step-title').textContent = lesson ? lesson.title : step.title;
@@ -372,9 +351,8 @@
     $('prev-btn').disabled = S.isAtStart(state); $('next-btn').disabled = S.isAtEnd(state);
     $('next-btn').innerHTML = S.isAtEnd(state) ? '本次计算完成 <span>✓</span>' : '继续 <span>→</span>';
     $('timeline-title').textContent = TITLES[state.journey];
-    $('phase-gloss').textContent = S.currentStepChip(state)?.gloss || '';
     $('progress-fill').style.width = (state.stepIndex + 1) / journey.steps.length * 100 + '%';
-    $('interaction-hint').textContent = navigationMode==='pan'?'拖动平移 · 滚轮缩放': '拖动旋转 · Shift 拖动平移 · 滚轮缩放';
+
     const info = VIEW_INFO[ui.level];
     $('explore-title').textContent = info.title;
     $('explore-description').textContent = info.body;
@@ -385,7 +363,7 @@
     const key = state.journey + ':' + state.stepIndex + ':' + state.model;
     window.GpuExplorerLab?.render($('journey-lab'), state, step, ui.progress);
     if (key !== lastContentKey) { $('code-panel').textContent = step.code.join('\n'); renderPrediction(); lastContentKey = key; }
-    renderCrumb(); renderTree(); renderResourceLegend(); renderSelection(); renderBlocks(); renderCompare(); renderTimeline(); renderGuideStatus(); renderPlayback(); syncHash();
+    renderCrumb(); renderTree(); renderResourceLegend(); renderSelection(); renderCompare(); renderTimeline(); renderGuideStatus(); renderPlayback(); syncHash();
   }
 
   function focusSelected() {
@@ -416,7 +394,7 @@
     if (!applyingScene && ui.selection !== id) { transition({ type: 'SELECT', id, level: scene()?.getLevel?.() }); render(); }
   };
   window.__gpuExplorerMoveSelection = dir => {
-    if(conceptActive()){enterGuide({index:state.stepIndex+dir});return;}
+    if(ui.mode==='learn'){enterGuide({index:state.stepIndex+dir});return;}
     const components = (scene()?.getComponents?.() || []).filter(item => item.level === ui.level);
     if (!components.length) return;
     const current = components.findIndex(item => item.id === ui.selection);
@@ -448,11 +426,11 @@
     applied.isolated = ui.isolated; applied.selection = ui.selection; render();
   });
   window.addEventListener('gpu-scene-error', event => {
-    $('scene-loading').hidden = true; document.querySelector('.scene-status').textContent = '3D 暂不可用'; $('diagram').dataset.error = event.detail.message;
+    $('scene-loading').hidden = false; $('scene-loading').textContent = '3D 暂不可用'; $('diagram').dataset.error = event.detail.message;
   });
   window.addEventListener('gpu-scene-ready', () => { applied = {}; lastTreeKey = ''; render(); });
-  document.querySelectorAll('[data-level]').forEach(b => b.onclick = () => { applied.level = undefined; state.selected = null; exploreAction({ type: 'LEVEL', level: b.dataset.level }); });
-  document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => b.dataset.mode === 'learn' ? enterGuide() : exploreAction({ type: 'ENTER_EXPLORE' }));
+  document.querySelectorAll('.scale-nav [data-level]').forEach(b => b.onclick = () => { applied.level = undefined; state.selected = null; exploreAction({ type: 'LEVEL', level: b.dataset.level }); });
+  document.querySelectorAll('.mode-switch [data-mode]').forEach(b => b.onclick = () => b.dataset.mode === 'learn' ? enterGuide() : exploreAction({ type: 'ENTER_EXPLORE' }));
   document.querySelectorAll('[data-journey]').forEach(b => b.onclick = () => enterGuide({ journey: b.dataset.journey, index: 0 }));
   document.querySelectorAll('[data-cam]').forEach(b => b.onclick = () => { applied.camera = undefined; transition({ type: 'CAMERA', preset: b.dataset.cam }); render(); });
   $('model-select').onchange = e => changeModel(e.target.value);
@@ -473,7 +451,6 @@
   for(const mode of ['rotate','pan'])$(mode+'-btn').onclick=()=>{
     navigationMode=mode;scene()?.setNavigationMode?.(mode);
     for(const key of ['rotate','pan']){$(key+'-btn').classList.toggle('active',key===mode);$(key+'-btn').setAttribute('aria-pressed',String(key===mode));}
-    $('interaction-hint').textContent=mode==='pan'?'拖动平移 · 滚轮缩放':'拖动旋转 · Shift 拖动平移 · 滚轮缩放';
   };
   $('focus-btn').onclick = focusSelected;
   $('isolate-btn').onclick = () => { if (!ui.selection) { toast('先选中一个部件，再聚焦或隔离。'); return; } exploreAction({ type: 'ISOLATE' }); };
@@ -483,7 +460,6 @@
     try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.querySelector('.canvas-panel').requestFullscreen(); }
     catch { toast('此浏览器暂不支持全屏。'); }
   };
-  $('start-walkthrough').onclick = () => enterGuide({ journey: 'gemm', index: 0 });
   function openDialog(id) { transition({ type: 'PAUSE' }); render(); $(id).showModal(); }
   $('help-btn').onclick = () => openDialog('help-dialog');
   $('sources-btn').onclick = () => openDialog('sources-dialog');
@@ -493,22 +469,12 @@
     if (event.target !== d) return; const r = d.getBoundingClientRect();
     if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) d.close();
   }));
-  $('block-list').addEventListener('keydown', event => {
-    const buttons = [...$('block-list').querySelectorAll('button')], i = buttons.indexOf(event.target);
-    if (i < 0) return; let target;
-    if (['ArrowRight','ArrowDown'].includes(event.key)) target = (i + 1) % buttons.length;
-    else if (['ArrowLeft','ArrowUp'].includes(event.key)) target = (i - 1 + buttons.length) % buttons.length;
-    else if (event.key === 'Home') target = 0;
-    else if (event.key === 'End') target = buttons.length - 1;
-    else return;
-    event.preventDefault(); event.stopPropagation(); buttons[target].focus();
-  });
   document.addEventListener('keydown', event => {
     if (document.querySelector('dialog[open]') || event.target.closest('input,select,textarea,button,summary')) return;
     if (event.key.startsWith('Arrow') && event.target.closest('.scene3d')) return;
-    if (event.key === 'ArrowRight') { event.preventDefault(); enterGuide({ index: state.stepIndex + 1 }); }
-    else if (event.key === 'ArrowLeft') { event.preventDefault(); enterGuide({ index: state.stepIndex - 1 }); }
-    else if (event.key === ' ') { event.preventDefault(); toggleSequence(); }
+    if (ui.mode === 'learn' && event.key === 'ArrowRight') { event.preventDefault(); enterGuide({ index: state.stepIndex + 1 }); }
+    else if (ui.mode === 'learn' && event.key === 'ArrowLeft') { event.preventDefault(); enterGuide({ index: state.stepIndex - 1 }); }
+    else if (ui.mode === 'learn' && event.key === ' ') { event.preventDefault(); toggleSequence(); }
     else if (!event.target.closest('.scene3d')) {
       if (event.key.toLowerCase() === 'f') focusSelected();
       if (event.key.toLowerCase() === 'i') $('isolate-btn').click();

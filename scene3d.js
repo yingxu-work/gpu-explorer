@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102r';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102r';
-import { createConceptModel } from './concept-models.js?v=20261102r';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102s';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102s';
+import { createConceptModel } from './concept-models.js?v=20261102s';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -129,8 +129,8 @@ class HardwareScene {
       if(key==='f'){const button=document.getElementById('focus-btn');if(button)button.click();else this.focusSelected();}
       else if(key==='i'){const button=document.getElementById('isolate-btn');if(button)button.click();else this.isolateSelected();}
       else if(key==='r'){const button=document.getElementById('home-btn');if(button)button.click();else this.resetView();}
-      else if(key==='escape'){if(this.isolated){const button=document.getElementById('isolate-btn');if(button)button.click();else this.isolateSelected(false);}this.selected=null;this.userSelection=false;this.outline.visible=false;window.dispatchEvent(new CustomEvent('gpu-isolation-change',{detail:{isolated:false,selected:null}}));}
-      else if(key==='backspace'){if(this.conceptShowing)window.__gpuExplorerMoveSelection?.(-1);else{this.userNavigate('back');this.setLevel(PARENT_LEVEL[this.level]||'board');}}
+      else if(key==='escape'&&this.state?.presentationMode!=='learn'){if(this.isolated){const button=document.getElementById('isolate-btn');if(button)button.click();else this.isolateSelected(false);}this.selected=null;this.userSelection=false;this.outline.visible=false;window.dispatchEvent(new CustomEvent('gpu-isolation-change',{detail:{isolated:false,selected:null}}));}
+      else if(key==='backspace'){if(this.state?.presentationMode==='learn')window.__gpuExplorerMoveSelection?.(-1);else{this.userNavigate('back');this.setLevel(PARENT_LEVEL[this.level]||'board');}}
     });
   }
 
@@ -150,7 +150,7 @@ class HardwareScene {
   }
 
   pick(event) {
-    if(this.conceptShowing)return null;
+    if(this.state?.presentationMode==='learn')return null;
     const rect=this.renderer.domElement.getBoundingClientRect();
     this.pointer.set((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);this.raycaster.setFromCamera(this.pointer,this.camera);
     const hits=this.raycaster.intersectObject(this.hardware.root,true);
@@ -261,7 +261,7 @@ class HardwareScene {
     hw.setExplode(this.explode);hw.root.updateMatrixWorld(true);
     if(bounds.isEmpty())return;
     const direction=directionOverride||(preserveDirection?this.camera.position.clone().sub(this.controls.target).normalize():new THREE.Vector3(.62,.83,1).normalize());
-    const margin=Math.max(this.camera.aspect<1.1?1.10:1,{board:1.025,package:1.11,die:1.22,sm:1.10,hbm:1.16,power:1.12,interconnect:1.13}[this.level]);
+    const margin=Math.max(this.camera.aspect<1.1?1.10:1,{board:1.18,package:1.22,die:1.26,sm:1.22,hbm:1.22,power:1.22,interconnect:1.22}[this.level]);
     const fit=calculateCameraFit(THREE,bounds,direction,this.camera.fov,this.camera.aspect,margin);
     this.controls.maxDistance=fit.maxDistance;this.camera.far=fit.far;this.camera.updateProjectionMatrix();
     this.moveCamera(fit.position,fit.target,duration);

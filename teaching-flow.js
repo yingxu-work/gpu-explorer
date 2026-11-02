@@ -123,7 +123,7 @@ export function signalCycleState(route, visualPhase = 0) {
   const logical = route.dashed || ['dependency', 'placement'].includes(route.kind);
   return {
     fraction: elapsed < 0 ? 0 : elapsed - Math.floor(elapsed),
-    elapsed, started: elapsed >= 0, mode: logical ? 'emphasis' : 'packet',
+    elapsed, started: elapsed >= 0, mode: 'emphasis', semantic: logical ? 'dependency' : 'transfer',
     emphasisWindow: Math.max(.06, Math.min(.18, .8 / Math.max(.01, pathLength(route.points))))
   };
 }
@@ -152,34 +152,34 @@ export function createTeachingVisuals(T, hardware, presentation) {
     // sorted behind the translucent physical cap or their own dark borders.
     const railMaterial = material(color, route.dashed ? .65 : 1, {depthWrite:!route.dashed,toneMapped:false});
     const underMaterial = material(0x071418, 1, {depthWrite:true,toneMapped:false});
-    const emphasisMaterial = route.dashed ? material(new T.Color(color).lerp(new T.Color(0xf0fff5),.34),.91,{toneMapped:false}) : null;
-    const dashMeshes=[];let traversed=0;const length=pathLength(route.points);
+    const emphasisMaterial = material(new T.Color(color).lerp(new T.Color(0xffffff),.50),route.dashed?.91:1,{depthWrite:!route.dashed,toneMapped:false});
+    const segments=[];let traversed=0;const length=pathLength(route.points);
     for (let i=1; i<route.points.length; i++) {
       const a=route.points[i-1], b=route.points[i], distance=Math.hypot(...b.map((v,k)=>v-a[k])); if(distance<.001)continue;
-      const count=route.dashed?Math.max(1,Math.ceil(distance/.44)):1;
+      const count=Math.max(2,Math.ceil(distance/.44));
       for(let n=0;n<count;n++) {
-        const t0=n/count, t1=route.dashed?Math.min(1,(n+.57)/count):1;
+        const t0=n/count, t1=route.dashed?Math.min(1,(n+.57)/count):(n+1)/count;
         const start=a.map((v,k)=>v+(b[k]-v)*t0), end=a.map((v,k)=>v+(b[k]-v)*t1), centre=start.map((v,k)=>(v+end[k])/2);
-        const dims=start.map((v,k)=>Math.max(k===1?.034:route.width,Math.abs(v-end[k])));
+        const delta=start.map((v,k)=>Math.abs(v-end[k])),axis=delta.indexOf(Math.max(...delta));
+        const dims=[route.width,.034,route.width];dims[axis]=Math.max(.001,delta[axis]);
         const rail=mesh(group,...centre,...dims,railMaterial);
-        if(route.dashed)dashMeshes.push({mesh:rail,fraction:(traversed+(t0+t1)*.5*distance)/length});
+        rail.userData.signalSegment=true;segments.push({mesh:rail,fraction:(traversed+(t0+t1)*.5*distance)/length});
         if(!route.dashed)mesh(group,centre[0],centre[1]-.042,centre[2],dims[0]+.075,.016,dims[2]+.075,underMaterial);
       }
       traversed+=distance;
     }
     const count=Math.max(2,Math.floor(length/.8));
-    const arrowColor=new T.Color(color).lerp(new T.Color(0xf0fff5),route.dashed?.16:.42);
-    const arrowEmphasisColor=new T.Color(color).lerp(new T.Color(0xf0fff5),.72);
+    const arrowColor=new T.Color(color).lerp(new T.Color(0xffffff),.16);
+    const arrowEmphasisColor=new T.Color(color).lerp(new T.Color(0xffffff),.78);
     const arrowMaterial=material(0xffffff,1,{depthWrite:true,toneMapped:false}); const arrows=new T.InstancedMesh(arrowGeometry,arrowMaterial,count);
-    arrows.userData.teachingSignal=true;
+    arrows.userData.teachingSignal=true;arrows.userData.stationaryChevrons=true;
     for(let n=0;n<count;n++) {
       const f=(n+.5)/count,p=samplePath(route.points,f),next=samplePath(route.points,Math.min(1,f+.002));
       tmp.position.set(p[0],p[1]+.035,p[2]);tmp.rotation.set(0,-Math.atan2(next[2]-p[2],next[0]-p[0]),0);
       tmp.scale.setScalar(Math.min(2,route.width/.105*(route.dashed?.90:1.08)));tmp.updateMatrix();arrows.setMatrixAt(n,tmp.matrix);arrows.setColorAt(n,arrowColor);
     }
     group.add(arrows);
-    const pulseMaterial=material(new T.Color(color).lerp(new T.Color(0xf1fff5),.42),1);const packets=new T.InstancedMesh(unit,pulseMaterial,4);packets.userData.teachingSignal=true;group.add(packets);
-    visuals.push({route,group,railMaterial,arrows,packets,pulseMaterial,dashMeshes,emphasisMaterial,arrowColor,arrowEmphasisColor});
+    visuals.push({route,group,railMaterial,arrows,segments,dashMeshes:route.dashed?segments:[],emphasisMaterial,arrowColor,arrowEmphasisColor});
   }
   for (const marker of presentation.markers) {
     const host=hardware.components[marker.host]?.group;if(!host)continue;
@@ -200,28 +200,18 @@ export function createTeachingVisuals(T, hardware, presentation) {
       for(const item of visuals) {
         const state=routeState(item.route,progress), cycle=signalCycleState(item.route,visualPhase);
         item.cycleState=cycle;item.railMaterial.opacity=item.route.dashed?state.opacity:1;
-        // This is a moving reading emphasis on a mathematical/placement path,
-        // not a packet. The dashed relation remains visible throughout the scan.
-        if(cycle.mode==='emphasis'){
-          for(const dash of item.dashMeshes)dash.mesh.material=cycle.started&&cycleDistance(dash.fraction,cycle.fraction)<cycle.emphasisWindow?item.emphasisMaterial:item.railMaterial;
-          for(let n=0;n<item.arrows.count;n++){
-            const highlighted=cycle.started&&cycleDistance((n+.5)/item.arrows.count,cycle.fraction)<cycle.emphasisWindow;
-            item.arrows.setColorAt(n,highlighted?item.arrowEmphasisColor:item.arrowColor);
-          }
-          if(item.arrows.instanceColor)item.arrows.instanceColor.needsUpdate=true;
+        // One visual language for every stage: only stationary surface
+        // segments and chevrons whiten in sequence. No geometry travels.
+        const nearest=Math.min(...item.segments.map(segment=>cycleDistance(segment.fraction,cycle.fraction)));
+        for(const segment of item.segments){
+          const distance=cycleDistance(segment.fraction,cycle.fraction);
+          segment.mesh.material=cycle.started&&(distance<cycle.emphasisWindow||distance<=nearest+1e-8)?item.emphasisMaterial:item.railMaterial;
         }
-        // A short, restrained train repeats along real transfer/control buses.
-        // The visual cycle keeps moving after the mathematical step reaches 1.
-        const packetCount=pathLength(item.route.points)<1.6?1:2;
-        for(let n=0;n<4;n++){
-          const travel=cycle.fraction-n*.045, f=travel-Math.floor(travel);
-          const p=samplePath(item.route.points,f),next=samplePath(item.route.points,Math.min(1,f+.003));
-          tmp.position.set(p[0],p[1]+.045,p[2]);tmp.rotation.set(0,-Math.atan2(next[2]-p[2],next[0]-p[0]),0);
-          const show=cycle.mode==='packet'&&cycle.started&&n<packetCount&&(cycle.elapsed>=1||travel>=0);
-          const packetLength=Math.min(.12,Math.max(.035,pathLength(item.route.points)*.08));
-          tmp.scale.set(show?packetLength:0,show?.020:0,show?item.route.width*.65:0);tmp.updateMatrix();item.packets.setMatrixAt(n,tmp.matrix);
+        for(let n=0;n<item.arrows.count;n++){
+          const highlighted=cycle.started&&(cycleDistance((n+.5)/item.arrows.count,cycle.fraction)<cycle.emphasisWindow||n===Math.floor(cycle.fraction*item.arrows.count));
+          item.arrows.setColorAt(n,highlighted?item.arrowEmphasisColor:item.arrowColor);
         }
-        item.packets.instanceMatrix.needsUpdate=true;
+        if(item.arrows.instanceColor)item.arrows.instanceColor.needsUpdate=true;
       }
       for(const item of markerGroups)item.fill.opacity=progress>=1&&item.marker.role==='target'?.45:.22;
     },

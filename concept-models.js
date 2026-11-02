@@ -66,11 +66,29 @@ export function createConceptModel(T,journey){
     return entry;
   }
   function route(id,points,color=teal,{delay=0,kind='signal'}={}){
-    const group=new T.Group();group.userData.conceptRoute=id;group.userData.kind=kind;root.add(group);const material=basic(color,.18);
-    const traces=[];for(let i=1;i<points.length;i++)traces.push(line(group,points[i-1],points[i],.018,material));
-    // Tiny pulses retain the route's scale and never cover resources or labels.
-    const pulses=[];for(let i=0;i<2;i++){const p=box(group,0,0,0,.065,.045,.060,basic(color));p.userData.conceptPulse=true;p.visible=false;pulses.push(p);}
-    routes[id]={group,points,color,material,pulses,traces,delay};return routes[id];
+    const group=new T.Group();group.userData.conceptRoute=id;group.userData.kind=kind;group.userData.animation='fixed-sweep';root.add(group);
+    const material=basic(color,.18),emphasisMaterial=basic(new T.Color(color).lerp(new T.Color(0xffffff),.62),1);
+    const arrowMaterial=basic(new T.Color(color).lerp(new T.Color(0xffffff),.16),.18),arrowEmphasis=basic(new T.Color(color).lerp(new T.Color(0xffffff),.78),1);
+    const lengths=points.slice(1).map((p,i)=>Math.hypot(...p.map((v,k)=>v-points[i][k]))),length=lengths.reduce((a,b)=>a+b,0);
+    const traces=[],chevrons=[];let traversed=0;
+    for(let i=1;i<points.length;i++){
+      const a=points[i-1],b=points[i],distance=lengths[i-1],count=Math.max(2,Math.ceil(distance/.34));
+      for(let n=0;n<count;n++){
+        const from=a.map((v,k)=>v+(b[k]-v)*n/count),to=a.map((v,k)=>v+(b[k]-v)*(n+1)/count),fraction=(traversed+(n+.5)*distance/count)/length;
+        const mesh=line(group,from,to,.018,material);mesh.userData.conceptTrace=true;mesh.userData.routeFraction=fraction;traces.push({mesh,fraction});
+      }traversed+=distance;
+    }
+    const count=Math.max(2,Math.floor(length/.72)),arm=Math.min(.13,length/count*.65);
+    for(let n=0;n<count;n++){
+      const fraction=(n+.5)/count,p=new T.Vector3(...sample(points,fraction)),a=new T.Vector3(...sample(points,Math.max(0,fraction-.002))),b=new T.Vector3(...sample(points,Math.min(1,fraction+.002))),direction=b.sub(a).normalize();
+      let perpendicular=new T.Vector3().crossVectors(direction,new T.Vector3(0,1,0));if(perpendicular.lengthSq()<.001)perpendicular.crossVectors(direction,new T.Vector3(0,0,1));perpendicular.normalize();
+      const tip=p.clone().addScaledVector(direction,arm*.52),back=p.clone().addScaledVector(direction,-arm*.48);
+      for(const side of [-1,1]){
+        const tail=back.clone().addScaledVector(perpendicular,side*arm*.48),mesh=line(group,tip.toArray(),tail.toArray(),.013,arrowMaterial);
+        mesh.userData.conceptChevron=true;mesh.userData.routeFraction=fraction;chevrons.push({mesh,fraction});
+      }
+    }
+    routes[id]={group,points,color,material,emphasisMaterial,arrowMaterial,arrowEmphasis,traces,chevrons,delay,window:Math.max(.06,Math.min(.18,.65/Math.max(.01,length)))};return routes[id];
   }
   const floorMat=mat(0x111e25,{roughness:.8,metalness:.20});box(root,0,-.19,0,11.8,.18,7.9,floorMat);
   const rimMat=basic(0x3f5b61,.6);for(const z of [-3.84,3.84])box(root,0,-.08,z,11.5,.012,.018,rimMat);
@@ -201,8 +219,12 @@ export function createConceptModel(T,journey){
       let routeIndex=0;
       for(const [id,item]of Object.entries(routes)){
         const active=step.routes.includes(id),f=wrap(phase-item.delay-routeIndex*.035);item.group.userData.active=active;item.material.opacity=active?.82:.12;
-        item.material.color.set(active?item.color:0x3d5a60);item.traces.forEach(trace=>{trace.scale.x=trace.scale.z=active?.028:.018;});
-        item.pulses.forEach((pulse,i)=>{pulse.visible=active;pulse.position.set(...sample(item.points,wrap(f-i*.15)));});routeIndex++;
+        item.material.color.set(active?item.color:0x3d5a60);item.arrowMaterial.opacity=active?.82:.10;
+        const distance=fraction=>Math.min(Math.abs(fraction-f),1-Math.abs(fraction-f));
+        const nearestTrace=Math.min(...item.traces.map(trace=>distance(trace.fraction))),nearestArrow=Math.min(...item.chevrons.map(arrow=>distance(arrow.fraction)));
+        for(const trace of item.traces){trace.mesh.scale.x=trace.mesh.scale.z=active?.028:.018;trace.mesh.material=active&&(distance(trace.fraction)<item.window||distance(trace.fraction)<=nearestTrace+1e-8)?item.emphasisMaterial:item.material;}
+        for(const arrow of item.chevrons)arrow.mesh.material=active&&(distance(arrow.fraction)<item.window||distance(arrow.fraction)<=nearestArrow+1e-8)?item.arrowEmphasis:item.arrowMaterial;
+        routeIndex++;
         if(journey==='stacking'&&index===2)item.group.visible=false;else item.group.visible=true;
       }
       specialize(index,p,phase);root.updateMatrixWorld(true);

@@ -67,9 +67,8 @@ for(const model of ['h100','a100'])test(`${model}: lesson visuals attach to the 
     for(const item of visual.visuals){
       assert.ok(item.railMaterial.opacity>=.65);
       assert.ok(item.arrows.count>=2,'route retains static arrowheads at the end');
-      const matrix=new THREE.Matrix4();item.packets.getMatrixAt(0,matrix);
-      const scale=new THREE.Vector3();matrix.decompose(new THREE.Vector3(),new THREE.Quaternion(),scale);
-      assert.equal(scale.x>0,!item.route.dashed,'only actual data/control buses use moving packets');
+      assert.equal(item.packets,undefined,'packet geometry must be removed, not hidden');
+      assert.ok(item.segments.length>=2);assert.equal(item.arrows.userData.stationaryChevrons,true);
     }
     const groups=[...visual.visuals,...visual.markers].map(item=>item.group);visual.dispose();
     assert.ok(groups.every(group=>group.parent===null),'step changes leave no orphan overlays');
@@ -95,68 +94,59 @@ for(const [width,height] of [[800,500],[375,380]])test(`${width}×${height}: act
 });
 
 
-const instanceTransform = (mesh,index=0) => {
-  const matrix=new THREE.Matrix4();mesh.getMatrixAt(index,matrix);
-  return {position:new THREE.Vector3().setFromMatrixPosition(matrix),matrix:matrix.toArray()};
+const geometrySnapshot = group => {
+  const nodes=[];group.traverse(object=>nodes.push({id:object.uuid,position:object.position.toArray(),rotation:object.quaternion.toArray(),scale:object.scale.toArray(),
+    instances:object.instanceMatrix?Array.from(object.instanceMatrix.array):undefined,
+    vertices:object.geometry?.attributes?.position?Array.from(object.geometry.attributes.position.array):undefined}));return nodes;
 };
-const nearArray = (actual,expected) => actual.forEach((value,index)=>assert.ok(Math.abs(value-expected[index])<1e-6,`matrix element ${index} changed across an identical visual cycle`));
+const sweepSnapshot = item => ({segments:item.segments.map(segment=>segment.mesh.material===item.emphasisMaterial),colors:Array.from(item.arrows.instanceColor.array)});
 
-test('the visual phase repeats independently and preserves route semantics and stage offsets',()=>{
+test('every route uses the same independent emphasis cycle while retaining dependency versus transfer semantics',()=>{
   for(let step=0;step<8;step++)for(const route of lessonPresentation(levels[step],step).routes){
     const early=signalCycleState(route,1.25),later=signalCycleState(route,1.55),repeat=signalCycleState(route,4.25);
-    assert.ok(Math.abs(early.fraction-repeat.fraction)<1e-10);
-    assert.notEqual(early.fraction,later.fraction);
-    assert.equal(early.mode,step<3?'emphasis':'packet');
-    assert.equal(early.started,true);
-    if(route.start>0)assert.equal(signalCycleState(route,0).started,false,'later buses wait for their stage offset on the initial cycle');
-    assert.equal(signalCycleState(route,NaN).fraction,0);
-    assert.equal(signalCycleState(route,Infinity).fraction,0);
+    assert.ok(Math.abs(early.fraction-repeat.fraction)<1e-10);assert.notEqual(early.fraction,later.fraction);
+    assert.equal(early.mode,'emphasis');assert.equal(early.semantic,step<3?'dependency':'transfer');assert.equal(early.started,true);
+    if(route.start>0)assert.equal(signalCycleState(route,0).started,false,'later buses retain their initial stage offset');
+    assert.equal(signalCycleState(route,NaN).fraction,0);assert.equal(signalCycleState(route,Infinity).fraction,0);
   }
 });
 
-test('steps 1–3 animate dashed reading emphasis without representing operand packets',()=>{
+test('all eight steps whiten fixed chevrons and route segments with no travelling packet geometry',()=>{
   const hw=createHardwareModel(THREE,'h100');
-  for(let step=0;step<3;step++){
+  for(let step=0;step<8;step++){
     const visual=createTeachingVisuals(THREE,hw,lessonPresentation(levels[step],step));
-    const snapshots=[];
-    for(const phase of [1.18,1.61,3.18]){
+    visual.update(1,1.13);const geometry=visual.visuals.map(item=>geometrySnapshot(item.group)),samples=visual.visuals.map(()=>[]);
+    for(const phase of [1.03,1.13,1.23,1.37,1.51,1.67,1.83,1.97]){
       visual.update(1,phase);
-      snapshots.push(visual.visuals.map(item=>({
-        highlights:item.dashMeshes.map((dash,index)=>dash.mesh.material===item.emphasisMaterial?index:-1).filter(index=>index>=0),
-        colors:Array.from(item.arrows.instanceColor.array)
-      })));
-      for(const item of visual.visuals){
-        assert.ok(item.dashMeshes.length>0);
-        assert.equal(item.cycleState.mode,'emphasis');
-        assert.ok(item.dashMeshes.some(dash=>dash.mesh.material===item.railMaterial),'the full logical path never flashes bright at once');
-        for(let n=0;n<4;n++){
-          const matrix=new THREE.Matrix4();item.packets.getMatrixAt(n,matrix);
-          const scale=new THREE.Vector3();matrix.decompose(new THREE.Vector3(),new THREE.Quaternion(),scale);
-          assert.equal(scale.x,0,'dependencies and CTA assignment may not look like physical data packets');
-        }
-      }
-      assert.ok(visual.markers.filter(item=>item.marker.role==='target').every(item=>item.fill.opacity===.45),'completed mathematical markers stay complete during the visual loop');
+      visual.visuals.forEach((item,index)=>{
+        assert.equal(item.packets,undefined);assert.equal(item.pulseMaterial,undefined);
+        assert.equal(item.cycleState.mode,'emphasis');assert.deepEqual(geometrySnapshot(item.group),geometry[index],'sweep animation may not translate, scale, rotate or rewrite route geometry');
+        let instances=0;item.group.traverse(object=>{if(object.isInstancedMesh){instances++;assert.equal(object.userData.stationaryChevrons,true,'only fixed chevrons may be instanced');}});assert.equal(instances,1);
+        assert.ok(item.segments.some(segment=>segment.mesh.material===item.emphasisMaterial),'at least one fixed section must whiten');
+        samples[index].push(sweepSnapshot(item));
+        const base=item.railMaterial.color.toArray(),light=item.emphasisMaterial.color.toArray();
+        assert.ok(light.every((channel,k)=>channel>=base[k]-1e-8)&&light.some((channel,k)=>channel-base[k]>.03),'the sweep must whiten rather than substitute a travelling dot');
+      });
     }
-    assert.notDeepEqual(snapshots[0],snapshots[1],'dashes and direction chevrons must visibly advance');
-    assert.deepEqual(snapshots[0],snapshots[2],'the same emphasis returns every visual cycle');
+    visual.visuals.forEach((item,index)=>{
+      assert.ok(new Set(samples[index].map(sample=>JSON.stringify(sample))).size>1,'every route needs visibly advancing emphasis');
+      assert.equal(item.route.dashed,step<3,'logical paths stay dashed and physical transfers stay solid');
+    });
     visual.dispose();
   }
 });
 
-test('completed data steps repeat packet travel, freeze at the same phase, and never reset the mathematical result',()=>{
+test('fixed sweeps repeat and pause independently of completed mathematical results',()=>{
   const hw=createHardwareModel(THREE,'h100');
-  for(let step=3;step<8;step++){
-    const presentation=lessonPresentation(levels[step],step),visual=createTeachingVisuals(THREE,hw,presentation);
-    const completedMath=presentation.routes.map(route=>routeState(route,1));
-    visual.update(1,1.25);const start=visual.visuals.map(item=>instanceTransform(item.packets));
-    visual.update(1,1.61);const moved=visual.visuals.map(item=>instanceTransform(item.packets));
-    visual.visuals.forEach((item,index)=>assert.ok(start[index].position.distanceTo(moved[index].position)>.01,'packets must continue travelling after math reaches 100%'));
-    visual.update(1,1.61);visual.visuals.forEach((item,index)=>nearArray(instanceTransform(item.packets).matrix,moved[index].matrix));
-    visual.update(.2,1.61);visual.visuals.forEach((item,index)=>nearArray(instanceTransform(item.packets).matrix,moved[index].matrix));
-    visual.update(1,4.25);visual.visuals.forEach((item,index)=>nearArray(instanceTransform(item.packets).matrix,start[index].matrix));
-    assert.deepEqual(presentation.routes.map(route=>routeState(route,1)),completedMath,'visual loops may not rewind the completed lesson');
+  for(let step=0;step<8;step++){
+    const presentation=lessonPresentation(levels[step],step),visual=createTeachingVisuals(THREE,hw,presentation),completedMath=presentation.routes.map(route=>routeState(route,1));
+    visual.update(1,1.13);const first=visual.visuals.map(sweepSnapshot);
+    visual.update(1,1.57);const second=visual.visuals.map(sweepSnapshot);assert.notDeepEqual(first,second);
+    visual.update(1,1.57);assert.deepEqual(visual.visuals.map(sweepSnapshot),second,'paused phase freezes all segment/chevron colors');
+    visual.update(.2,1.57);assert.deepEqual(visual.visuals.map(sweepSnapshot),second,'visual emphasis is independent of mathematical progress');
+    visual.update(1,2.13);assert.deepEqual(visual.visuals.map(sweepSnapshot),first,'a complete visual cycle repeats exactly');
+    assert.deepEqual(presentation.routes.map(route=>routeState(route,1)),completedMath,'visual loops cannot rewind the lesson');
     assert.ok(visual.markers.filter(item=>item.marker.role==='target').every(item=>item.fill.opacity===.45));
-    assert.ok(visual.visuals.every(item=>item.railMaterial.opacity===1),'bus direction stays visible between packet passes');
-    visual.dispose();
+    assert.ok(visual.visuals.every(item=>item.railMaterial.opacity>=.65),'paths stay visible between emphasis passes');visual.dispose();
   }
 });

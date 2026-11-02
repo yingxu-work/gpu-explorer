@@ -92,26 +92,53 @@ for(const [journey,expected] of Object.entries(stages)){
     model.dispose?.();
   });
 
-  test(`${journey}: moving pulses remain smaller than 0.1 world units`,()=>{
-    const model=createConceptModel(T,journey);let count=0;
-    for(let step=0;step<expected.length;step++){
-      model.update(step,1,.42);model.root.updateMatrixWorld(true);
-      model.root.traverse(object=>{
-        if(!object.userData.conceptPulse||!object.geometry)return;
-        count++;object.geometry.computeBoundingBox();
-        const dimensions=object.geometry.boundingBox.getSize(new T.Vector3());
-        const scale=object.getWorldScale(new T.Vector3());
-        if(object.isInstancedMesh){
-          for(let index=0;index<object.count;index++){
-            const matrix=new T.Matrix4();object.getMatrixAt(index,matrix);const instanceScale=new T.Vector3();matrix.decompose(new T.Vector3(),new T.Quaternion(),instanceScale);
-            const size=dimensions.clone().multiply(scale).multiply(instanceScale);assert.ok(Math.max(...size.toArray())<.1,'packet may not obscure its conceptual resource');
-          }
-        }else{
-          const size=dimensions.multiply(scale);assert.ok(Math.max(...size.toArray())<.1,'packet may not obscure its conceptual resource');
-        }
-      });
+  test(`${journey}: fixed traces and chevrons animate color emphasis without travelling packets`,()=>{
+    const model=createConceptModel(T,journey),routeGroups=new Map();
+    model.root.traverse(object=>{
+      assert.ok(!object.userData.conceptPulse&&!object.userData.conceptPacket&&!object.userData.packet,'concept routes may not contain moving pulse/packet geometry');
+      assert.doesNotMatch(object.name||'',/packet|pulse/i,'packet nodes must be removed, not merely hidden');
+      if(object.userData.conceptRoute)routeGroups.set(object.userData.conceptRoute,object);
+    });
+    const geometryState=group=>{
+      const result=[];group.traverse(object=>{
+        result.push({id:object.uuid,world:object.matrixWorld.toArray(),instances:object.instanceMatrix?Array.from(object.instanceMatrix.array):undefined,
+          vertices:object.geometry?.attributes?.position?Array.from(object.geometry.attributes.position.array):undefined,
+          indices:object.geometry?.index?Array.from(object.geometry.index.array):undefined});
+      });return result;
+    };
+    const traceNodes=group=>{const found=[];group.traverse(object=>{if(object.userData.conceptTrace)found.push(object);});return found;};
+    const chevronNodes=group=>{const found=[];group.traverse(object=>{if(object.userData.conceptChevron)found.push(object);});return found;};
+    const colors=nodes=>nodes.map(object=>object.material.color.toArray());
+    const rounded=value=>JSON.parse(JSON.stringify(value,(_,item)=>typeof item==='number'?Math.round(item*1e6)/1e6:item));
+    assert.ok(routeGroups.size>0);
+    for(const [id,group]of routeGroups){
+      const traces=traceNodes(group);assert.ok(traces.length>0,`${id} needs fixed segmented traces`);
+      assert.ok(traces.every(object=>Number.isFinite(object.userData.routeFraction)&&object.userData.routeFraction>=0&&object.userData.routeFraction<=1),'trace locations are finite positions along a fixed route');
+      let chevrons=0;group.traverse(object=>{if(object.userData.conceptChevron)chevrons++;});assert.ok(chevrons>0,`${id} needs a fixed direction cue`);
     }
-    assert.ok(count>0,'journey must supply visible route pulses');model.dispose?.();
+    for(let step=0;step<expected.length;step++){
+      const first=model.update(step,1,1.13);model.root.updateMatrixWorld(true);
+      const fixed=new Map([...routeGroups].map(([id,group])=>[id,geometryState(group)]));
+      const active=new Map(first.activeRoutes.map(id=>[id,{nodes:traceNodes(routeGroups.get(id)),arrows:chevronNodes(routeGroups.get(id)),samples:[],arrowSamples:[]}]));
+      for(const phase of [1.03,1.13,1.23,1.37,1.51,1.67,1.83,1.97]){
+        const status=model.update(step,1,phase);assert.equal(status.complete,true);assert.equal(status.progress,1);
+        for(const [id,group]of routeGroups)assert.deepEqual(geometryState(group),fixed.get(id),`${journey} step ${step+1}: ${id} moved geometry instead of emphasizing the fixed trace`);
+        for(const entry of active.values()){entry.samples.push(colors(entry.nodes));entry.arrowSamples.push(colors(entry.arrows));}
+      }
+      for(const [id,entry]of active){
+        assert.ok(new Set(entry.samples.map(sample=>JSON.stringify(rounded(sample)))).size>1,`${id} needs visibly advancing segment colors`);
+        assert.ok(new Set(entry.arrowSamples.map(sample=>JSON.stringify(rounded(sample)))).size>1,`${id} needs advancing emphasis on its fixed direction chevrons`);
+        const brightened=entry.nodes.some((_,index)=>{
+          const samples=entry.samples.map(sample=>sample[index]).sort((a,b)=>a.reduce((x,y)=>x+y,0)-b.reduce((x,y)=>x+y,0));
+          const dim=samples[0],light=samples.at(-1);
+          return light.every((channel,k)=>channel>=dim[k]-1e-8)&&light.some((channel,k)=>channel-dim[k]>.03);
+        });
+        assert.ok(brightened,`${id} must whiten some trace segments during each cycle`);
+        model.update(step,1,1.13);const initial=colors(entry.nodes);
+        model.update(step,1,2.13);assert.deepEqual(rounded(colors(entry.nodes)),rounded(initial),'fixed trace emphasis must repeat without moving its geometry');
+      }
+    }
+    model.dispose();
   });
 }
 

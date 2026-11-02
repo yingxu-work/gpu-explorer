@@ -23,6 +23,83 @@ test('SM isolation → Learn restores the current lesson, even after camera and 
   cleanGuide(ui, 'board');
   assert.equal(ui.playback, 'step'); assert.equal(ui.progress, 0);
 });
+test('initial Learn opens Anatomy at the board instead of adopting the lesson view', () => {
+  for (const context of [base, { ...base, stepIndex: 5 }, { ...base, journey: 'pixel', stepIndex: 3 }]) {
+    let ui = I.create({ mode: 'learn', level: 'sm', explode: .8, selection: 'tensor' }, context);
+    ui = act(ui, 'ENTER_EXPLORE', {}, context);
+    assert.equal(ui.mode, 'explore'); assert.equal(ui.level, 'board');
+    assert.equal(ui.selection, null); assert.equal(ui.isolated, false); assert.equal(ui.explode, 0);
+    assert.equal(ui.cameraPreset, 'three-quarter'); assert.equal(ui.playback, 'paused');
+  }
+});
+test('Anatomy → Learn → Anatomy restores level, selection, isolation, explosion and camera preset', () => {
+  let ui = I.create({ mode: 'explore', level: 'hbm', explode: .72, selection: 'hbm-dram' }, base);
+  ui = act(ui, 'ISOLATE'); ui = act(ui, 'CAMERA', { preset: 'top' });
+  const remembered = { level: 'hbm', selection: 'hbm-dram', isolated: true, explode: .72, cameraPreset: 'top' };
+  ui = act(ui, 'ENTER_GUIDE', {}, { ...base, stepIndex: 5 });
+  cleanGuide(ui, 'sm'); assert.deepEqual(ui.anatomy, remembered);
+  ui = act(ui, 'ENTER_EXPLORE');
+  for (const [key, value] of Object.entries(remembered)) assert.equal(ui[key], value, key);
+  assert.equal(ui.mode, 'explore'); assert.equal(ui.motionPlaying, false);
+  assert.equal(ui.playback, 'paused'); assert.equal(ui.explodeAuto, false);
+});
+test('guide replay, next step and guide camera changes preserve the remembered Anatomy context', () => {
+  let ui = I.create({ mode: 'explore', level: 'power', explode: .46, selection: 'power-inductor' }, base);
+  ui = act(ui, 'CAMERA', { preset: 'side' }); ui = act(ui, 'ENTER_GUIDE');
+  const remembered = { ...ui.anatomy };
+  for (const stepIndex of [1, 5, 6, 0]) {
+    const context = { ...base, stepIndex };
+    ui = act(ui, 'ENTER_GUIDE', { playback: 'sequence' }, context);
+    ui = act(ui, 'TICK', { dt: 100 }, context);
+    ui = act(ui, 'CAMERA', { preset: 'top' }, context);
+    ui = act(ui, 'NAVIGATE', {}, context);
+    assert.deepEqual(ui.anatomy, remembered);
+  }
+  ui = act(ui, 'ENTER_EXPLORE');
+  for (const [key, value] of Object.entries(remembered)) assert.equal(ui[key], value, key);
+});
+test('explicit hardware actions in Learn apply their target instead of restoring previous Anatomy', () => {
+  const context = { ...base, stepIndex: 5 };
+  const start = () => act(I.create({ mode: 'explore', level: 'power', selection: 'power-stage', explode: .8 }, base), 'ENTER_GUIDE', {}, context);
+  let ui = act(start(), 'LEVEL', { level: 'die' }, context);
+  assert.equal(ui.level, 'die'); assert.equal(ui.selection, null); assert.equal(ui.mode, 'explore');
+  ui = act(start(), 'SELECT', { id: 'registers', level: 'sm' }, context);
+  assert.equal(ui.level, 'sm'); assert.equal(ui.selection, 'registers'); assert.equal(ui.isolated, false);
+  ui = act(start(), 'EXPLODE_SET', { value: .25 }, context);
+  assert.equal(ui.level, 'package'); assert.equal(ui.explode, .25); assert.equal(ui.selection, null);
+  ui = act(start(), 'EXPLODE_TOGGLE', {}, context);
+  assert.equal(ui.level, 'package'); assert.equal(ui.explodeAuto, true);
+});
+test('reclicking Anatomy preserves current exploration and the next guide entry remembers it', () => {
+  let ui = I.create({ mode: 'explore', level: 'hbm', selection: 'hbm-tsv', explode: .5 }, base);
+  ui = act(ui, 'ENTER_GUIDE'); ui = act(ui, 'LEVEL', { level: 'interconnect' });
+  ui = act(ui, 'SELECT', { id: 'link-vias' }); ui = act(ui, 'CAMERA', { preset: 'side' });
+  ui = act(ui, 'ENTER_EXPLORE');
+  assert.equal(ui.level, 'interconnect'); assert.equal(ui.selection, 'link-vias');
+  ui = act(ui, 'ENTER_GUIDE'); ui = act(ui, 'ENTER_EXPLORE');
+  assert.equal(ui.level, 'interconnect'); assert.equal(ui.selection, 'link-vias'); assert.equal(ui.cameraPreset, 'side');
+});
+test('returning to Anatomy restores a static assembly without reviving automatic dissection', () => {
+  let ui = act(I.create({ mode: 'explore', level: 'package' }, base), 'EXPLODE_TOGGLE');
+  for (let i = 0; i < 9; i++) ui = act(ui, 'TICK', { dt: 100 });
+  const exploded = ui.explode;
+  ui = act(ui, 'ENTER_GUIDE', { playback: 'sequence' }); ui = act(ui, 'ENTER_EXPLORE');
+  assert.equal(ui.explode, exploded); assert.equal(ui.explodeAuto, false);
+  const phase = ui.visualPhase;
+  for (let i = 0; i < 30; i++) ui = act(ui, 'TICK', { dt: 100 });
+  assert.equal(ui.explode, exploded); assert.equal(ui.visualPhase, phase);
+  assert.equal(ui.advanceRequested, false); assert.equal(ui.playback, 'paused');
+});
+test('saved Anatomy context is immutable and keeps all camera preset values', () => {
+  for (const preset of ['three-quarter', 'top', 'side', 'free']) {
+    const source = act(I.create({ mode: 'explore', level: 'die', selection: 'l2' }, base), 'CAMERA', { preset });
+    const original = JSON.stringify(source);
+    let ui = act(source, 'ENTER_GUIDE');
+    ui = act(ui, 'CAMERA', { preset: 'top' }); ui = act(ui, 'ENTER_GUIDE');
+    assert.equal(JSON.stringify(source), original);
+    ui = act(ui, 'ENTER_EXPLORE'); assert.equal(ui.cameraPreset, preset);
+  }
+});
 test('every GEMM step has a canonical view, independent of previous exploration', () => {
   for (let stepIndex = 0; stepIndex < 8; stepIndex++) {
     const context = { ...base, stepIndex };
