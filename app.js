@@ -475,6 +475,7 @@
   }));
   document.addEventListener('keydown', event => {
     if (event.defaultPrevented || document.querySelector('dialog[open]') || event.target.closest('input,select,textarea,[contenteditable=true]')) return;
+    if (event.key === 'Escape' && ui.mode === 'explore') { event.preventDefault();state.selected=null;exploreAction({type:'SELECT',id:null});return; }
     if (event.key.startsWith('Arrow') && event.target.closest('.scene3d')) return;
     if (ui.mode === 'learn' && event.key === 'ArrowRight') { event.preventDefault(); enterGuide({ index: state.stepIndex + 1 }); }
     else if (ui.mode === 'learn' && event.key === 'ArrowLeft') { event.preventDefault(); enterGuide({ index: state.stepIndex - 1 }); }

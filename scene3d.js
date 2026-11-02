@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102w';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102w';
-import { createConceptModel } from './concept-models.js?v=20261102w';
-import { createSelectionFeedback } from './selection-feedback.js?v=20261102w';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102x';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102x';
+import { createConceptModel } from './concept-models.js?v=20261102x';
+import { createSelectionFeedback } from './selection-feedback.js?v=20261102x';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -89,7 +89,7 @@ class HardwareScene {
     const pointers=new Set();
     this.container.addEventListener('contextmenu',event=>event.preventDefault());
     canvas.addEventListener('pointerdown',event=>{
-      pointers.add(event.pointerId);
+      pointers.add(event.pointerId);this.lastGestureCanPick=false;
       const modifier=event.shiftKey||event.ctrlKey||event.metaKey;
       // OrbitControls swaps Rotate/Pan when a modifier is down. Keep every
       // Shift+drag a pan, including while the explicit Pan tool is selected.
@@ -104,13 +104,14 @@ class HardwareScene {
       pointers.delete(event.pointerId);const start=this.dragStart;this.dragStart=null;canvas.style.cursor='grab';
       if(!start||!start.canPick||start.pointerId!==event.pointerId||Math.hypot(event.clientX-start.x,event.clientY-start.y)>5)return;
       if(this.state?.presentationMode==='learn')return;
+      this.lastGestureCanPick=true;
       const hit=this.pick(event);this.lastClickPick={id:hit,x:event.clientX,y:event.clientY,time:performance.now()};
       if(hit&&hit!==this.selected)this.selectComponent(hit);
       else this.clearSelection(true);
     });
     canvas.addEventListener('pointercancel',event=>{pointers.delete(event.pointerId);this.dragStart=null;canvas.style.cursor='grab';});
     canvas.addEventListener('dblclick',event=>{
-      if(this.state?.presentationMode==='learn'||this.navigationMode==='pan'||event.shiftKey||event.ctrlKey||event.metaKey)return;
+      if(!this.lastGestureCanPick||this.state?.presentationMode==='learn'||this.navigationMode==='pan'||event.shiftKey||event.ctrlKey||event.metaKey)return;
       const last=this.lastClickPick;
       const id=last&&performance.now()-last.time<500&&Math.hypot(event.clientX-last.x,event.clientY-last.y)<5?last.id:this.pick(event);
       if(!id)return;this.hovered=null;this.userNavigate('double-click');
@@ -120,6 +121,8 @@ class HardwareScene {
       else this.focusSelected();
     });
     canvas.addEventListener('pointermove',event=>{
+      const start=this.dragStart;
+      if(start&&event.pointerId===start.pointerId&&Math.hypot(event.clientX-start.x,event.clientY-start.y)>5)start.canPick=false;
       if(pointers.size||event.buttons){canvas.style.cursor='grabbing';return;}
       if(this.navigationMode==='pan'){this.hovered=null;canvas.style.cursor='grab';const tip=document.getElementById('tooltip');if(tip){tip.hidden=true;tip.style.display='none';}return;}
       const hit=this.pick(event);this.hovered=hit;canvas.style.cursor=hit?'pointer':'grab';
@@ -136,7 +139,7 @@ class HardwareScene {
       else if(key==='i'){const button=document.getElementById('isolate-btn');if(button)button.click();else this.isolateSelected();}
       else if(key==='r'){const button=document.getElementById('home-btn');if(button)button.click();else this.resetView();}
       else if(key==='escape'&&this.state?.presentationMode!=='learn')this.clearSelection(true);
-      else if(key==='backspace'){if(this.state?.presentationMode==='learn')window.__gpuExplorerMoveSelection?.(-1);else{this.userNavigate('back');this.setLevel(PARENT_LEVEL[this.level]||'board');}}
+      else if(key==='backspace'){if(this.state?.presentationMode==='learn')window.__gpuExplorerMoveSelection?.(-1);else{this.clearSelection(true);this.userNavigate('back');this.setLevel(PARENT_LEVEL[this.level]||'board');}}
     });
   }
 
