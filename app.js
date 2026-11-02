@@ -339,7 +339,7 @@
     $('inspector-label').textContent = ui.mode === 'learn' ? TITLES[state.journey] : '自由探索';
     document.querySelectorAll('.mode-switch [data-mode]').forEach(b => { const active = b.dataset.mode === ui.mode; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
     document.querySelectorAll('[data-journey]').forEach(b => { const active = b.dataset.journey === state.journey; b.classList.toggle('active', active); b.setAttribute('aria-pressed', String(active)); });
-    document.querySelector('[data-mode=learn]').title = '回到第 ' + (state.stepIndex + 1) + ' 步，复原装配与镜头';
+    document.querySelector('.mode-switch [data-mode=learn]').title = '回到第 ' + (state.stepIndex + 1) + ' 步，复原装配与镜头';
     $('model-select').value = state.model;
     $('step-counter').textContent = ui.mode === 'explore' ? String(LEVELS.indexOf(ui.level) + 1).padStart(2, '0') + ' / ' + String(LEVELS.length).padStart(2, '0') : String(state.stepIndex + 1).padStart(2, '0') + ' / ' + String(journey.steps.length).padStart(2, '0');
     $('chapter-kicker').textContent = String(state.stepIndex + 1).padStart(2, '0');
@@ -470,12 +470,12 @@
     if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) d.close();
   }));
   document.addEventListener('keydown', event => {
-    if (document.querySelector('dialog[open]') || event.target.closest('input,select,textarea,button,summary')) return;
+    if (event.defaultPrevented || document.querySelector('dialog[open]') || event.target.closest('input,select,textarea,[contenteditable=true]')) return;
     if (event.key.startsWith('Arrow') && event.target.closest('.scene3d')) return;
     if (ui.mode === 'learn' && event.key === 'ArrowRight') { event.preventDefault(); enterGuide({ index: state.stepIndex + 1 }); }
     else if (ui.mode === 'learn' && event.key === 'ArrowLeft') { event.preventDefault(); enterGuide({ index: state.stepIndex - 1 }); }
-    else if (ui.mode === 'learn' && event.key === ' ') { event.preventDefault(); toggleSequence(); }
-    else if (!event.target.closest('.scene3d')) {
+    else if (ui.mode === 'learn' && event.key === ' ' && !event.target.closest('button,summary')) { event.preventDefault(); toggleSequence(); }
+    else if (!event.target.closest('.scene3d,button,summary')) {
       if (event.key.toLowerCase() === 'f') focusSelected();
       if (event.key.toLowerCase() === 'i') $('isolate-btn').click();
       if (event.key.toLowerCase() === 'r') resetCamera();

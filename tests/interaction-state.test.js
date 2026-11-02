@@ -100,6 +100,16 @@ test('saved Anatomy context is immutable and keeps all camera preset values', ()
     ui = act(ui, 'ENTER_EXPLORE'); assert.equal(ui.cameraPreset, preset);
   }
 });
+test('changing learning journeys does not replace the remembered hardware workspace', () => {
+  let ui = I.create({ mode: 'explore', level: 'interconnect', selection: 'link-pairs', explode: .3 }, base);
+  ui = act(ui, 'ENTER_GUIDE');
+  for (const journey of ['pagetable', 'pixel', 'stacking', 'gemm']) {
+    ui = act(ui, 'ENTER_GUIDE', {}, { ...base, journey, stepIndex: 3 });
+    assert.equal(ui.mode, 'learn'); assert.equal(ui.anatomy.level, 'interconnect');
+  }
+  ui = act(ui, 'ENTER_EXPLORE');
+  assert.equal(ui.level, 'interconnect'); assert.equal(ui.selection, 'link-pairs'); assert.equal(ui.explode, .3);
+});
 test('every GEMM step has a canonical view, independent of previous exploration', () => {
   for (let stepIndex = 0; stepIndex < 8; stepIndex++) {
     const context = { ...base, stepIndex };
@@ -320,12 +330,14 @@ test('explore reset clears selection, isolation, dissection and camera preset to
 test('seeded mixed click patterns preserve guide/anatomy exclusivity for 12000 actions', () => {
   let seed=937,ui=I.create({},base);
   const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  const events=[()=>({type:'LEVEL',level:LEVELS[Math.floor(random()*LEVELS.length)]}),()=>({type:'SELECT',id:'tensor'}),()=>({type:'ISOLATE'}),()=>({type:'EXPLODE_SET',value:random()}),()=>({type:'EXPLODE_TOGGLE'}),()=>({type:'ENTER_GUIDE',playback:random()<.4?'sequence':'step'}),()=>({type:'NAVIGATE'}),()=>({type:'CAMERA',preset:['top','side','three-quarter'][Math.floor(random()*3)]}),()=>({type:'MOTION_TOGGLE'}),()=>({type:'TICK',dt:100}),()=>({type:'EXPLORE_RESET'}),()=>({type:'PAUSE'})];
+  const events=[()=>({type:'LEVEL',level:LEVELS[Math.floor(random()*LEVELS.length)]}),()=>({type:'SELECT',id:'tensor'}),()=>({type:'ISOLATE'}),()=>({type:'EXPLODE_SET',value:random()}),()=>({type:'EXPLODE_TOGGLE'}),()=>({type:'ENTER_GUIDE',playback:random()<.4?'sequence':'step'}),()=>({type:'ENTER_EXPLORE'}),()=>({type:'NAVIGATE'}),()=>({type:'CAMERA',preset:['top','side','three-quarter'][Math.floor(random()*3)]}),()=>({type:'MOTION_TOGGLE'}),()=>({type:'TICK',dt:100}),()=>({type:'EXPLORE_RESET'}),()=>({type:'PAUSE'})];
   const LEVELS=I.LEVELS;
   for(let i=0;i<12000;i++){
     const context={...base,stepIndex:Math.floor(random()*8),reducedMotion:random()<.1};
     ui=I.transition(ui,events[Math.floor(random()*events.length)](),context);
     assert.ok(ui.progress>=0&&ui.progress<=1);assert.ok(ui.explode>=0&&ui.explode<=1);
+    assert.ok(LEVELS.includes(ui.anatomy.level));assert.ok(ui.anatomy.explode>=0&&ui.anatomy.explode<=1);
+    if(ui.anatomy.isolated)assert.ok(ui.anatomy.selection);
     if(ui.mode==='learn'){assert.equal(ui.isolated,false);assert.equal(ui.selection,null);assert.equal(ui.explode,0);assert.equal(ui.explodeAuto,false);}
     else assert.equal(ui.playback,'paused');
     if(ui.explodeAuto)assert.equal(ui.mode,'explore');
