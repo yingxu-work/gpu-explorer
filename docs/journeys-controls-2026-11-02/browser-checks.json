@@ -1,0 +1,1717 @@
+{
+  "date": "2026-11-02",
+  "candidate": "094aa2da97031116d86af0f5e059adcf53c4ce4d",
+  "automatedChecks": 212,
+  "checks": [
+    {
+      "test": "pan-tool-primary-drag-preserves-lesson",
+      "panBefore": {
+        "mode": "learn",
+        "step": "01 / 07",
+        "target": "0.000,0.865,0.000"
+      },
+      "panAfter": {
+        "mode": "learn",
+        "selected": "",
+        "step": "01 / 07",
+        "target": "-1.258,1.143,0.550"
+      },
+      "pass": true
+    },
+    {
+      "test": "clean-register-card-outside-canvas",
+      "card": {
+        "detail": "紫色寄存器保存线程的操作数与累加器。每 SMSP 16,384 个 32-bit 寄存器（64 KiB），每 SM 合计 65,536 个（256 KiB）。",
+        "forbidden": [],
+        "inCanvas": false,
+        "labels": "false",
+        "name": "寄存器文件"
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pagetable",
+      "step": 0,
+      "a": {
+        "active": "cpu",
+        "conceptStep": "0",
+        "cycle": "0.1196",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1196",
+        "stage": "Virtual address",
+        "svg": [
+          [
+            "circle",
+            "42.21",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "cpu",
+        "conceptStep": "0",
+        "cycle": "0.2862",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.2862",
+        "stage": "Virtual address",
+        "svg": [
+          [
+            "circle",
+            "55.04",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pagetable",
+      "step": 1,
+      "a": {
+        "active": "tlb",
+        "conceptStep": "1",
+        "cycle": "0.1520",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1520",
+        "stage": "TLB miss",
+        "svg": [
+          [
+            "rect",
+            null,
+            null,
+            "92.38",
+            "10.00",
+            null,
+            null
+          ],
+          [
+            "circle",
+            "94.69",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "tlb",
+        "conceptStep": "1",
+        "cycle": "0.2899",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.2899",
+        "stage": "TLB miss",
+        "svg": [
+          [
+            "rect",
+            null,
+            null,
+            "98.18",
+            "10.00",
+            null,
+            null
+          ],
+          [
+            "circle",
+            "100.76",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pagetable",
+      "step": 2,
+      "a": {
+        "active": "pgd",
+        "conceptStep": "2",
+        "cycle": "0.1884",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1884",
+        "stage": "PML4 / PGD",
+        "svg": [
+          [
+            "circle",
+            "124.51",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "pgd",
+        "conceptStep": "2",
+        "cycle": "0.3225",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.3225",
+        "stage": "PML4 / PGD",
+        "svg": [
+          [
+            "circle",
+            "134.83",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pagetable",
+      "step": 3,
+      "a": {
+        "active": "pud",
+        "conceptStep": "3",
+        "cycle": "0.1270",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1270",
+        "stage": "PDPT / PUD",
+        "svg": [
+          [
+            "circle",
+            "196.78",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "pud",
+        "conceptStep": "3",
+        "cycle": "0.2465",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.2465",
+        "stage": "PDPT / PUD",
+        "svg": [
+          [
+            "circle",
+            "205.98",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pagetable",
+      "step": 4,
+      "a": {
+        "active": "pmd",
+        "conceptStep": "4",
+        "cycle": "0.1630",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1630",
+        "stage": "PD / PMD",
+        "svg": [
+          [
+            "circle",
+            "264.00",
+            "37.07",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "pmd",
+        "conceptStep": "4",
+        "cycle": "0.2790",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.2790",
+        "stage": "PD / PMD",
+        "svg": [
+          [
+            "circle",
+            "264.00",
+            "45.65",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pagetable",
+      "step": 5,
+      "a": {
+        "active": "pte>tlb",
+        "conceptStep": "5",
+        "cycle": "0.1268",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1268",
+        "stage": "PT entry + offset",
+        "svg": [
+          [
+            "circle",
+            "254.23",
+            "99.00",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "129.35",
+            "62.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "pte>tlb",
+        "conceptStep": "5",
+        "cycle": "0.2718",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.2718",
+        "stage": "PT entry + offset",
+        "svg": [
+          [
+            "circle",
+            "243.07",
+            "99.00",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "110.00",
+            "59.46",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pagetable",
+      "step": 6,
+      "a": {
+        "active": "ram>cache>cpu",
+        "conceptStep": "6",
+        "cycle": "0.1595",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1595",
+        "stage": "Physical data access",
+        "svg": [
+          [
+            "circle",
+            "150.64",
+            "99.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "ram>cache>cpu",
+        "conceptStep": "6",
+        "cycle": "0.2863",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.2863",
+        "stage": "Physical data access",
+        "svg": [
+          [
+            "circle",
+            "121.73",
+            "99.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pixel",
+      "step": 0,
+      "a": {
+        "active": "pixel",
+        "conceptStep": "0",
+        "cycle": "0.1377",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1377",
+        "stage": "Target pixel",
+        "svg": [
+          [
+            "circle",
+            "158.73",
+            "98.42",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "pixel",
+        "conceptStep": "0",
+        "cycle": "0.2790",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.2790",
+        "stage": "Target pixel",
+        "svg": [
+          [
+            "circle",
+            "146.28",
+            "101.75",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pixel",
+      "step": 1,
+      "a": {
+        "active": "tri>pixel",
+        "conceptStep": "1",
+        "cycle": "0.1667",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1667",
+        "stage": "Triangle coverage",
+        "svg": [
+          [
+            "rect",
+            null,
+            null,
+            "8.00",
+            "31.83",
+            null,
+            null
+          ],
+          [
+            "circle",
+            "59.40",
+            "99.40",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "tri>pixel",
+        "conceptStep": "1",
+        "cycle": "0.2935",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.2935",
+        "stage": "Triangle coverage",
+        "svg": [
+          [
+            "rect",
+            null,
+            null,
+            "8.00",
+            "45.40",
+            null,
+            null
+          ],
+          [
+            "circle",
+            "59.40",
+            "99.40",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pixel",
+      "step": 2,
+      "a": {
+        "active": "raster>tri",
+        "conceptStep": "2",
+        "cycle": "0.2138",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.2138",
+        "stage": "Barycentric interpolation",
+        "svg": [
+          [
+            "circle",
+            "66.16",
+            "31.47",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "37.03",
+            "109.18",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "68.56",
+            "101.98",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "raster>tri",
+        "conceptStep": "2",
+        "cycle": "0.3949",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.3949",
+        "stage": "Barycentric interpolation",
+        "svg": [
+          [
+            "circle",
+            "64.60",
+            "47.12",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "45.98",
+            "105.27",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "131.28",
+            "119.67",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pixel",
+      "step": 3,
+      "a": {
+        "active": "shader",
+        "conceptStep": "3",
+        "cycle": "0.1377",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1377",
+        "stage": "Fragment shader",
+        "svg": [
+          [
+            "circle",
+            "72.49",
+            "76.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "shader",
+        "conceptStep": "3",
+        "cycle": "0.3080",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.3080",
+        "stage": "Fragment shader",
+        "svg": [
+          [
+            "circle",
+            "117.61",
+            "76.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pixel",
+      "step": 4,
+      "a": {
+        "active": "tex>shader",
+        "conceptStep": "4",
+        "cycle": "0.1957",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1957",
+        "stage": "Texture sample",
+        "svg": [
+          [
+            "circle",
+            "74.17",
+            "80.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "tex>shader",
+        "conceptStep": "4",
+        "cycle": "0.3188",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.3188",
+        "stage": "Texture sample",
+        "svg": [
+          [
+            "circle",
+            "108.92",
+            "80.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pixel",
+      "step": 5,
+      "a": {
+        "active": "depth>pixel",
+        "conceptStep": "5",
+        "cycle": "0.1413",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1413",
+        "stage": "Depth 0.4 < 0.7",
+        "svg": [
+          [
+            "circle",
+            "72.02",
+            "42.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "depth>pixel",
+        "conceptStep": "5",
+        "cycle": "0.2681",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.2681",
+        "stage": "Depth 0.4 < 0.7",
+        "svg": [
+          [
+            "circle",
+            "105.25",
+            "42.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pixel",
+      "step": 6,
+      "a": {
+        "active": "fb",
+        "conceptStep": "6",
+        "cycle": "0.1594",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1594",
+        "stage": "Framebuffer write",
+        "svg": [
+          [
+            "circle",
+            "56.42",
+            "75.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "fb",
+        "conceptStep": "6",
+        "cycle": "0.3297",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.3297",
+        "stage": "Framebuffer write",
+        "svg": [
+          [
+            "circle",
+            "91.05",
+            "75.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "pixel",
+      "step": 7,
+      "a": {
+        "active": "fb>pixel",
+        "conceptStep": "7",
+        "cycle": "0.1232",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1232",
+        "stage": "Display scanout",
+        "svg": [
+          [
+            "rect",
+            null,
+            null,
+            "235.00",
+            "53.24",
+            null,
+            null
+          ],
+          [
+            "circle",
+            "88.13",
+            "83.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "fb>pixel",
+        "conceptStep": "7",
+        "cycle": "0.2862",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.2862",
+        "stage": "Display scanout",
+        "svg": [
+          [
+            "rect",
+            null,
+            null,
+            "235.00",
+            "65.47",
+            null,
+            null
+          ],
+          [
+            "circle",
+            "121.39",
+            "83.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "stacking",
+      "step": 0,
+      "a": {
+        "active": "lid>logic-top",
+        "conceptStep": "0",
+        "cycle": "0.1232",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1232",
+        "stage": "Logic stack cutaway",
+        "svg": [
+          [
+            "circle",
+            "35.00",
+            "33.27",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "lid>logic-top",
+        "conceptStep": "0",
+        "cycle": "0.2536",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.2536",
+        "stage": "Logic stack cutaway",
+        "svg": [
+          [
+            "circle",
+            "35.00",
+            "49.45",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "stacking",
+      "step": 1,
+      "a": {
+        "active": "cut-core>logic-top",
+        "conceptStep": "1",
+        "cycle": "0.1594",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1594",
+        "stage": "Binning: disabled unit",
+        "svg": [
+          [
+            "rect",
+            null,
+            null,
+            "86.10",
+            "31.00",
+            null,
+            null
+          ],
+          [
+            "circle",
+            "90.39",
+            "41.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "cut-core>logic-top",
+        "conceptStep": "1",
+        "cycle": "0.2790",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.2790",
+        "stage": "Binning: disabled unit",
+        "svg": [
+          [
+            "rect",
+            null,
+            null,
+            "114.68",
+            "31.00",
+            null,
+            null
+          ],
+          [
+            "circle",
+            "116.93",
+            "41.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "stacking",
+      "step": 2,
+      "a": {
+        "active": "lid>bond>substrate",
+        "conceptStep": "2",
+        "cycle": "0.1449",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1449",
+        "stage": "Six separated layers",
+        "svg": [
+          [
+            "circle",
+            "35.00",
+            "32.29",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "lid>bond>substrate",
+        "conceptStep": "2",
+        "cycle": "0.2609",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.2609",
+        "stage": "Six separated layers",
+        "svg": [
+          [
+            "circle",
+            "35.00",
+            "48.52",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "stacking",
+      "step": 3,
+      "a": {
+        "active": "logic-top",
+        "conceptStep": "3",
+        "cycle": "0.1452",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1452",
+        "stage": "Upper logic",
+        "svg": [
+          [
+            "circle",
+            "112.00",
+            "56.11",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "224.00",
+            "27.52",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "logic-top",
+        "conceptStep": "3",
+        "cycle": "0.3046",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.3046",
+        "stage": "Upper logic",
+        "svg": [
+          [
+            "circle",
+            "112.00",
+            "70.50",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "224.00",
+            "23.69",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "stacking",
+      "step": 4,
+      "a": {
+        "active": "bond",
+        "conceptStep": "4",
+        "cycle": "0.1522",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1522",
+        "stage": "Vertical hybrid bond",
+        "svg": [
+          [
+            "circle",
+            "171.00",
+            "50.30",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "211.00",
+            "74.30",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "bond",
+        "conceptStep": "4",
+        "cycle": "0.2790",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.2790",
+        "stage": "Vertical hybrid bond",
+        "svg": [
+          [
+            "circle",
+            "171.00",
+            "56.39",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "211.00",
+            "80.39",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "stacking",
+      "step": 5,
+      "a": {
+        "active": "logic-low>mem-layer",
+        "conceptStep": "5",
+        "cycle": "0.1343",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1343",
+        "stage": "Lower logic + memory",
+        "svg": [
+          [
+            "circle",
+            "132.00",
+            "109.13",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "logic-low>mem-layer",
+        "conceptStep": "5",
+        "cycle": "0.3481",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.3481",
+        "stage": "Lower logic + memory",
+        "svg": [
+          [
+            "circle",
+            "152.99",
+            "117.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "stacking",
+      "step": 6,
+      "a": {
+        "active": "bond>mem-layer",
+        "conceptStep": "6",
+        "cycle": "0.1341",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1341",
+        "stage": "Short vs long connection",
+        "svg": [
+          [
+            "circle",
+            "89.00",
+            "77.15",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "214.15",
+            "38.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "bond>mem-layer",
+        "conceptStep": "6",
+        "cycle": "0.2537",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.2537",
+        "stage": "Short vs long connection",
+        "svg": [
+          [
+            "circle",
+            "89.00",
+            "112.00",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "249.07",
+            "38.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-step-animated-and-clean",
+      "journey": "stacking",
+      "step": 7,
+      "a": {
+        "active": "lid>logic-top",
+        "conceptStep": "7",
+        "cycle": "0.1268",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1268",
+        "stage": "Heat and manufacturing",
+        "svg": [
+          [
+            "circle",
+            "171.00",
+            "105.94",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "219.00",
+            "51.49",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "lid>logic-top",
+        "conceptStep": "7",
+        "cycle": "0.2464",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.2464",
+        "stage": "Heat and manufacturing",
+        "svg": [
+          [
+            "circle",
+            "171.00",
+            "93.62",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "219.00",
+            "42.52",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-pause-pan-resume",
+      "journey": "pagetable",
+      "a": {
+        "active": "pud",
+        "conceptStep": "3",
+        "cycle": "0.1304",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1304",
+        "stage": "PDPT / PUD",
+        "svg": [
+          [
+            "circle",
+            "197.04",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "pud",
+        "conceptStep": "3",
+        "cycle": "0.1304",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1304",
+        "stage": "PDPT / PUD",
+        "svg": [
+          [
+            "circle",
+            "197.04",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "c": {
+        "active": "pud",
+        "conceptStep": "3",
+        "cycle": "0.3152",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.3152",
+        "stage": "PDPT / PUD",
+        "svg": [
+          [
+            "circle",
+            "211.27",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-pause-pan-resume",
+      "journey": "pixel",
+      "a": {
+        "active": "shader",
+        "conceptStep": "3",
+        "cycle": "0.1703",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1703",
+        "stage": "Fragment shader",
+        "svg": [
+          [
+            "circle",
+            "81.12",
+            "76.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "shader",
+        "conceptStep": "3",
+        "cycle": "0.1703",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1703",
+        "stage": "Fragment shader",
+        "svg": [
+          [
+            "circle",
+            "81.12",
+            "76.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "c": {
+        "active": "shader",
+        "conceptStep": "3",
+        "cycle": "0.3517",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.3517",
+        "stage": "Fragment shader",
+        "svg": [
+          [
+            "circle",
+            "129.19",
+            "76.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "concept-pause-pan-resume",
+      "journey": "stacking",
+      "a": {
+        "active": "logic-top",
+        "conceptStep": "3",
+        "cycle": "0.1341",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1341",
+        "stage": "Upper logic",
+        "svg": [
+          [
+            "circle",
+            "112.00",
+            "55.11",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "224.00",
+            "27.78",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "b": {
+        "active": "logic-top",
+        "conceptStep": "3",
+        "cycle": "0.1341",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1341",
+        "stage": "Upper logic",
+        "svg": [
+          [
+            "circle",
+            "112.00",
+            "55.11",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "224.00",
+            "27.78",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "c": {
+        "active": "logic-top",
+        "conceptStep": "3",
+        "cycle": "0.2935",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.2935",
+        "stage": "Upper logic",
+        "svg": [
+          [
+            "circle",
+            "112.00",
+            "69.50",
+            null,
+            null,
+            null,
+            null
+          ],
+          [
+            "circle",
+            "224.00",
+            "23.96",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "shift-drag-in-pan-tool-with-labels",
+      "before": "-0.000,0.104,0.000",
+      "after": "-0.871,0.260,0.410",
+      "pass": true
+    },
+    {
+      "test": "manual-pan-preserved-through-resize",
+      "retained": "-0.896,0.265,0.422",
+      "resized": "-0.896,0.265,0.422",
+      "pass": true
+    },
+    {
+      "test": "mobile-sm-clean-legend",
+      "mobileClean": {
+        "legend": "FP32 CUDA128FP6464INT3264SFU16Tensor Core4Register File256 KiBLD / ST32L1 Data / Shared256 KB",
+        "scrollWidth": 375,
+        "warnings": [],
+        "width": 375
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-concept-entry",
+      "journey": "pagetable",
+      "m": {
+        "active": "cpu",
+        "conceptStep": "0",
+        "cycle": "0.1631",
+        "kind": "pagetable",
+        "mode": "learn",
+        "phase": "0.1631",
+        "stage": "Virtual address",
+        "svg": [
+          [
+            "circle",
+            "45.56",
+            "25.00",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-concept-entry",
+      "journey": "pixel",
+      "m": {
+        "active": "pixel",
+        "conceptStep": "0",
+        "cycle": "0.1630",
+        "kind": "pixel",
+        "mode": "learn",
+        "phase": "0.1630",
+        "stage": "Target pixel",
+        "svg": [
+          [
+            "circle",
+            "156.80",
+            "99.82",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "mobile-concept-entry",
+      "journey": "stacking",
+      "m": {
+        "active": "lid>logic-top",
+        "conceptStep": "0",
+        "cycle": "0.1522",
+        "kind": "stacking",
+        "mode": "learn",
+        "phase": "0.1522",
+        "stage": "Logic stack cutaway",
+        "svg": [
+          [
+            "circle",
+            "35.00",
+            "36.87",
+            null,
+            null,
+            null,
+            null
+          ]
+        ],
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "component-copy-audit",
+      "id": "sm-detail",
+      "card": {
+        "detail": "四个执行子分区共用 L1 数据缓存/共享内存，协同执行线程块。",
+        "name": "SM 功能组织",
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "component-copy-audit",
+      "id": "tma",
+      "card": {
+        "detail": "Hopper 的异步张量搬运硬件，在全局内存与共享内存之间传输张量数据。",
+        "name": "Tensor Memory Accelerator",
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "component-copy-audit",
+      "id": "smem",
+      "card": {
+        "detail": "SM 共用 256 KB L1 数据缓存/共享内存资源，Shared Memory 最多 228 KB。共享内存按 32 banks 组织，支持线程块内的数据复用。",
+        "name": "L1 数据缓存 / 共享内存",
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "component-copy-audit",
+      "id": "hbm-dram",
+      "card": {
+        "detail": "DRAM 裸片垂直堆叠，每层的 bank 阵列存储数据；层间通路将访问请求与数据送到对应存储层。",
+        "name": "DRAM 存储层",
+        "warnings": []
+      },
+      "pass": true
+    },
+    {
+      "test": "component-copy-audit",
+      "id": "hbm-base",
+      "card": {
+        "detail": "底部接口汇接 DRAM 堆栈的信号，通过焊盘与中介层连接 GPU，完成存储堆栈的对外连接。",
+        "name": "底部接口芯片 / Base die",
+        "warnings": []
+      },
+      "pass": true
+    }
+  ],
+  "console": []
+}
