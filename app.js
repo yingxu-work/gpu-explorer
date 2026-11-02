@@ -10,11 +10,11 @@
   const VIEW_INFO = {
     board: { title: '一块模组，各司其职。', body: '从计算、存储到供电与互连，沿着部件走进机器内部。', features: [['计算与存储','进入封装、裸片、SM 或 HBM。'],['支撑计算的部件','查看多相供电、PCB 层叠与 SXM 连接器。']] },
     package: { title: '连接计算与存储。', body: '裸片、HBM、中介层与基板，共同组成 GPU 封装。', features: [['硅中介层','近距离连接 GPU 和 HBM，承载大量并行信号。'],['封装基板','将封装内的连接引到模组 PCB。']] },
-    die: { title: '从 L2，走到 SM。', body: '查看计算阵列、共享 L2 与片上互连的功能组织。', features: [['一组组计算资源','线程块被分发到 SM，而不是沿流水线依次经过所有 SM。'],['数据共享层级','L2 在多个 SM 之间共享；L1 与 Shared 位于各个 SM 内。']] },
-    sm: { title: '一个 SM，四个子分区。', body: '按颜色辨认运算与存储资源，点下方图例查看作用。', features: [['绿色是 FP32 运算通道','蓝色为 FP64，青色为 INT32，金色为 Tensor Core；图例标明每 SM 的数量。'],['紫色是寄存器存储','保存线程操作数与累加器，不是 FP16 计算核心。']] },
-    hbm: { title: '把存储，纵向堆起来。', body: '展开 DRAM 叠层、垂直互连和底部接口，理解 HBM 如何连接 GPU。', features: [['垂直与横向','TSV 穿过硅片，微凸点连接层间，中介层把数据横向送往 GPU。'],['并行通道','通道为存取提供并行性；本剖面用简化分区展示组织。']] },
+    die: { title: '从 L2，走到 SM。', body: '查看计算阵列、共享 L2 与片上互连的功能组织。', features: [['一组组计算资源','线程块被分发到 SM，在各自的计算资源上并行执行。'],['数据共享层级','L2 在多个 SM 之间共享；L1 与 Shared 位于各个 SM 内。']] },
+    sm: { title: '一个 SM，四个子分区。', body: '按颜色辨认运算与存储资源，点下方图例查看作用。', features: [['绿色是 FP32 运算通道','蓝色为 FP64，青色为 INT32，金色为 Tensor Core；图例标明每 SM 的数量。'],['紫色是寄存器存储','保存线程操作数与累加器。']] },
+    hbm: { title: '把存储，纵向堆起来。', body: '展开 DRAM 叠层、垂直互连和底部接口，理解 HBM 如何连接 GPU。', features: [['垂直与横向','TSV 穿过硅片，微凸点连接层间，中介层把数据横向送往 GPU。'],['并行通道','通道为存取提供并行性；各通道独立处理存取请求。']] },
     power: { title: '电压变低，电流变大。', body: '沿多相 Buck 的开关级、电感和电容，看电源如何被转换与稳定。', features: [['多相协作','多组功率级与电感交错工作，分担输出电流。'],['控制与去耦','控制回路调节输出；输入与输出电容抑制电压波动。']] },
-    interconnect: { title: '信号要有去路，也有回路。', body: '切开 PCB，看铜层、通孔、差分对和 SXM 接触阵列。', features: [['跨越 PCB 层','普通通孔连接铜层；它与 HBM 内的硅通孔 TSV 是不同结构。'],['连接到系统','SXM 接触阵列承担模组的电源与高速连接，图中不对应真实引脚定义。']] }
+    interconnect: { title: '信号要有去路，也有回路。', body: '切开 PCB，看铜层、通孔、差分对和 SXM 接触阵列。', features: [['跨越 PCB 层','普通通孔连接铜层；它与 HBM 内的硅通孔 TSV 是不同结构。'],['连接到系统','SXM 接触阵列承担模组的供电与高速连接。']] }
   };
   const TITLES = { gemm: '一次矩阵乘法', pagetable: '一次地址翻译', pixel: '一个像素的旅程', stacking: '芯片为什么堆起来' };
   const SPECS = {
@@ -22,19 +22,19 @@
     a100: { name: 'A100', arch: 'AMPERE', year: 2020, sm: 108, l2: '40MB', hbm: 'HBM2e', shared: '164KB' }
   };
   const LESSONS = [
-    { title: '先选一个结果。', body: '先盯住 C[3,7]：它由哪两个输入得到？所有下标从 0 开始。', hardware: 'A、B 和输出 C 都存放在 HBM 显存中；它们是数据，不是三块独立芯片。' },
+    { title: '先选一个结果。', body: '先盯住 C[3,7]：它由哪两个输入得到？所有下标从 0 开始。', hardware: 'A、B 和输出 C 都存放在 HBM 显存中。' },
     { title: '一行，乘上一列。', body: '取 A 的第 3 行与 B 的第 7 列。沿 k 相乘，再把 8 个乘积相加。', hardware: '点击任意乘积，可追踪这一项对应的两个输入。矩阵此时仍存放在 HBM。' },
     { title: '把大问题，切成小块。', body: '输出按 tile 分工；K=8 分成两轮，每轮处理 4 项。', hardware: '一个 thread block 在一个 SM 上执行。示例输出 tile 为 2×4，实际内核通常使用更大的 tile。' },
     { title: '先搬近，再反复用。', body: '将第一轮数据经缓存层级搬入 SM 的共享内存，供线程反复复用。', hardware: 'HBM 在裸片外，L2 在片上由 SM 共享，L1 / Shared 在 SM 内。亮起的线路表示这条层级路径。' },
-    { title: '32 个线程，一起协作。', body: '一个 warp 有 32 个线程，协作搬运数据、执行指令。', hardware: '调度器发射就绪 warp 的指令；寄存器存放线程操作数。图中 32 lane 表示组织方式，不是 MMA 的逐 lane 元素映射。' },
-    { title: '乘起来，累加进去。', body: '第一轮的乘积是 2、3、6、8，累加器从 0 变为 19。', hardware: '真实 Tensor Core MMA 更新矩阵片段；这里用一个标量内积展开数学。结果片段保存在寄存器中。' },
+    { title: '32 个线程，一起协作。', body: '一个 warp 有 32 个线程，协作搬运数据、执行指令。', hardware: '调度器发射就绪 warp 的指令，寄存器保存线程操作数与累加结果。' },
+    { title: '乘起来，累加进去。', body: '第一轮的乘积是 2、3、6、8，累加器从 0 变为 19。', hardware: 'Tensor Core 执行矩阵片段的乘加，结果片段保存在寄存器中。' },
     { title: '换一块，接着算。', body: '保留 19，再加上 4、2、6、6。第二轮结束，结果为 37。', hardware: '同步后才能安全复用共享内存。优化内核还可使用异步搬运和双缓冲重叠搬运与计算。' },
     { title: '37，回到显存。', body: '所有 K-tile 都已完成，将 37 写回 C[3,7]。', hardware: '存储指令经缓存层级写回输出地址。其余输出使用相同的内积定义，并行分块计算。' }
   ];
   const SCOPE = {
-    pagetable: '通用 x86-64 四级页表示例，不表示 H100 内含 CPU 核。',
-    pixel: '通用图形管线示例，不表示 H100 具备显示输出。',
-    stacking: '概念性的逻辑堆叠剖面，不是 H100 的上下层逻辑结构。'
+    pagetable: 'CPU 发出的虚拟地址通过 TLB 与四级页表翻译为物理地址。',
+    pixel: '三角形经过光栅化、片元着色与深度测试，结果写入帧缓冲。',
+    stacking: '逻辑与存储层通过垂直互连交换数据，散热盖将热量向外传导。'
   };
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let state = S.decodeState(location.hash);
@@ -172,7 +172,7 @@
     const crumb = $('crumb');
     crumb.replaceChildren();
     if(conceptActive()){
-      const title=document.createElement('span');title.textContent={pagetable:'x86-64 地址翻译',pixel:'通用图形管线',stacking:'3D 堆叠概念实验'}[state.journey];crumb.append(title);
+      const title=document.createElement('span');title.textContent={pagetable:'x86-64 地址翻译',pixel:'通用图形管线',stacking:'3D 芯片堆叠'}[state.journey];crumb.append(title);
     }else I.breadcrumbs(ui.level).forEach((level, i) => {
       if (i) { const sep = document.createElement('span'); sep.textContent = '›'; crumb.append(sep); }
       const button = document.createElement('button');
@@ -325,7 +325,7 @@
     const step=S.currentStep(state);
     const story = state.journey==='gemm'?window.GpuExplorerStory.forStep(state.stepIndex):{
       kind:state.journey,phase:S.currentStepChip(state)?.label||step.title,
-      caption:{pagetable:'x86-64 四级页表与 4 KiB 页的独立示例。',pixel:'通用图形管线的独立示例。',stacking:'逻辑堆叠的概念剖面与取舍。'}[state.journey],
+      caption:{pagetable:'TLB 缓存地址翻译，四级页表逐层定位物理页。',pixel:'片元经过着色与深度测试，写入帧缓冲。',stacking:'沿垂直互连观察逻辑层、存储层和热流。'}[state.journey],
       nodes:step.active.map(id=>S.currentJourney(state).nodes.find(node=>node.id===id)?.label||id)
     };
     $('teaching-status').dataset.kind = story.kind;
@@ -356,9 +356,9 @@
     $('stat-sm').textContent = spec.sm; $('stat-memory-type').textContent = spec.hbm + ' 显存';
     $('main-model-name').textContent = 'NVIDIA · ' + spec.arch;
     $('hero-title').textContent = ['sm','hbm','power','interconnect'].includes(ui.level) ? ({ sm: spec.name + ' · SM', hbm: spec.hbm, power: 'VRM', interconnect: 'PCB / SXM' })[ui.level] : spec.name;
-    $('hero-subtitle').textContent = ui.level === 'sm' ? '功能布局示意，不代表物理距离' : '';
+    $('hero-subtitle').textContent = '';
     if(conceptActive()){
-      $('main-model-name').textContent='INTERACTIVE CONCEPT LAB';
+      $('main-model-name').textContent='INTERACTIVE EXPLORER';
       $('hero-title').textContent={pagetable:'地址翻译',pixel:'像素旅程',stacking:'3D 堆叠'}[state.journey];
       $('hero-subtitle').textContent={pagetable:'x86-64 · 四级页表',pixel:'通用图形管线',stacking:'逻辑层与垂直连接'}[state.journey];
     }
@@ -368,7 +368,6 @@
     $('step-body').textContent = lesson ? lesson.body : step.body;
     $('fact').textContent = state.journey === 'gemm' && state.stepIndex === 7 ? 'C[3,7] = 19 + 18 = 37' : step.trace || '';
     $('hardware-note').textContent = lesson ? lesson.hardware : SCOPE[state.journey];
-    $('journey-caveat').textContent = SCOPE[state.journey] || '小矩阵解释数学；SM 几何是功能框图，不反映晶体管版图或实际距离。动画不是硬件时序。';
     $('journey-gloss').textContent = journey.gloss || '';
     $('prev-btn').disabled = S.isAtStart(state); $('next-btn').disabled = S.isAtEnd(state);
     $('next-btn').innerHTML = S.isAtEnd(state) ? '本次计算完成 <span>✓</span>' : '继续 <span>→</span>';

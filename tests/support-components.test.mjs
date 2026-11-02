@@ -60,7 +60,7 @@ for(const model of ['h100','a100']){
     assert.ok(control.stages.includes('power-controller'));assert.ok(control.stages.includes('power-feedback'));
     let winding=0,core=0;detail.components['power-inductor'].group.traverse(o=>{if(o.material===detail.materials.copper)winding++;if(o.material===detail.materials.core)core++;});
     assert.ok(winding>=5&&core>=4,'opened inductor must expose both conductor and core');
-    assert.ok(detail.components['power-board'].description.includes('不代表'));
+    assert.match(detail.components['power-board'].description,/功率级.*电感.*电容/);
   });
   test(`${model} power: winding turns connect and the lid markings stay on their shells`,()=>{
     const detail=createPowerDetail(T,model),turns=[],marks=[];
@@ -75,7 +75,7 @@ for(const model of ['h100','a100']){
     const detail=createInterconnectDetail(T,model);
     assert.notEqual(detail.components['link-vias'].group,detail.components['link-ground'].group);
     assert.ok(detail.components['link-vias'].description.includes('TSV'));
-    assert.ok(detail.components['link-socket'].description.includes('并非 NVIDIA 引脚图'));
+    assert.match(detail.components['link-socket'].description,/模组.*载板.*电源.*信号/);
     assert.deepEqual(detail.paths.find(p=>p.kind==='signal').stages,['link-socket','link-vias','link-pairs','link-footprint']);
     assert.ok(detail.paths.find(p=>p.kind==='reference').stages.includes('link-ground'));
     const socketBox=new T.Box3().setFromObject(detail.components['link-socket'].group);

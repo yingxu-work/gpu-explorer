@@ -302,7 +302,8 @@ test('GEMM separates scalar reference arithmetic from cooperative matrix instruc
   var accumulate = S.JOURNEYS.gemm.steps[5];
   assert.ok(warp.code.join('\n').indexOf('mma(') >= 0);
   assert.ok(warp.body.indexOf('32') >= 0);
-  assert.ok(accumulate.code.join('\n').indexOf('不是 Tensor Core') >= 0);
+  assert.ok(accumulate.code.join('\n').indexOf('for k in range(0, 4):') >= 0);
+  assert.ok(accumulate.code.join('\n').indexOf('acc += A[3][k] * B[k][7]') >= 0);
   assert.ok(accumulate.trace.indexOf('19') >= 0);
   assert.ok(S.JOURNEYS.gemm.steps[7].trace.indexOf('37') >= 0);
 });

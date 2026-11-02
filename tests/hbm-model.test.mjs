@@ -14,7 +14,8 @@ for(const model of ['h100','a100']) {
     assert.equal(s.pseudoChannels,s.channels*2);
     assert.equal(s.channels,model==='h100'?16:8);
     assert.ok(s.scope.includes('不对应特定供应商版图'));
-    assert.ok(detail.components['hbm-channel'].description.includes('不等于 DRAM 层数'));
+    assert.ok(detail.components['hbm-channel'].description.includes(`${s.channels} × ${s.channelBits} bit`));
+    assert.ok(detail.components['hbm-channel'].description.includes('独立的存储访问路径'));
     assert.ok(detail.components['hbm-controller'].description.includes('GPU 内部'));
   });
 

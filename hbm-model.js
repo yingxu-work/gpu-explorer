@@ -67,22 +67,22 @@ export function createHBMDetail(T, model = 'h100') {
     mesh.rotation.x = -Math.PI / 2; mesh.position.set(x, y, z); parent.add(mesh); return mesh;
   }
 
-  const interposer = component('hbm-interposer', '硅中介层 / 横向互连', 'HBM 的垂直 TSV 接到底部接口，再通过中介层横向连接 GPU 的 HBM PHY。这里的走线是教学路由。');
+  const interposer = component('hbm-interposer', '硅中介层 / 横向互连', 'HBM 的垂直 TSV 接到底部接口，再通过硅中介层上的细密走线横向连接 GPU 的 HBM PHY。');
   box(interposer, 0, -.43, 0, 11.5, .25, 8.7, materials.edge);
   box(interposer, 0, -.295, 0, 11.3, .025, 8.5, materials.substrate);
   const stitch = [];
   for (let x = -5.25; x <= 5.25; x += .22) for (const z of [-4.05, 4.05]) stitch.push({ x, y: -.269, z, w: .035, h: .012, d: .035 });
   instances(interposer, stitch, materials.gold);
-  text(interposer, 'SILICON INTERPOSER  /  TEACHING CUTAWAY', 0, -.266, 3.82, 9.9, .28, '#aebfba', '400 32px monospace');
+  text(interposer, 'SILICON INTERPOSER  /  HBM INTERCONNECT', 0, -.266, 3.82, 9.9, .28, '#aebfba', '400 32px monospace');
 
-  const stack = component('hbm-stack', specification.name + ' 堆叠剖面', specification.scope);
-  const base = component('hbm-base', '底部接口芯片 / Base die', '底部接口将 DRAM 堆栈的信号连接到中介层；并非新增容量的存储层。实际电路功能和工艺依产品而异。', stack, 'hbm-stack');
+  const stack = component('hbm-stack', specification.name + ' 堆叠剖面', specification.name + ' 将多层 DRAM 垂直堆叠，通过硅通孔和层间微凸点连接，以 1024 bit 宽接口与 GPU 交换数据。');
+  const base = component('hbm-base', '底部接口芯片 / Base die', '底部接口汇接 DRAM 堆栈的信号，通过焊盘与中介层连接 GPU，完成存储堆栈的对外连接。', stack, 'hbm-stack');
   box(base, -1.7, .01, 0, 4.9, .30, 4.85, materials.black);
   box(base, -1.7, .172, 0, 4.73, .025, 4.68, materials.gold);
   box(base, -1.7, .193, 0, 4.65, .028, 4.60, materials.silicon);
   text(base, 'BASE / INTERFACE DIE', -2.4, .216, -2.05, 2.9, .26, '#c0d1d6');
 
-  const dram = component('hbm-dram', 'DRAM 存储层', '八层代表性剖面展示存储裸片垂直堆叠。小阵列表示 bank 结构，具体层数、bank 位置和尺寸不是本标本的厂家版图。', stack, 'hbm-stack');
+  const dram = component('hbm-dram', 'DRAM 存储层', 'DRAM 裸片垂直堆叠，每层的 bank 阵列存储数据；层间通路将访问请求与数据送到对应存储层。', stack, 'hbm-stack');
   const bumps = component('hbm-bumps', '层间微凸点 / Microbumps', '相邻裸片之间的微凸点形成电气连接。TSV 穿过硅片，微凸点跨过裸片之间的连接界面；两者共同构成垂直通路。', stack, 'hbm-stack');
   const layerPitch = .43, layerHeight = .18, firstY = .48;
   const plateSpec = [
@@ -119,7 +119,7 @@ export function createHBMDetail(T, model = 'h100') {
     for (let x = -.78; x <= .05; x += .28) for (const z of [-1.91, -1.1, -.3]) balls.push({ x, y: 0, z, w: .075, h: .075, d: .075 });
     instances(bumpLayer, balls, materials.silver, bumpGeometry);
   }
-  const tsv = component('hbm-tsv', '硅通孔 / TSV', '代表性铜色束线显示信号穿过多层硅片；真实 TSV 数量远多于图中所画。剖面缺口与垂直间距经过放大，便于观察。', stack, 'hbm-stack');
+  const tsv = component('hbm-tsv', '硅通孔 / TSV', '硅通孔沿垂直方向穿过 DRAM 裸片，连接堆叠各层的信号与供电网络，并通过微凸点跨接相邻裸片。', stack, 'hbm-stack');
   const tsvGeometry = new T.CylinderGeometry(.027, .027, 1, 8);
   const tsvList = [];
   for (let row = 0; row < 5; row++) for (let col = 0; col < 5; col++) tsvList.push({ x: -.74 + col * .20, y: 0, z: .80 + row * .25, w: 1, h: 1, d: 1 });
@@ -128,7 +128,7 @@ export function createHBMDetail(T, model = 'h100') {
   const lands = tsvList.map(p => ({ x: p.x, y: .226, z: p.z, w: .077, h: .018, d: .077 }));
   instances(base, lands, materials.gold);
 
-  const channels = component('hbm-channel', specification.channels + ' 个独立通道', `${specification.name} 的堆栈接口为 ${specification.channels} × ${specification.channelBits} bit，共 1024 bit；可分为 ${specification.pseudoChannels} 个伪通道。通道是独立访问接口，不等于 DRAM 层数。`, base, 'hbm-base');
+  const channels = component('hbm-channel', specification.channels + ' 个独立通道', `${specification.name} 的堆栈接口为 ${specification.channels} × ${specification.channelBits} bit，共 1024 bit；可分为 ${specification.pseudoChannels} 个伪通道。各通道提供独立的存储访问路径。`, base, 'hbm-base');
   const ports = [], portPads = [];
   const channelPitch = 4.30 / specification.channels;
   for (let i = 0; i < specification.channels; i++) {
@@ -139,7 +139,7 @@ export function createHBMDetail(T, model = 'h100') {
   instances(channels, ports, materials.bus); instances(channels, portPads, materials.gold);
   text(channels, `${specification.channels} × ${specification.channelBits}-bit  /  1024-bit`, -1.7, -.266, 2.96, 4.6, .30, '#c4ded7');
 
-  const controller = component('hbm-controller', 'GPU 侧 HBM PHY / 控制器', 'PHY 承担物理信号接口，控制器安排命令与访问。右侧方块表示 GPU 内部的接口角色，不是封装旁额外增加的一颗芯片。');
+  const controller = component('hbm-controller', 'GPU 侧 HBM PHY / 控制器', 'GPU 内部的 HBM PHY 负责物理信号收发，存储控制器安排读写命令与访问时序，将计算请求送入 HBM。');
   box(controller, 3.88, -.02, -.10, 2.75, .29, 4.55, materials.black);
   box(controller, 3.88, .142, -.10, 2.64, .025, 4.44, materials.silicon);
   const phyLanes = [], controllerCells = [];
@@ -154,7 +154,7 @@ export function createHBMDetail(T, model = 'h100') {
     routes.push({ x: .68, y: -.257, z: (z + 2.34) * .5, w: .018, h: .012, d: Math.abs(z - 2.34) });
   }
   instances(interposer, routes, materials.gold);
-  text(interposer, '8 DRAM LAYERS  /  ILLUSTRATIVE', -1.7, -.266, -3.50, 5.6, .30, '#bfd0ca');
+  text(interposer, 'DRAM STACK  /  VERTICAL INTERCONNECT', -1.7, -.266, -3.50, 5.6, .30, '#bfd0ca');
 
   // Engineering scale marks help read height without suggesting real dimensions.
   const ruler = [];

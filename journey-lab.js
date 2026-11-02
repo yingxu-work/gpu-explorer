@@ -142,21 +142,21 @@
     var locations = ['C[3,7]', 'A[3,:] · B[:,7]', 'tile → CTA → SM', 'k = 0…3', 'warp = 32 threads', 'acc = 0 → 19', 'acc = 19 → 37', 'C[3,7] = 37'];
     html += '<div class="lab-caption"><span>' + captions[step] + '</span><strong>' + locations[step] + '</strong></div>';
     if (step === 0) {
-      body = '<div class="lab-formula"><span class="lab-ccolor">C<sub>3,7</sub></span><span>=</span><span class="lab-sigma"><sup>7</sup>∑<sub>k = 0</sub></span><span class="lab-acolor">A<sub>3,k</sub></span><span>·</span><span class="lab-bcolor">B<sub>k,7</sub></span></div><p class="lab-note">从一个输出出发，跟随它经过<em>显存 → 共享内存 → 计算 → 写回</em>。</p>';
+      body = '<div class="lab-formula"><span class="lab-ccolor">C<sub>3,7</sub></span><span>=</span><span class="lab-sigma"><sup>7</sup>∑<sub>k = 0</sub></span><span class="lab-acolor">A<sub>3,k</sub></span><span>·</span><span class="lab-bcolor">B<sub>k,7</sub></span></div><p class="lab-note">从一个输出出发，跟随它经过<em>显存 → 共享内存 → 计算 → 写回</em>。索引从 0 开始。</p>';
     } else if (step === 1) {
       body = '<div class="lab-kicker">依赖一行与一列 · 点击任意一项追踪</div>' + products(step) + '<p class="lab-note">每一对彩色数值相乘，8 项相加得到目标输出。</p>';
     } else if (step === 2) {
-      body = '<div class="lab-kicker">缩小的输出矩阵 · 每块 2 × 4</div><div class="lab-blocks"><div class="lab-block">CTA 0 · C[0:2, 0:4]</div><div class="lab-block">CTA 1 · C[0:2, 4:8]</div><div class="lab-block">CTA 2 · C[2:4, 0:4]</div><div class="lab-block">CTA 3 · C[2:4, 4:8]</div></div><p class="lab-note">目标在 CTA 3 中。实际 kernel 的 tile 通常更大。</p>';
+      body = '<div class="lab-kicker">缩小的输出矩阵 · 每块 2 × 4</div><div class="lab-blocks"><div class="lab-block">CTA 0 · C[0:2, 0:4]</div><div class="lab-block">CTA 1 · C[0:2, 4:8]</div><div class="lab-block">CTA 2 · C[2:4, 0:4]</div><div class="lab-block">CTA 3 · C[2:4, 4:8]</div></div><p class="lab-note">目标位于 CTA 3；每个 CTA 计算各自的输出块。</p>';
     } else if (step === 3) {
-      body = '<div class="lab-kicker">K-tile 01 / 02 · k = 0…3</div>' + transfer(0, 4) + '<p class="lab-note">这里只展开目标输出使用的数；实际搬运的是可复用的二维 tile。</p>';
+      body = '<div class="lab-kicker">K-tile 01 / 02 · k = 0…3</div>' + transfer(0, 4) + '<p class="lab-note">A、B 的二维 tile 载入共享内存后，可被多个输出复用。</p>';
     } else if (step === 4) {
-      body = '<div class="lab-kicker">一条指令 · 32 个 lane · 分布式数据片段</div><div class="lab-lanes">' + Array.from({length:32}, function (_, i) { return '<span class="lab-lane" style="--i:' + i + '">' + i + '</span>'; }).join('') + '</div><p class="lab-note">Tensor Core MMA 由线程协同提供矩阵片段。<em>下方标量内积用于解释数学，不是 lane 到元素的映射。</em></p>';
+      body = '<div class="lab-kicker">一条指令 · 32 个 lane · 分布式数据片段</div><div class="lab-lanes">' + Array.from({length:32}, function (_, i) { return '<span class="lab-lane" style="--i:' + i + '">' + i + '</span>'; }).join('') + '</div><p class="lab-note">Tensor Core MMA 由线程协同提供矩阵片段。<em>数值面板展开目标输出的内积计算。</em></p>';
     } else if (step === 5 || step === 6) {
       body = '<div class="lab-equation-status"><span>' + (step === 5 ? 'K-tile 01 / 02' : 'K-tile 02 / 02 · 同步完成后继续') + '</span><span>acc <strong data-lab-acc role="status" aria-label="当前累加值">' + (step === 5 ? '0' : '19') + '</strong></span></div><div class="lab-expression" data-lab-expression></div>' + products(step);
     } else {
       body = '<div class="lab-kicker">8 项乘积 · 2 个 K-tile · 累加完成</div><div class="lab-output-path"><span>累加结果</span>→<span>Store</span>→<span>C[3,7]</span></div><p class="lab-note">19 + 18 = 37。仅在所有 K-tile 累加完成后写回。</p>';
     }
-    return html + '<div class="lab-stage">' + body + '</div><p class="lab-small-note">4 × 8 微型数值例；索引从 0 开始。硬件动画不代表真实周期或 Tensor Core 指令时序。</p>';
+    return html + '<div class="lab-stage">' + body + '</div>';
   }
   // Per-step concept animations are driven by the application's frozen or
   // advancing visual phase. A phase is an unbounded number of cycles, not time.
@@ -164,7 +164,7 @@
   var PANEL_STEPS = {
     pagetable: [
       {active:'cpu', label:'发出虚拟地址', formula:'VA = 0x0000_7f00_1234', detail:'CPU 发出程序可见的虚拟地址。高位索引决定页表路径，低 12 位是页内偏移。', stages:['CPU 发出','携带 VA','送往 TLB']},
-      {active:'tlb', label:'检查翻译缓存', formula:'TLB[VPN 0x7f001] → MISS', detail:'本例故意选择未命中路径；需要查页表，不能直接用虚拟地址访问物理内存。', stages:['比较 VPN','未找到项','启动遍历']},
+      {active:'tlb', label:'检查翻译缓存', formula:'TLB[VPN 0x7f001] → MISS', detail:'TLB 中没有对应的翻译项，CPU 进入四级页表遍历，以获得物理页号。', stages:['比较 VPN','未找到项','启动遍历']},
       {active:'pgd', label:'第 1 级 · PGD[0]', formula:'⌊VA / 2³⁹⌋ mod 512 = 0', detail:'读取 PGD 的第 0 项。示例根基址 0x00100000，条目给出下一级基址 0x00200000。', stages:['索引 0','读取条目','得到 PUD 基址']},
       {active:'pud', label:'第 2 级 · PUD[1]', formula:'0x00200000 + 1 × 8 = 0x00200008', detail:'条目宽 8 字节。读取 PUD 第 1 项，示例条目指向 PMD 基址 0x00300000。', stages:['索引 1','读取条目','得到 PMD 基址']},
       {active:'pmd', label:'第 3 级 · PMD[504]', formula:'0x00300000 + 504 × 8 = 0x00300fc0', detail:'读取 PMD 第 504 项，示例条目指向 PTE 页表基址 0x00400000。', stages:['索引 504','读取条目','得到 PTE 基址']},
@@ -176,19 +176,19 @@
       {active:'tri>pixel', label:'覆盖测试', formula:'w₀ ≥ 0, w₁ ≥ 0, w₂ ≥ 0 → inside', detail:'扫描线扫过三角形。目标位于内部，因此产生候选片元；本例不展开边界填充规则。', stages:['扫描覆盖','命中目标','产生片元']},
       {active:'raster>tri', label:'重心插值', formula:'c = 0.2v₀ + 0.5v₁ + 0.3v₂', detail:'三个权重相加为 1。RGB 三原色顶点插值得到线性颜色 (0.2, 0.5, 0.3)。', stages:['红色贡献 0.2','绿色贡献 0.5','蓝色贡献 0.3']},
       {active:'shader', label:'片元着色', formula:'shade(c) = c = (0.2, 0.5, 0.3)', detail:'本例着色器保留插值颜色。R、G、B 通道依次高亮，表示一次片元程序处理的数据。', stages:['R = 0.2','G = 0.5','B = 0.3']},
-      {active:'tex>shader', label:'纹理采样与调制', formula:'c × texture(0.25,0.75) = c × (1,1,1)', detail:'选中的纹素为白色，逐通道相乘后颜色不变。示例使用最近邻采样，跳过过滤细节。', stages:['uv = (0.25,0.75)','读取白色纹素','调制颜色']},
+      {active:'tex>shader', label:'纹理采样与调制', formula:'c × texture(0.25,0.75) = c × (1,1,1)', detail:'按最近邻方式采样，选中的纹素为白色。与 RGB 三个通道分别相乘后，颜色保持不变。', stages:['uv = (0.25,0.75)','读取白色纹素','调制颜色']},
       {active:'depth>pixel', label:'深度比较', formula:'z = 0.4 < stored z = 0.7 → PASS', detail:'更小的深度表示更近。候选片元通过测试；若更远，则在本例的写入步骤前丢弃。', stages:['候选深度 0.4','比较已存 0.7','允许写入']},
       {active:'fb', label:'写入帧缓冲', formula:'C[3,4] ← round(255c) = (51,128,77)', detail:'绿色数据点到达目标格后，帧缓冲保存新颜色，同时更新深度值为 0.4。', stages:['Store RGB','目标格更新','深度写入']},
       {active:'fb>pixel', label:'显示与反向追溯', formula:'display[3,4] ← framebuffer[3,4]', detail:'显示阶段从帧缓冲读取颜色。追溯该像素，可回到纹理、顶点属性及覆盖它的三角形。', stages:['帧缓冲读取','传送像素','屏幕显示']}
     ],
     stacking: [
-      {active:'lid>logic-top', label:'查看完整剖面', formula:'盖 → 上层逻辑 → 键合 → 下层 → 内存 → 基板', detail:'从顶部散热盖到封装基板逐层读图。这里展示通用概念剖面，非 H100 的逻辑堆叠结构。', stages:['散热盖','逻辑与互连','封装基板']},
-      {active:'cut-core>logic-top', label:'关闭单元仍存在', formula:'可用单元 = 8 − 1 = 7', detail:'上层 8 个示例单元中，打叉的一个被关闭。扫描仍会经过它，关闭不等于从硅片中删除。', stages:['同一硅片','关闭 1 单元','剩余 7 可用']},
-      {active:'lid>bond>substrate', label:'分离六个层面', formula:'6 层结构 · 每层承担不同职责', detail:'层间间距按展示比例展开，让键合层与封装基板可见。展示间距不代表制造尺寸。', stages:['辨认上层','查看键合','辨认基板']},
+      {active:'lid>logic-top', label:'查看完整剖面', formula:'盖 → 上层逻辑 → 键合 → 下层 → 内存 → 基板', detail:'从顶部散热盖到封装基板逐层读图，观察逻辑、互连、存储与承载结构的位置关系。', stages:['散热盖','逻辑与互连','封装基板']},
+      {active:'cut-core>logic-top', label:'关闭单元仍存在', formula:'可用单元 = 8 − 1 = 7', detail:'上层 8 个单元中，打叉的一个被关闭。它仍保留在硅片上，其余 7 个单元继续参与工作。', stages:['同一硅片','关闭 1 单元','剩余 7 可用']},
+      {active:'lid>bond>substrate', label:'分离六个层面', formula:'6 层结构 · 每层承担不同职责', detail:'展开层间距离，逐层观察键合层、上下逻辑、存储层与封装基板。', stages:['辨认上层','查看键合','辨认基板']},
       {active:'logic-top', label:'上层逻辑的位置', formula:'热源：上层逻辑 → 散热盖', detail:'上层逻辑同时靠近散热盖与键合层。绿色信号走向下层，暖色热流走向散热盖。', stages:['上层计算','向下传信号','向上传热']},
       {active:'bond', label:'穿过混合键合层', formula:'上层信号 → 垂直互连 → 下层逻辑', detail:'高亮小点表示层间连接。数据沿垂直方向穿过互连，键合层不负责执行程序。', stages:['上层发出','穿过键合','下层收到']},
-      {active:'logic-low>mem-layer', label:'下层访问附近存储', formula:'read → memory → return', detail:'请求从下层逻辑发出，到附近存储后带数据返回。容量和带宽仍有限，距离短不等于无限快。', stages:['下层请求','存储读取','返回下层']},
-      {active:'bond>mem-layer', label:'对比互连的几何路径', formula:'E ≈ C · V²；连线长度影响寄生 C', detail:'相同的展示速度下，较短的垂直路径先到达；这里只比较几何，不推算真实时延或功耗。', stages:['同时出发','短路径先到','长路径继续']},
+      {active:'logic-low>mem-layer', label:'下层访问附近存储', formula:'read → memory → return', detail:'请求从下层逻辑发出，到附近存储后带数据返回。靠近存储可以缩短互连，同时传输的数据量取决于带宽。', stages:['下层请求','存储读取','返回下层']},
+      {active:'bond>mem-layer', label:'对比互连的几何路径', formula:'E ≈ C · V²；连线长度影响寄生 C', detail:'两路信号以相同速度出发，较短的垂直路径先到达。观察路径长度如何影响传输距离。', stages:['同时出发','短路径先到','长路径继续']},
       {active:'lid>logic-top', label:'热量必须导出', formula:'ΔT ≈ P · Rθ', detail:'热从逻辑层向散热盖流动。堆叠可能提高热阻；收益需与温度、供电、良率及制造成本一起权衡。', stages:['逻辑产生热','逐层导热','散热盖导出']}
     ]
   };
@@ -262,7 +262,7 @@
     if(step===1)inner+='<rect data-phase-scan class="lab-scan-bar" x="87" y="10" width="3" height="30"/>';
     inner+=svgText(170,65,step===1?'MISS → 逐级查表':step===5?'翻译可回填 TLB':step===6?'0x2A → CPU':'VA → 页表项 → 下一层基址','lab-svg-annotation');
     inner+=marker(step===5?2:1);
-    return '<div class="lab-kicker">CPU 内存访问 · x86-64 · 4 KiB 普通页</div>'+bits+conceptCaption(spec)+diagram(inner,'CPU、TLB 与四级页表的逐级信号路径',132)+conceptMath(spec)+'<p class="lab-small-note">CPU 地址翻译独立示例，不表示 H100 页表。页表基址和数据均为教学数值，假设无缺页、无大页。</p>';
+    return '<div class="lab-kicker">CPU 内存访问 · x86-64 · 4 KiB 普通页</div>'+bits+conceptCaption(spec)+diagram(inner,'CPU、TLB 与四级页表的逐级信号路径',132)+conceptMath(spec);
   }
   function pixelGrid(x,y,size,filled,screen) {
     var out='';
@@ -286,7 +286,7 @@
     if(step===5){inner=line([[35,42],[142,42],[142,72],[267,72]])+svgText(64,25,'候选 z = 0.4','lab-svg-annotation')+'<rect x="20" y="37" width="88" height="10" class="lab-depth-near"/>'+svgText(71,116,'已存 z = 0.7','lab-svg-annotation')+'<rect x="20" y="94" width="154" height="10" class="lab-depth-far"/>'+box(193,48,73,49,'0.4 < 0.7',true)+svgText(301,79,'PASS','lab-svg-result')+svgText(166,142,'本例采用更小深度优先','lab-svg-annotation')+marker(1);}
     if(step===6){inner=line([[24,75],[120,75],[164,75],[226,88]])+box(11,54,111,43,'RGB(51,128,77)',true)+pixelGrid(185,35,12,true,false)+svgText(231,21,'Framebuffer','lab-svg-annotation')+svgText(231,149,'color + depth = 0.4','lab-svg-annotation')+marker(1);}
     if(step===7){inner=line([[63,83],[175,83],[267,83]])+pixelGrid(25,34,11,true,false)+pixelGrid(236,43,9,true,true)+svgText(69,22,'Framebuffer','lab-svg-annotation')+svgText(274,26,'Display','lab-svg-annotation')+svgText(169,103,'scanout','lab-svg-annotation')+'<rect data-phase-scan class="lab-display-scan" x="235" y="44" width="73" height="2"/>'+marker(1);}
-    return '<div class="lab-kicker">通用光栅图形管线 · 与所选计算 GPU 的硬件视图独立</div>'+conceptCaption(spec)+diagram(inner,name,158)+conceptMath(spec)+'<p class="lab-small-note">简化的不透明片元过程；不表示 H100 具有显示输出。跳过 early-Z、MSAA、透视校正和色彩空间转换。</p>';
+    return '<div class="lab-kicker">光栅图形管线 · 从三角形到像素</div>'+conceptCaption(spec)+diagram(inner,name,158)+conceptMath(spec);
   }
   var STACK_LAYERS=['散热盖','上层逻辑','混合键合','下层逻辑','内存 / 缓存','封装基板'];
   var STACK_IDS=['lid','logic-top','bond','logic-low','mem-layer','substrate'];
@@ -306,7 +306,7 @@
       if(step===7)inner+=svgText(319,25,'↑ heat','lab-svg-annotation');
       inner+=marker(step===3||step===4||step===7?2:1);
     }
-    return '<div class="lab-kicker">通用 3D 逻辑堆叠 · 概念剖面</div>'+conceptCaption(spec)+diagram(inner,'通用六层剖面与当前步骤中的信号或热流',step===2?185:163)+conceptMath(spec)+'<p class="lab-small-note">概念性逻辑堆叠，不表示 H100 的结构。几何与动画仅用于解释，不代表尺寸、时延或热仿真结果。</p>';
+    return '<div class="lab-kicker">3D 逻辑堆叠 · 结构与信号路径</div>'+conceptCaption(spec)+diagram(inner,'通用六层剖面与当前步骤中的信号或热流',step===2?185:163)+conceptMath(spec);
   }
   function setVisualPhase(container, phase, progress) {
     if(!container||!caches)return;

@@ -149,7 +149,7 @@ export function createConceptModel(T,journey){
   }
 
   if(journey==='stacking'){
-    label(root,'3D LOGIC STACK  /  CONCEPTUAL CUTAWAY',0,-.075,-3.74,8.0,.22,'#8ba6ad');
+    label(root,'3D LOGIC STACK',0,-.075,-3.74,8.0,.22,'#8ba6ad');
     const layers=[['lid',3.47,gold,'LID / CUTAWAY'],['logic-top',2.77,blue,'TOP LOGIC'],['bond',2.19,gold,'HYBRID BOND'],['logic-low',1.61,blue,'LOW LOGIC'],['mem-layer',.95,teal,'MEMORY / CACHE'],['substrate',.24,gold,'SUBSTRATE']];
     layers.forEach(([id,y,accent,title],index)=>{
       const e=resource(id,0,y,0,0,0,accent,'',false);e.baseY=y;e.layerIndex=index;

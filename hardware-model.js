@@ -1,6 +1,6 @@
-import { createHBMDetail } from './hbm-model.js?v=20261102p';
-import { createPowerDetail } from './power-model.js?v=20261102p';
-import { createInterconnectDetail } from './interconnect-model.js?v=20261102p';
+import { createHBMDetail } from './hbm-model.js?v=20261102q';
+import { createPowerDetail } from './power-model.js?v=20261102q';
+import { createInterconnectDetail } from './interconnect-model.js?v=20261102q';
 
 // Hide every sibling subtree along the selected object's ancestor path.
 // Ancestors remain as paths, without retaining their unselected own meshes.
@@ -42,22 +42,22 @@ export function getSMResourceLegend(model='h100') {
   const arithmeticSource='https://docs.nvidia.com/cuda/archive/12.4.1/cuda-c-programming-guide/index.html#'+(a?'compute-capability-8-x':'compute-capability-9-0');
   const diagramSource='https://developer.nvidia.com/blog/nvidia-'+(a?'ampere':'hopper')+'-architecture-in-depth/';
   const resources=[
-    {id:'fp32',label:'FP32 CUDA 执行单元',shortLabel:'FP32 CUDA',color:'#79aa80',category:'execution',countPerSM:a?64:128,countPerPartition:a?16:32,countUnit:'lanes',description:`绿色是 ${name} 的 FP32 CUDA 运算通道，每个 SMSP ${a?16:32} 个，每 SM ${a?64:128} 个；执行普通逐线程浮点指令，不是单独的 FP16 core。`,precisionNote:'普通 FP16 / BF16 指令也存在；不能把所有低精度运算都等同于 Tensor Core MMA。'},
-    {id:'fp64',label:'FP64 执行单元',shortLabel:'FP64',color:'#669dce',category:'execution',countPerSM:a?32:64,countPerPartition:a?8:16,countUnit:'lanes',description:`蓝色是非 Tensor 的 FP64 双精度通道，每个 SMSP ${a?8:16} 个，每 SM ${a?32:64} 个。与 Tensor Core 的 FP64 矩阵模式分别计数。`},
-    {id:'int32',label:'INT32 整数执行单元',shortLabel:'INT32',color:'#59aaa4',category:'execution',countPerSM:64,countPerPartition:16,countUnit:'lanes',description:'青绿色是 INT32 整数运算通道，每个 SMSP 16 个，每 SM 64 个。GA100 与 GH100 的官方功能图将其与 FP32 通道分别画出。'},
-    {id:'sfu',label:'SFU 特殊函数单元',shortLabel:'SFU',color:'#ce9078',category:'execution',countPerSM:16,countPerPartition:4,countUnit:'units',description:'珊瑚色是特殊函数单元，每 SM 16 个、每 SMSP 4 个，负责单精度超越函数的相关硬件运算；复杂库函数不等于一条 SFU 指令。'},
-    {id:'tensor',label:`第 ${a?'三':'四'} 代 Tensor Core`,shortLabel:'Tensor Core',color:'#d1ad69',category:'matrix',countPerSM:4,countPerPartition:1,countUnit:'cores',description:`金色大块是第 ${a?'三':'四'} 代 Tensor Core，每 SMSP 1 个，每 SM 4 个。执行矩阵乘加；支持 FP16/BF16/TF32/FP64 等矩阵模式${a?'':'，Hopper 还支持 FP8'}。块内小格只是阵列纹理，不是额外的 Tensor Core。`,precisionNote:'例如 FP16/BF16 矩阵输入可用 FP32 累加；具体输入与累加精度由指令模式决定。'},
-    {id:'registers',label:'寄存器文件（紫色存储）',shortLabel:'Register File',color:'#a79bc7',category:'storage',countPerSM:65536,countPerPartition:16384,countUnit:'32-bit registers',description:'紫色是一组寄存器存储，不是 FP16 或其他计算核心。每 SMSP 16,384 个 32-bit 寄存器（64 KiB），四个合计 65,536 个（256 KiB）；图中小块是存储 bank 符号，不是一块对应一个寄存器。'},
-    {id:'lsu',label:'Load / Store 单元',shortLabel:'LD / ST',color:'#b77c4b',category:'data-movement',countPerSM:32,countPerPartition:8,countUnit:'units',description:'铜色是载入/存储单元，每 SMSP 8 个，每 SM 32 个。负责线程的内存访问请求；它不是算术核心。'},
-    {id:'warp',label:'Warp 调度器',shortLabel:'Warp Scheduler',color:'#b88959',category:'control',countPerSM:4,countPerPartition:1,countUnit:'schedulers',description:'每个 SMSP 1 个调度器，每 SM 4 个。选择就绪 warp 的指令；32-thread warp 不表示一个周期必然完成全部指令。'},
-    {id:'dispatch',label:'指令派发单元',shortLabel:'Dispatch',color:'#9b8c75',category:'control',countPerSM:4,countPerPartition:1,countUnit:'dispatch units',description:'每 SMSP 一个功能图中的指令派发单元，将选中的指令送往相应执行管线；不是操作数数据搬运路径。'},
-    {id:'l0-instruction-cache',label:'本地 L0 指令缓存',shortLabel:'L0 I-Cache',color:'#8398ab',category:'storage',countPerSM:4,countPerPartition:1,countUnit:'local caches',description:'每个 SMSP 的本地 L0 指令缓存，保存指令；不同于紫色保存操作数的寄存器文件。'},
-    {id:'instruction-cache',label:'共享 L1 指令缓存',shortLabel:'L1 I-Cache',color:'#8398ab',category:'storage',description:'四个 SMSP 共用的 SM 级 L1 指令缓存，与 L1 数据缓存不同。图中是一项共享功能资源，不推断内部物理 bank 数。'},
-    {id:'texture',label:'纹理单元（Tex）',shortLabel:'Texture',color:'#789aad',category:'sampling',countPerSM:4,countPerPartition:null,countUnit:'units',description:'官方 SM 功能图底部的四个 Tex 单元，提供纹理寻址与采样/过滤功能；四个外观块不再是无含义装饰。'},
-    {id:'smem',label:'L1 数据缓存 / 共享内存',shortLabel:'L1 Data / Shared',color:'#4f9b94',category:'storage',capacityKB:a?192:256,sharedMaxKB:a?164:228,description:`SM 共用 ${a?192:256} KB L1 数据缓存/共享内存资源，Shared Memory 最多 ${a?164:228} KB。32 banks 指共享内存，不是整个 L1。`}
+    {id:'fp32',label:'FP32 CUDA 执行单元',shortLabel:'FP32 CUDA',color:'#79aa80',category:'execution',countPerSM:a?64:128,countPerPartition:a?16:32,countUnit:'lanes',description:`绿色 FP32 CUDA 运算通道执行逐线程单精度浮点指令。${name} 每个 SMSP ${a?16:32} 个，每 SM ${a?64:128} 个。`,precisionNote:'FP16/BF16 逐线程算术使用对应的半精度指令。'},
+    {id:'fp64',label:'FP64 执行单元',shortLabel:'FP64',color:'#669dce',category:'execution',countPerSM:a?32:64,countPerPartition:a?8:16,countUnit:'lanes',description:`蓝色 FP64 通道执行逐线程双精度浮点运算。每个 SMSP ${a?8:16} 个，每 SM ${a?32:64} 个。`},
+    {id:'int32',label:'INT32 整数执行单元',shortLabel:'INT32',color:'#59aaa4',category:'execution',countPerSM:64,countPerPartition:16,countUnit:'lanes',description:'青绿色 INT32 通道执行整数运算。每个 SMSP 16 个，每 SM 64 个。'},
+    {id:'sfu',label:'SFU 特殊函数单元',shortLabel:'SFU',color:'#ce9078',category:'execution',countPerSM:16,countPerPartition:4,countUnit:'units',description:'珊瑚色特殊函数单元执行单精度超越函数的相关运算。每 SMSP 4 个，每 SM 16 个。'},
+    {id:'tensor',label:`第 ${a?'三':'四'} 代 Tensor Core`,shortLabel:'Tensor Core',color:'#d1ad69',category:'matrix',countPerSM:4,countPerPartition:1,countUnit:'cores',description:`金色第 ${a?'三':'四'} 代 Tensor Core 执行矩阵乘加。每 SMSP 1 个，每 SM 4 个；支持 FP16/BF16/TF32/FP64 等矩阵模式${a?'':'，Hopper 还支持 FP8'}。`,precisionNote:'FP16/BF16 矩阵输入可配合 FP32 累加。'},
+    {id:'registers',label:'寄存器文件',shortLabel:'Register File',color:'#a79bc7',category:'storage',countPerSM:65536,countPerPartition:16384,countUnit:'32-bit registers',description:'紫色寄存器保存线程的操作数与累加器。每 SMSP 16,384 个 32-bit 寄存器（64 KiB），每 SM 合计 65,536 个（256 KiB）。'},
+    {id:'lsu',label:'Load / Store 单元',shortLabel:'LD / ST',color:'#b77c4b',category:'data-movement',countPerSM:32,countPerPartition:8,countUnit:'units',description:'铜色载入/存储单元执行线程的内存访问请求。每 SMSP 8 个，每 SM 32 个。'},
+    {id:'warp',label:'Warp 调度器',shortLabel:'Warp Scheduler',color:'#b88959',category:'control',countPerSM:4,countPerPartition:1,countUnit:'schedulers',description:'从就绪 warp 中选择指令并安排执行。每个 SMSP 1 个调度器，每 SM 4 个。'},
+    {id:'dispatch',label:'指令派发单元',shortLabel:'Dispatch',color:'#9b8c75',category:'control',countPerSM:4,countPerPartition:1,countUnit:'dispatch units',description:'将调度器选定的指令送往执行管线。每个 SMSP 1 个，每 SM 4 个。'},
+    {id:'l0-instruction-cache',label:'本地 L0 指令缓存',shortLabel:'L0 I-Cache',color:'#8398ab',category:'storage',countPerSM:4,countPerPartition:1,countUnit:'local caches',description:'缓存当前 SMSP 使用的指令，供调度与派发阶段读取。'},
+    {id:'instruction-cache',label:'共享 L1 指令缓存',shortLabel:'L1 I-Cache',color:'#8398ab',category:'storage',description:'四个 SMSP 共用的 SM 级指令缓存，为本地 L0 指令缓存提供指令。'},
+    {id:'texture',label:'纹理单元（Tex）',shortLabel:'Texture',color:'#789aad',category:'sampling',countPerSM:4,countPerPartition:null,countUnit:'units',description:'四个纹理单元执行纹理寻址、采样与过滤。'},
+    {id:'smem',label:'L1 数据缓存 / 共享内存',shortLabel:'L1 Data / Shared',color:'#4f9b94',category:'storage',capacityKB:a?192:256,sharedMaxKB:a?164:228,description:`SM 共用 ${a?192:256} KB L1 数据缓存/共享内存资源，Shared Memory 最多 ${a?164:228} KB。共享内存按 32 banks 组织，支持线程块内的数据复用。`}
   ];
-  if(!a)resources.push({id:'tma',label:'Tensor Memory Accelerator',shortLabel:'TMA',color:'#b9b2a3',category:'data-movement',description:'Hopper 的异步张量搬运功能硬件，不是绿色 FP32 运算核心；图中长条表示共享功能资源，不把它拆成虚构的 core 数。'});
-  return resources.map(item=>({...item,sourceUrls:[arithmeticSource,diagramSource],colorMeaning:'教学功能配色，不是物理硅片颜色'}));
+  if(!a)resources.push({id:'tma',label:'Tensor Memory Accelerator',shortLabel:'TMA',color:'#b9b2a3',category:'data-movement',description:'Hopper 的异步张量搬运硬件，在全局内存与共享内存之间传输张量数据。'});
+  return resources.map(item=>({...item,sourceUrls:[arithmeticSource,diagramSource],colorMeaning:'功能配色'}));
 }
 
 // Procedural SXM anatomy. Package/board geometry is a recognizable physical
@@ -167,7 +167,7 @@ export function createHardwareModel(T, model = 'h100') {
       c.beginPath(); c.moveTo(x, 1898); c.lineTo(x, 1748); c.lineTo(x + 110, 1638); c.lineTo(x + 110, 1488); c.stroke();
     }
     c.fillStyle = '#a4b5a1'; c.font = '22px monospace'; c.fillText('GPU EXPLORER   /   SXM MODULE', 180, 1900);
-    c.font = '17px monospace'; c.fillText('PROCEDURAL HARDWARE RECONSTRUCTION', 180, 1935);
+    c.font = '17px monospace'; c.fillText('POWER  /  MEMORY  /  COMPUTE', 180, 1935);
     const texture = new T.CanvasTexture(canvas); texture.colorSpace = T.SRGBColorSpace;
     texture.anisotropy = 8; return texture;
   }
@@ -199,7 +199,7 @@ export function createHardwareModel(T, model = 'h100') {
     c.font='19px monospace';c.fillText('SILICON SURFACE',512,819);
     const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=8;return texture;
   }
-  const pcb = component('pcb', 'SXM 模组电路板', '承载 GPU 封装、供电与高速连接器的多层 PCB。走线和元件布局为可交互重建。', 'board');
+  const pcb = component('pcb', 'SXM 模组电路板', '承载 GPU 封装、供电与高速连接器的多层 PCB。', 'board');
   const outline = new T.Shape(); const s = 8.5, r = .38;
   outline.moveTo(-s + r, -s); outline.lineTo(s - r, -s); outline.quadraticCurveTo(s, -s, s, -s + r);
   outline.lineTo(s, s - r); outline.quadraticCurveTo(s, s, s - r, s); outline.lineTo(-s + r, s);
@@ -261,7 +261,7 @@ export function createHardwareModel(T, model = 'h100') {
     if(i%2===0) resistors.push({x,y:-.23,z:side*6.7,w:.3,h:.12,d:.16});
   }
   instances(pcb,smallCaps,mats.ceramic); instances(pcb,smallEnds,mats.silver); instances(pcb,resistors,mats.chip);
-  const sxm = component('sxm','SXM 高密度连接器','SXM 连接器位于模组背面，承担高速信号和电源连接；此处以可见剖面表达。','board',pcb,'pcb');
+  const sxm = component('sxm','SXM 高密度连接器','位于模组背面，连接高速信号与供电。','board',pcb,'pcb');
   const contacts=[];
   for(const side of [-1,1]) {
     box(sxm,0,-.65,side*6.85,10.5,.28,1.0,mats.black);
@@ -284,7 +284,7 @@ export function createHardwareModel(T, model = 'h100') {
   for(const x of [-5.355,5.355])for(let band=0;band<3;band++)substrateEdges.push({x,y:-.205+band*.075,z:0,w:.012,h:.009,d:9.72});
   for(const z of [-5.105,5.105])for(let band=0;band<3;band++)substrateEdges.push({x:0,y:-.205+band*.075,z,w:10.15,h:.009,d:.012});
   instances(substrate,substrateEdges,mats.copper);
-  const interposer = component('interposer','硅中介层','高密度横向连接将 GPU 与五组 HBM 连接起来。拆解时，纵向间距被放大以便观察。','package',serial,'package');
+  const interposer = component('interposer','硅中介层','通过高密度横向互连，在 GPU 与五组 HBM 之间传输数据。','package',serial,'package');
   layers.push({group:interposer,factor:1.8});
   box(interposer,0,.145,0,9.75,.10,8.4,mats.siliconSide);
   box(interposer,0,.2,0,9.58,.018,8.24,mats.darkMetal);
@@ -304,7 +304,7 @@ export function createHardwareModel(T, model = 'h100') {
     packageEnds.push({x:x-.07,y:.16,z:side*4.45,w:.035,h:.14,d:.23},{x:x+.07,y:.16,z:side*4.45,w:.035,h:.14,d:.23});
   }
   instances(substrate,packageCaps,mats.ceramic); instances(substrate,packageEnds,mats.silver);
-  const hbm = component('hbm',`5 × ${specification.hbm} 堆栈`,`五组有源 HBM 提供 ${specification.memory} 容量。每组由多层 DRAM 通过 TSV 垂直连接；展示厚度经过放大。`,'package',serial,'package');
+  const hbm = component('hbm',`5 × ${specification.hbm} 堆栈`,`五组 HBM 提供 ${specification.memory} 容量。每组由多层 DRAM 通过 TSV 垂直连接。`,'package',serial,'package');
   layers.push({group:hbm,factor:3.1});
   const hbmPositions = [{x:-3.75,z:-2.6},{x:-3.75,z:0},{x:-3.75,z:2.6},{x:3.75,z:-2.6},{x:3.75,z:0}];
   const hbmBasePads=[];
@@ -328,7 +328,7 @@ export function createHardwareModel(T, model = 'h100') {
     const pads=[]; for(let x=0;x<10;x++) for(let z=0;z<12;z++) pads.push({x:3.1+x*.145,y:.269,z:1.82+z*.14,w:.044,h:.008,d:.044});
     instances(interposer,pads,mats.gold);
   }
-  const die = component('gpu-die',`${specification.die} GPU 裸片`,`${specification.name} 中真正执行计算的硅裸片。${specification.sm} 个有源 SM，${specification.l2} L2；逻辑区块布局是教学重建。`,'die',serial,'package');
+  const die = component('gpu-die',`${specification.die} GPU 裸片`,`${specification.sm} 个有源 SM 执行并行计算，${specification.l2} L2 缓存支持片上数据复用。`,'die',serial,'package');
   layers.push({group:die,factor:3.1});
   box(die,0,.31,0,5.30,.18,7.65,mats.siliconSide);
   const siliconMat = mats.silicon.clone(); siliconMat.map = dieTexture();
@@ -378,21 +378,21 @@ export function createHardwareModel(T, model = 'h100') {
   // Functional organization follows NVIDIA's 2 × 2 SM subpartition diagrams.
   // These raised shapes show shared resources and connectivity, not silicon distances.
   const smRoot = new T.Group(); smRoot.visible=false; root.add(smRoot);
-  const smAssembly = component('sm-detail','SM 功能组织','四个子分区共用 L1 数据缓存/共享内存。按官方功能框图重建；相对距离、浮雕高度不是物理版图。','sm',smRoot,'sm');
+  const smAssembly = component('sm-detail','SM 功能组织','四个执行子分区共用 L1 数据缓存/共享内存，协同执行线程块。','sm',smRoot,'sm');
   box(smAssembly,0,-.08,0,10.9,.28,8.6,mats.siliconSide);
   box(smAssembly,0,.07,0,10.6,.025,8.3,mats.darkMetal);
-  const registerGroup = component('registers','寄存器文件','每个子分区有自己的寄存器文件，保存线程操作数和累加器。图中位置表示资源归属，不表示物理距离。','sm',smAssembly,'sm-detail');
+  const registerGroup = component('registers','寄存器文件','每个子分区的寄存器文件保存线程操作数和累加器。','sm',smAssembly,'sm-detail');
   const scheduler = component('warp','Warp 调度器','四个子分区各有一个调度器，从可就绪的 warp 中发射指令。调度器属于控制路径，数据通过寄存器、执行管线和 LD/ST 访问存储。','sm',smAssembly,'sm-detail');
-  const dispatch = component('dispatch','指令派发','每个子分区的派发单元把调度器选定的指令送往执行管线。它不是矩阵操作数的传输通道。','sm',smAssembly,'sm-detail');
+  const dispatch = component('dispatch','指令派发','把调度器选定的指令送往执行管线。','sm',smAssembly,'sm-detail');
   const tensor = component('tensor','Tensor Core',ampere?'矩阵乘加执行单元。线程协同提供矩阵片段，操作数与累加器分布依具体 MMA 指令而异。':'矩阵乘加执行单元。Hopper GMMA 可从共享内存取得矩阵操作数；具体来源和寄存器分布依指令而异。','sm',smAssembly,'sm-detail');
-  const lsu=component('lsu','Load / Store 单元','执行线程的载入和存储请求，连接寄存器与 L1 数据缓存/共享内存子系统。与 scheduler 的指令控制路径不同。','sm',smAssembly,'sm-detail');
-  const smem=component('smem','L1 数据缓存 / 共享内存',`四个子分区共用的统一存储资源，合计 ${ampere?'192':'256'} KB；其中 Shared Memory 最多 ${ampere?'164':'228'} KB。32 banks 指共享内存，不是整个 L1 缓存。这里的长条位置来自功能框图，不表示真实芯片距离。`,'sm',smAssembly,'sm-detail');
-  const instruction=component('instruction-cache','L1 指令缓存','SM 级指令缓存与 L1 数据缓存不同；每个子分区还具有本地 L0 指令缓存。','sm',smAssembly,'sm-detail');
-  const l0Instruction=component('l0-instruction-cache','本地 L0 指令缓存','每个 SMSP 自己的指令缓存；和操作数寄存器分别标示。','sm',smAssembly,'sm-detail');
-  const smBus=component('sm-bus','SM 内部互连','功能示意：执行管线、LD/ST 与共用 L1 数据缓存/共享内存相连。线路是教学路由，不是厂家金属布线。','sm',smAssembly,'sm-detail');
-  const fp32Group=component('fp32','FP32 CUDA 执行单元','普通逐线程 FP32 运算通道；绿色不是独立的 FP16 core。','sm',smAssembly,'sm-detail');
-  const fp64Group=component('fp64','FP64 执行单元','非 Tensor 的双精度算术通道。','sm',smAssembly,'sm-detail');
-  const int32Group=component('int32','INT32 整数执行单元','与浮点通道分别标示的整数算术通道。','sm',smAssembly,'sm-detail');
+  const lsu=component('lsu','Load / Store 单元','执行载入与存储请求，连接寄存器和 L1 数据缓存/共享内存。','sm',smAssembly,'sm-detail');
+  const smem=component('smem','L1 数据缓存 / 共享内存',`四个子分区共用 ${ampere?'192':'256'} KB 存储资源，其中 Shared Memory 最多 ${ampere?'164':'228'} KB；共享内存按 32 banks 组织。`,'sm',smAssembly,'sm-detail');
+  const instruction=component('instruction-cache','L1 指令缓存','为 SM 内的指令读取提供缓存。','sm',smAssembly,'sm-detail');
+  const l0Instruction=component('l0-instruction-cache','本地 L0 指令缓存','缓存当前 SMSP 使用的指令。','sm',smAssembly,'sm-detail');
+  const smBus=component('sm-bus','SM 内部互连','在执行管线、LD/ST 和 L1 数据缓存/共享内存之间传输数据。','sm',smAssembly,'sm-detail');
+  const fp32Group=component('fp32','FP32 CUDA 执行单元','绿色运算通道执行逐线程 FP32 算术指令。','sm',smAssembly,'sm-detail');
+  const fp64Group=component('fp64','FP64 执行单元','执行逐线程双精度算术指令。','sm',smAssembly,'sm-detail');
+  const int32Group=component('int32','INT32 整数执行单元','执行逐线程整数算术指令。','sm',smAssembly,'sm-detail');
   const sfuGroup=component('sfu','特殊函数单元（SFU）','超越函数相关的专用硬件算术单元。','sm',smAssembly,'sm-detail');
   const textureGroup=component('texture','纹理单元（Tex）','SM 共用的纹理采样/过滤功能。','sm',smAssembly,'sm-detail');
   const fp32=[],fp64=[],int32=[],sfuCells=[],registers=[],registerStrips=[],lsuCells=[],laneContacts=[],registerWordlines=[],tensorArrays=[],tensorBus=[];
@@ -446,7 +446,7 @@ export function createHardwareModel(T, model = 'h100') {
   instances(fp32Group,laneContacts,mats.trace);instances(tensor,tensorArrays,mats.darkMetal);instances(tensor,tensorBus,mats.copper);
   box(smBus,0,.18,.50,.065,.035,3.75,mats.trace,false);
   box(smBus,0,.18,2.40,10.1,.035,.07,mats.trace,false);
-  const tma=ampere?null:component('tma','Tensor Memory Accelerator','Hopper 的 TMA 异步搬运张量，可将全局内存的数据搬入共享内存。它是数据搬运硬件，和 warp 调度器不同。','sm',smAssembly,'sm-detail');
+  const tma=ampere?null:component('tma','Tensor Memory Accelerator','Hopper 的 TMA 在全局内存与共享内存之间异步搬运张量。','sm',smAssembly,'sm-detail');
   if(!ampere){box(tma,0,.24,2.65,10.05,.10,.28,mats.tma);surfaceText(tma,'TENSOR MEMORY ACCELERATOR',0,.296,2.65,8.5,.25,'#302d24','600 32px monospace');}
   box(smem,0,.25,3.20,10.09,.25,.66,mats.smem);
   const sharedBanks=[];for(let bank=0;bank<32;bank++)sharedBanks.push({x:-4.79+bank*.309,y:.39,z:3.20,w:.20,h:.025,d:.39});

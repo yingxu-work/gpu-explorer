@@ -50,15 +50,15 @@ export function createInterconnectDetail(T, model='h100') {
     geometry.rotateX(Math.PI/2);geometry.translate(0,height/2,0);return geometry;
   }
   function track(p,points,width,mat,y=.15){for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];box(p,(a[0]+b[0])/2,y,(a[1]+b[1])/2,Math.max(Math.abs(a[0]-b[0]),width),.024,Math.max(Math.abs(a[1]-b[1]),width),mat);}}
-  const board=group('link-board','PCB 与 SXM 互连剖面','通用多层 PCB 与板对板连接器的教学剖面。层数、接点数量和路由均为示意，不是 H100/A100 的真实堆叠、SXM 引脚定义或高速网表。',root,null);
-  const stack=group('link-layers','介质与铜层','PCB 由绝缘介质、铜信号层和参考平面交替组成。右侧阶梯和局部教学开窗露出层间与孔壁，不代表真实 PCB 挖空；拆解只放大层间距。这里的层数不是特定 GPU 模组的制造层数。',board);
-  const copper=group('link-copper','PCB 铜走线','板级走线在铜层上传输信号和电源。这里画出通向封装焊盘的概念网络，没有指定它们对应 PCIe 或 NVLink 的哪一组引脚。',board);
-  const vias=group('link-vias','PCB 金属化过孔','普通 PCB 金属化孔连接不同铜层；旁边的参考过孔为回流提供跨层路径。它们与穿过硅片的 HBM TSV 属于不同制造层级。',board);
-  const pairs=group('link-pairs','差分对与相邻参考面','两条配对走线用相同的路径与相近长度传输差分信号。跨层时保持参考面与回流路径连续；示意颜色区分两根导体，不代表具体通信协议。',board);
-  const ground=group('link-ground','参考平面 / 回流路径','高速信号需要邻近、连续的参考平面。连接层改变时，参考过孔帮助回流跨层；不能只把两根差分线当作与地无关的孤立导线。',board);
-  const socket=group('link-socket','SXM 板对板接触阵列','SXM 模组连接到载板。连接器向前移出剖面以露出接触阵列；接点布局、数量和信号分配为示意，并非 NVIDIA 引脚图。',board);
+  const board=group('link-board','PCB 与 SXM 互连剖面','SXM 模组通过多层 PCB 连接 GPU 封装、板对板接触阵列与供电网络。沿铜层、过孔和接点，可以追踪电源和信号在模组中的路径。',root,null);
+  const stack=group('link-layers','介质与铜层','绝缘介质隔开铜信号层与参考平面。右侧阶梯与剖窗展示层间关系和孔壁；拆解时层间距展开，各层连接随之显露。',board);
+  const copper=group('link-copper','PCB 铜走线','PCB 铜走线把封装焊盘连接到模组上的接点和电源网络。走线的宽度、间距与参考平面共同影响电流传输和信号完整性。',board);
+  const vias=group('link-vias','PCB 金属化过孔','PCB 金属化孔以铜孔壁连接不同铜层。附近的参考过孔让回流跨层；HBM TSV 则穿过硅片，连接堆叠芯片。',board);
+  const pairs=group('link-pairs','差分对与相邻参考面','两根相邻走线传输差分信号，并以接近的路径与长度到达接收端。邻近参考面与跨层回流路径一起维持信号的连续性。',board);
+  const ground=group('link-ground','参考平面 / 回流路径','参考平面为信号提供邻近的回流路径。信号换层时，参考过孔连接相邻参考层，让回流随信号过孔跨层。',board);
+  const socket=group('link-socket','SXM 板对板接触阵列','SXM 接触阵列连接 GPU 模组与载板，承载板间电源与高速信号。展开后的连接器露出塑料定位框、金属接触指与背面引脚。',board);
   socket.position.z=3;
-  const footprint=group('link-footprint','GPU 封装焊盘区','模组 PCB 上的封装连接区。焊盘/焊球通过板内走线与连接器、电源网络相连；不等同于封装内连接 GPU 与 HBM 的硅中介层。',board);
+  const footprint=group('link-footprint','GPU 封装焊盘区','封装焊盘把 GPU 封装接到模组 PCB。焊盘和焊球经板内走线连接供电网络与板对板接点，形成封装到模组的电气接口。',board);
   // Left edges stay aligned while the right edge steps inward, exposing copper
   // and dielectric. No specific manufacturing stack-up is asserted.
   for(let i=0;i<8;i++){
@@ -74,7 +74,7 @@ export function createInterconnectDetail(T, model='h100') {
   // The open right-hand strip exposes via barrels through the cutaway.
   slab(ground,2.3,-.37,-.3,6.9,.035,7.0,mats.ground);
   print(board,'PCB / BOARD-TO-BOARD INTERCONNECT',-.8,.2,-3.8,9.4,.39);
-  print(board,'ILLUSTRATIVE STACK-UP / NO VENDOR PINOUT',-.8,.2,3.6,9.8,.24,'#8fa798');
+  print(board,'COPPER LAYERS / VIAS / CONTACT ARRAY',-.8,.2,3.6,9.8,.24,'#8fa798');
   print(stack,'DIELECTRIC + COPPER',4.45,.095,2.9,3.7,.25,'#d1ba94');
   // Top package land pattern: pad array plus a lifted package frame for context.
   box(footprint,-1.4,.215,-.6,5.3,.12,4.3,mats.plastic);

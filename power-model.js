@@ -37,19 +37,19 @@ export function createPowerDetail(T, model='h100') {
     a.userData.surfaceText={text,canvasAspect:c.width/c.height,worldAspect:aspect,fontPixels,canvasWidth:c.width,canvasHeight:c.height,textWidthPixels:measure()};p.add(a);return a;
   }
   function track(p,points,width,mat,y=.08){for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];box(p,(a[0]+b[0])/2,y,(a[1]+b[1])/2,Math.max(Math.abs(b[0]-a[0]),width),.025,Math.max(Math.abs(b[1]-a[1]),width),mat);}}
-  const board=group('power-board','多相降压供电板','六相教学电路：展示并联功率级、磁性元件和输出去耦，不代表 H100/A100 的真实相数、供电电压或网表。',root,null);
+  const board=group('power-board','多相降压供电板','并联功率级将输入电源转换为 GPU 所需供电；电感平滑电流，输出电容稳定电压。',root,null);
   box(board,0,-.12,0,13,.25,9.2,mats.pcb);box(board,0,-.26,0,13,.035,9.2,mats.edge);
   print(board,'MULTIPHASE BUCK / POWER DELIVERY',0,.025,-4.05,8.2,.42);
-  print(board,'CONCEPTUAL CIRCUIT  /  6 ILLUSTRATIVE PHASES',0,.026,4.12,9.6,.25,'#86a08c');
-  const ground=group('power-ground','回流参考平面','开关电流通过 PCB 回流网络闭合。此处以板边露出的导电平面表示回流层；顶面的粗线只突出主要前向供电路径。',board);
+  print(board,'POWER STAGES  /  INDUCTORS  /  OUTPUT FILTER',0,.026,4.12,9.6,.25,'#86a08c');
+  const ground=group('power-ground','回流参考平面','开关电流沿 PCB 回流网络形成闭合回路。导电参考平面提供低阻抗回流路径，与正向供电网络共同传输电能。',board);
   box(ground,0,-.275,0,12.82,.025,9.03,mats.silver);
-  const input=group('power-input','输入去耦电容','输入电容为开关功率级提供局部脉动电流，缩短高频电流回路；这里没有指定真实模组的输入电压。',board);
-  const controller=group('power-controller','PWM 控制器','控制器按相位错开发射 PWM，并使用电压/电流反馈调节各相。蓝灰细线表示控制与反馈，不是负载电流的主通路。',board);
+  const input=group('power-input','输入去耦电容','输入电容为开关功率级提供局部脉动电流，缩短高频电流回路，并减小输入电源的电压波动。',board);
+  const controller=group('power-controller','PWM 控制器','控制器按相位错开发出 PWM，通过电压与电流反馈调节各相，协调功率级的开关时序。',board);
   const stage=group('power-stage','集成功率级 / DrMOS','每相功率级包含驱动与开关晶体管，交替连接输入和回流路径；功率级之后由电感和输出电容滤波。',board);
-  const inductor=group('power-inductor','电感与磁芯剖面','每相电感储存磁场能量，并使电流更平滑。第一个电感打开磁芯以露出铜绕组；其余保留封装外观。此剖面为功能近似。',board);
+  const inductor=group('power-inductor','电感与磁芯剖面','铜绕组与磁芯储存磁场能量，限制电流变化，使各相的输出电流更加平滑。剖面可观察绕组围绕磁芯的连接。',board);
   const output=group('power-output','输出去耦电容','并联输出电容承接各相纹波并响应负载变化。多相电流在共同输出节点叠加，交错相位可降低总纹波。',board);
-  const rail=group('power-rail','公共输出铜排','各相电感的输出连接到同一供电节点，再送向负载。铜排宽度、相数和元件位置为教学排布，不是 GPU 供电 PCB 的真实布线。',board);
-  const feedback=group('power-feedback','反馈与相位控制','控制信号与大电流路径分开表达：细线连接控制器、功率级和输出采样点。它们不代表高电流经过控制器。',board);
+  const rail=group('power-rail','公共输出铜排','各相电感的输出汇入同一供电节点，通过宽铜排将合并后的电流送向 GPU 负载。',board);
+  const feedback=group('power-feedback','反馈与相位控制','采样线路将输出电压与各相电流送回控制器；PWM 线路把调节后的开关时序送到功率级。',board);
   const xs=Array.from({length:6},(_,i)=>-4.75+i*1.9);
   const cin=[],cinEnds=[],cout=[],coutEnds=[],pads=[],pins=[],tiny=[];
   xs.forEach((x,i)=>{

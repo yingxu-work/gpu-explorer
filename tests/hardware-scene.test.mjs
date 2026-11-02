@@ -46,7 +46,7 @@ for(const model of ['h100','a100'])test(`${model}: four local subpartitions shar
   const fp=[];hw.smRoot.traverse(o=>{if(o.isInstancedMesh&&o.material===hw.materials.activeSM)fp.push(o);});
   assert.equal(fp.reduce((sum,o)=>sum+o.count,0),model==='h100'?128:64);
   assert.ok(hw.components.smem.description.includes(model==='h100'?'256':'192'));
-  assert.ok(hw.components.smem.description.includes('32 banks 指共享内存'));
+  assert.ok(hw.components.smem.description.includes('32 banks'));
 });
 
 test('teaching transmission follows orthogonal local bus traces and memory hierarchy',()=>{
