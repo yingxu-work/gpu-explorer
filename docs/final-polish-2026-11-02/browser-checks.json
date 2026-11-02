@@ -1,0 +1,529 @@
+{
+  "date": "2026-11-02",
+  "assetVersion": "20261102u",
+  "checks": [
+    {
+      "kind": "gemm-stage",
+      "i": 0,
+      "error": null,
+      "flow": "true",
+      "level": "board",
+      "mode": "learn",
+      "scene": "hardware",
+      "step": "01 / 08"
+    },
+    {
+      "kind": "gemm-stage",
+      "i": 1,
+      "error": null,
+      "flow": "true",
+      "level": "hbm",
+      "mode": "learn",
+      "scene": "hardware",
+      "step": "02 / 08"
+    },
+    {
+      "kind": "gemm-stage",
+      "i": 2,
+      "error": null,
+      "flow": "true",
+      "level": "die",
+      "mode": "learn",
+      "scene": "hardware",
+      "step": "03 / 08"
+    },
+    {
+      "kind": "gemm-stage",
+      "i": 3,
+      "error": null,
+      "flow": "true",
+      "level": "package",
+      "mode": "learn",
+      "scene": "hardware",
+      "step": "04 / 08"
+    },
+    {
+      "kind": "gemm-stage",
+      "i": 4,
+      "error": null,
+      "flow": "true",
+      "level": "sm",
+      "mode": "learn",
+      "scene": "hardware",
+      "step": "05 / 08"
+    },
+    {
+      "kind": "gemm-stage",
+      "i": 5,
+      "error": null,
+      "flow": "true",
+      "level": "sm",
+      "mode": "learn",
+      "scene": "hardware",
+      "step": "06 / 08"
+    },
+    {
+      "kind": "gemm-stage",
+      "i": 6,
+      "error": null,
+      "flow": "true",
+      "level": "sm",
+      "mode": "learn",
+      "scene": "hardware",
+      "step": "07 / 08"
+    },
+    {
+      "kind": "gemm-stage",
+      "i": 7,
+      "error": null,
+      "flow": "true",
+      "level": "package",
+      "mode": "learn",
+      "scene": "hardware",
+      "step": "08 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pagetable",
+      "i": 0,
+      "error": null,
+      "mode": "learn",
+      "scene": "pagetable",
+      "stage": "Virtual address",
+      "step": "01 / 07"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pagetable",
+      "i": 1,
+      "error": null,
+      "mode": "learn",
+      "scene": "pagetable",
+      "stage": "TLB miss",
+      "step": "02 / 07"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pagetable",
+      "i": 2,
+      "error": null,
+      "mode": "learn",
+      "scene": "pagetable",
+      "stage": "PML4 / PGD",
+      "step": "03 / 07"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pagetable",
+      "i": 3,
+      "error": null,
+      "mode": "learn",
+      "scene": "pagetable",
+      "stage": "PDPT / PUD",
+      "step": "04 / 07"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pagetable",
+      "i": 4,
+      "error": null,
+      "mode": "learn",
+      "scene": "pagetable",
+      "stage": "PD / PMD",
+      "step": "05 / 07"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pagetable",
+      "i": 5,
+      "error": null,
+      "mode": "learn",
+      "scene": "pagetable",
+      "stage": "PT entry + offset",
+      "step": "06 / 07"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pagetable",
+      "i": 6,
+      "error": null,
+      "mode": "learn",
+      "scene": "pagetable",
+      "stage": "Physical data access",
+      "step": "07 / 07"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pixel",
+      "i": 0,
+      "error": null,
+      "mode": "learn",
+      "scene": "pixel",
+      "stage": "Target pixel",
+      "step": "01 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pixel",
+      "i": 1,
+      "error": null,
+      "mode": "learn",
+      "scene": "pixel",
+      "stage": "Triangle coverage",
+      "step": "02 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pixel",
+      "i": 2,
+      "error": null,
+      "mode": "learn",
+      "scene": "pixel",
+      "stage": "Barycentric interpolation",
+      "step": "03 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pixel",
+      "i": 3,
+      "error": null,
+      "mode": "learn",
+      "scene": "pixel",
+      "stage": "Fragment shader",
+      "step": "04 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pixel",
+      "i": 4,
+      "error": null,
+      "mode": "learn",
+      "scene": "pixel",
+      "stage": "Texture sample",
+      "step": "05 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pixel",
+      "i": 5,
+      "error": null,
+      "mode": "learn",
+      "scene": "pixel",
+      "stage": "Depth 0.4 < 0.7",
+      "step": "06 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pixel",
+      "i": 6,
+      "error": null,
+      "mode": "learn",
+      "scene": "pixel",
+      "stage": "Framebuffer write",
+      "step": "07 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "pixel",
+      "i": 7,
+      "error": null,
+      "mode": "learn",
+      "scene": "pixel",
+      "stage": "Display scanout",
+      "step": "08 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "stacking",
+      "i": 0,
+      "error": null,
+      "mode": "learn",
+      "scene": "stacking",
+      "stage": "Logic stack cutaway",
+      "step": "01 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "stacking",
+      "i": 1,
+      "error": null,
+      "mode": "learn",
+      "scene": "stacking",
+      "stage": "Binning: disabled unit",
+      "step": "02 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "stacking",
+      "i": 2,
+      "error": null,
+      "mode": "learn",
+      "scene": "stacking",
+      "stage": "Six separated layers",
+      "step": "03 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "stacking",
+      "i": 3,
+      "error": null,
+      "mode": "learn",
+      "scene": "stacking",
+      "stage": "Upper logic",
+      "step": "04 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "stacking",
+      "i": 4,
+      "error": null,
+      "mode": "learn",
+      "scene": "stacking",
+      "stage": "Vertical hybrid bond",
+      "step": "05 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "stacking",
+      "i": 5,
+      "error": null,
+      "mode": "learn",
+      "scene": "stacking",
+      "stage": "Lower logic + memory",
+      "step": "06 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "stacking",
+      "i": 6,
+      "error": null,
+      "mode": "learn",
+      "scene": "stacking",
+      "stage": "Short vs long connection",
+      "step": "07 / 08"
+    },
+    {
+      "kind": "concept-stage",
+      "journey": "stacking",
+      "i": 7,
+      "error": null,
+      "mode": "learn",
+      "scene": "stacking",
+      "stage": "Heat and manufacturing",
+      "step": "08 / 08"
+    },
+    {
+      "kind": "anatomy-roundtrip-sm",
+      "before": {
+        "camera": "top",
+        "isolated": "true",
+        "level": "sm",
+        "selected": "fp32"
+      },
+      "guided": {
+        "explode": "0.000",
+        "isolated": "false",
+        "level": "sm",
+        "mode": "learn"
+      },
+      "after": {
+        "camera": "top",
+        "isolated": "true",
+        "level": "sm",
+        "selected": "fp32"
+      }
+    },
+    {
+      "kind": "anatomy-roundtrip-hbm",
+      "before": {
+        "explode": "100",
+        "level": "hbm"
+      },
+      "guided": {
+        "camera": "side",
+        "mode": "learn",
+        "scene": "pixel",
+        "step": "05 / 08"
+      },
+      "after": {
+        "explode": "100",
+        "level": "hbm"
+      }
+    },
+    {
+      "kind": "focused-button-arrows",
+      "right": "06 / 08",
+      "left": "05 / 08",
+      "pass": true
+    },
+    {
+      "kind": "learn-camera",
+      "cam": "top",
+      "before": {
+        "cycle": 0.4274,
+        "revision": "46",
+        "step": "05 / 08"
+      },
+      "cycle": 0.721,
+      "mode": "learn",
+      "revision": "46",
+      "step": "05 / 08"
+    },
+    {
+      "kind": "learn-camera",
+      "cam": "side",
+      "before": {
+        "cycle": 0.4274,
+        "revision": "46",
+        "step": "05 / 08"
+      },
+      "cycle": 0.9999,
+      "mode": "learn",
+      "revision": "46",
+      "step": "05 / 08"
+    },
+    {
+      "kind": "learn-camera",
+      "cam": "three-quarter",
+      "before": {
+        "cycle": 0.4274,
+        "revision": "46",
+        "step": "05 / 08"
+      },
+      "cycle": 1.2899,
+      "mode": "learn",
+      "revision": "46",
+      "step": "05 / 08"
+    },
+    {
+      "kind": "learn-click-and-pan",
+      "panBefore": "0.000,0.188,0.000",
+      "panAfter": "-0.732,0.486,0.206",
+      "mode": "learn",
+      "step": "05 / 08"
+    },
+    {
+      "kind": "loop-and-pause",
+      "loop": {
+        "cycle": 7.6484,
+        "motion": "running",
+        "progress": "1.000"
+      },
+      "paused": {
+        "cycle": "7.9133",
+        "motion": "paused",
+        "progress": "1.000"
+      }
+    },
+    {
+      "kind": "pause-remains-frozen",
+      "cycle": "7.9133",
+      "motion": "paused",
+      "progress": "1.000",
+      "scrollTop": 126.5
+    },
+    {
+      "kind": "mobile-anatomy",
+      "hardware": true,
+      "journeysHidden": true,
+      "level": "hbm",
+      "mode": "explore",
+      "overflow": false,
+      "timelineHidden": true
+    },
+    {
+      "kind": "anatomy-level",
+      "requested": "board",
+      "error": null,
+      "journeysHidden": true,
+      "level": "board",
+      "mode": "explore",
+      "timelineHidden": true
+    },
+    {
+      "kind": "anatomy-level",
+      "requested": "package",
+      "error": null,
+      "journeysHidden": true,
+      "level": "package",
+      "mode": "explore",
+      "timelineHidden": true
+    },
+    {
+      "kind": "anatomy-level",
+      "requested": "die",
+      "error": null,
+      "journeysHidden": true,
+      "level": "die",
+      "mode": "explore",
+      "timelineHidden": true
+    },
+    {
+      "kind": "anatomy-level",
+      "requested": "sm",
+      "error": null,
+      "journeysHidden": true,
+      "level": "sm",
+      "mode": "explore",
+      "timelineHidden": true
+    },
+    {
+      "kind": "anatomy-level",
+      "requested": "hbm",
+      "error": null,
+      "journeysHidden": true,
+      "level": "hbm",
+      "mode": "explore",
+      "timelineHidden": true
+    },
+    {
+      "kind": "anatomy-level",
+      "requested": "power",
+      "error": null,
+      "journeysHidden": true,
+      "level": "power",
+      "mode": "explore",
+      "timelineHidden": true
+    },
+    {
+      "kind": "anatomy-level",
+      "requested": "interconnect",
+      "error": null,
+      "journeysHidden": true,
+      "level": "interconnect",
+      "mode": "explore",
+      "timelineHidden": true
+    },
+    {
+      "footer": [
+        743.203125,
+        844
+      ],
+      "footerVisible": true,
+      "kind": "mobile-final",
+      "mode": "learn",
+      "overflow": false,
+      "version": "app.js?v=20261102u",
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "kind": "mobile-footer-jump",
+      "mode": "learn",
+      "overflow": false,
+      "step": "08 / 08"
+    },
+    {
+      "kind": "autoplay-last-stages",
+      "cycle": "8.8336",
+      "mode": "learn",
+      "motion": "running",
+      "playback": "paused",
+      "progress": "1.000",
+      "step": "08 / 08"
+    }
+  ],
+  "console": []
+}
