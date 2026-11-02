@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102n';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102n';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102o';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102o';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -197,7 +197,13 @@ class HardwareScene {
     if(changed&&!this.compare)window.dispatchEvent(new CustomEvent('gpu-level-change',{detail:{level,label:LEVEL_INFO[level]}}));
   }
 
-  setExplode(value) {this.explodeTarget=clamp(value);if(this.autoFrame&&performance.now()-(this.lastExplodeFit||0)>150){this.fitView(550,true);this.lastExplodeFit=performance.now();}}
+  setExplode(value) {
+    const target=clamp(value),changed=target!==this.explodeTarget;
+    this.explodeTarget=target;
+    // Reapplying an unchanged slider value must not replace a pending camera
+    // reset with a fit from its previous direction.
+    if(changed&&this.autoFrame&&performance.now()-(this.lastExplodeFit||0)>150){this.fitView(550,true);this.lastExplodeFit=performance.now();}
+  }
   setProgress(value) {this.progress=clamp(value);}
   setLabels(value) {this.labelsVisible=value===undefined?!this.labelsVisible:!!value;this.labelLayer.style.display=this.labelsVisible?'':'none';this.flowMarkerLayer.style.display=this.labelsVisible?'':'none';return this.labelsVisible;}
 
