@@ -50,6 +50,18 @@ for(const model of ['h100','a100']) {
     assert.ok(instanceCount>1000);
   });
 
+  test(`${model}: surface engravings preserve glyph proportions on every sized plaque`,()=>{
+    const detail=createHBMDetail(T,model),labels=[];
+    detail.root.traverse(object=>{if(object.userData.surfaceText)labels.push(object);});
+    assert.ok(labels.length>=10);
+    for(const label of labels) {
+      const plane=label.geometry.parameters,image=label.material.map.image;
+      assert.ok(Math.abs((image.width/image.height)/(plane.width/plane.height)-1)<.002,`${label.userData.surfaceText}: engraving would stretch the text`);
+      assert.ok(image.width<=3072&&image.height>=48,'surface type must remain sharp without an oversized GPU texture');
+      assert.equal(label.material.depthWrite,false,'transparent margins must not occlude adjacent relief');
+    }
+  });
+
   test(`${model}: each of seven exploration scales shows only its own roots`,()=>{
     const hardware=createHardwareModel(T,model);
     const roots={board:[hardware.pcb,hardware.serial],package:[hardware.serial],die:[hardware.serial],sm:[hardware.smRoot],hbm:[hardware.hbmRoot],power:[hardware.powerRoot],interconnect:[hardware.interconnectRoot]};

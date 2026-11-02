@@ -108,7 +108,11 @@
     state.presentationMode = ui.mode;
     state.playing = ui.playback === 'sequence';
     state.stepProgress = ui.progress;
+    state.visualPhase = ui.visualPhase;
+    state.motionPlaying = ui.motionPlaying;
     window.__gpuExplorerStepProgress = ui.progress;
+    window.__gpuExplorerVisualPhase = ui.visualPhase;
+    window.__gpuExplorerMotionPlaying = ui.motionPlaying;
     window.__gpuExplorerExplode = ui.explode;
     const sc = scene();
     if (!sc) return;
@@ -265,9 +269,9 @@
     document.body.dataset.playback = ui.playback;
     $('play-btn').textContent = state.playing ? 'Ⅱ' : '▷';
     $('play-btn').setAttribute('aria-label', state.playing ? '暂停自动播放' : '自动播放全部步骤');
-    $('play-status').textContent = ui.mode === 'explore' ? '自由探索 · 点上方返回第 ' + (state.stepIndex + 1) + ' 步' : state.playing ? '自动播放中' : '每一步，都可以停下来。';
-    const moving = ui.playback !== 'paused';
-    $('motion-btn').textContent = moving ? 'Ⅱ 暂停动画' : ui.progress >= 1 ? '↻ 再看一次' : '▷ 继续动画';
+    $('play-status').textContent = ui.mode === 'explore' ? '自由探索 · 点上方返回第 ' + (state.stepIndex + 1) + ' 步' : state.playing ? '自动播放全部步骤' : ui.motionPlaying ? '路径循环演示 · 随时可暂停' : '已暂停 · 继续或切换步骤';
+    const moving = ui.motionPlaying;
+    $('motion-btn').textContent = moving ? 'Ⅱ 暂停动画' : '▷ 继续动画';
     $('motion-btn').setAttribute('aria-label', moving ? '暂停当前步骤动画' : '继续当前步骤动画');
     $('explode-auto-btn').textContent = ui.explodeAuto ? 'Ⅱ' : '▷';
     $('explode-auto-btn').setAttribute('aria-pressed', String(ui.explodeAuto));
@@ -281,10 +285,12 @@
     $('diagram').dataset.isolated = String(ui.isolated);
     $('diagram').dataset.explode = ui.explode.toFixed(3);
     $('diagram').dataset.guideRevision = ui.guideRevision;
+    document.body.dataset.motion = moving && ui.mode === 'learn' ? 'running' : 'paused';
     if (state.journey === 'gemm') {
       const story = window.GpuExplorerStory.forStep(state.stepIndex);
-      $('route-status').textContent = ui.progress >= 1 ? story.complete : ui.playback === 'paused' ? '已暂停' : '演示中';
+      $('route-status').textContent = ui.progress >= 1 ? story.complete + (moving ? ' · 循环演示' : ' · 已暂停') : moving ? '循环演示' : '已暂停';
       $('teaching-status').dataset.state = ui.progress >= 1 ? 'complete' : ui.playback === 'paused' ? 'paused' : 'running';
+      $('teaching-status').dataset.motion = moving ? 'running' : 'paused';
     }
   }
   function renderGuideStatus() {
@@ -472,11 +478,20 @@
     const dt = lastFrame ? Math.min(now - lastFrame, 100) : 0; lastFrame = now;
     ui = I.transition(ui, { type: 'TICK', dt }, context());
     state.stepProgress = ui.progress;
+    state.visualPhase = ui.visualPhase;
+    state.motionPlaying = ui.motionPlaying;
     window.__gpuExplorerStepProgress = ui.progress;
+    window.__gpuExplorerVisualPhase = ui.visualPhase;
+    window.__gpuExplorerMotionPlaying = ui.motionPlaying;
     if (ui.progress !== previous.progress) {
       window.GpuExplorerLab?.setProgress($('journey-lab'), ui.progress); scene()?.setProgress?.(ui.progress);
     }
     $('journey-lab').dataset.progress = ui.progress.toFixed(3);
+    if (ui.mode === 'learn' && state.journey === 'gemm') {
+      const nodes = $('route-nodes').querySelectorAll('span');
+      const active = Math.min(nodes.length - 1, Math.floor((ui.visualPhase % 1) * nodes.length));
+      nodes.forEach((node, i) => node.classList.toggle('route-active', i === active));
+    }
     if (ui.explode !== previous.explode) {
       window.__gpuExplorerExplode = ui.explode; scene()?.setExplode(ui.explode); applied.explode = ui.explode;
       $('explode-slider').value = Math.round(ui.explode * 100);
@@ -485,7 +500,7 @@
       if (now - lastHashFrame > 200) { syncHash(); lastHashFrame = now; }
     }
     if (ui.advanceRequested) { S.next(state); enterGuide({ playback: 'sequence' }); }
-    else if (ui.playback !== previous.playback || ui.explodeAuto !== previous.explodeAuto || (previous.progress < 1 && ui.progress >= 1)) {
+    else if (ui.playback !== previous.playback || ui.motionPlaying !== previous.motionPlaying || ui.explodeAuto !== previous.explodeAuto || (previous.progress < 1 && ui.progress >= 1)) {
       renderPlayback(); window.GpuExplorerLab?.render($('journey-lab'), state, S.currentStep(state), ui.progress); syncHash();
     }
     requestAnimationFrame(frame);

@@ -41,12 +41,29 @@ export function createHBMDetail(T, model = 'h100') {
     mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
   }
   function text(parent, content, x, y, z, width, depth, color = '#c6d5d1', font = '500 35px monospace') {
-    const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 128;
-    const ctx = canvas.getContext('2d'); ctx.fillStyle = color; ctx.font = font;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(content, 512, 64);
-    const texture = new T.CanvasTexture(canvas); texture.colorSpace = T.SRGBColorSpace;
+    // The texture and the physical engraving have the same aspect ratio.
+    // Fit the font rather than stretching glyphs across an arbitrary plane.
+    const canvas = document.createElement('canvas'), aspect = width / depth;
+    canvas.height = Math.max(48, Math.min(128, Math.floor(3072 / aspect)));
+    canvas.width = Math.round(canvas.height * aspect);
+    const ctx = canvas.getContext('2d'); ctx.fillStyle = color;
+    let pixels = Math.floor(canvas.height * .82);
+    const setFont = () => { ctx.font = font.replace(/\d+(?:\.\d+)?px/, `${pixels}px`); };
+    const measure = () => ctx.measureText(content) || { width: content.length * pixels * .6 };
+    setFont();
+    let metrics = measure();
+    if(metrics.width > canvas.width * .94) {
+      pixels = Math.max(12, Math.floor(pixels * canvas.width * .94 / metrics.width));
+      setFont();metrics = measure();
+    }
+    const ascent = metrics.actualBoundingBoxAscent ?? pixels * .75;
+    const descent = metrics.actualBoundingBoxDescent ?? pixels * .2;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(content, canvas.width / 2, (canvas.height + ascent - descent) / 2);
+    const texture = new T.CanvasTexture(canvas); texture.colorSpace = T.SRGBColorSpace;texture.anisotropy = 4;
     const material = new T.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 });
     const mesh = new T.Mesh(new T.PlaneGeometry(width, depth), material);
+    mesh.userData.surfaceText = content;
     mesh.rotation.x = -Math.PI / 2; mesh.position.set(x, y, z); parent.add(mesh); return mesh;
   }
 
@@ -56,14 +73,14 @@ export function createHBMDetail(T, model = 'h100') {
   const stitch = [];
   for (let x = -5.25; x <= 5.25; x += .22) for (const z of [-4.05, 4.05]) stitch.push({ x, y: -.269, z, w: .035, h: .012, d: .035 });
   instances(interposer, stitch, materials.gold);
-  text(interposer, 'SILICON INTERPOSER  /  ILLUSTRATIVE ROUTING', 0, -.266, 3.82, 9.9, .24, '#aebfba', '400 32px monospace');
+  text(interposer, 'SILICON INTERPOSER  /  TEACHING CUTAWAY', 0, -.266, 3.82, 9.9, .28, '#aebfba', '400 32px monospace');
 
   const stack = component('hbm-stack', specification.name + ' 堆叠剖面', specification.scope);
   const base = component('hbm-base', '底部接口芯片 / Base die', '底部接口将 DRAM 堆栈的信号连接到中介层；并非新增容量的存储层。实际电路功能和工艺依产品而异。', stack, 'hbm-stack');
   box(base, -1.7, .01, 0, 4.9, .30, 4.85, materials.black);
   box(base, -1.7, .172, 0, 4.73, .025, 4.68, materials.gold);
   box(base, -1.7, .193, 0, 4.65, .028, 4.60, materials.silicon);
-  text(base, 'BASE / INTERFACE DIE', -2.4, .216, -2.05, 2.9, .22, '#a7bdc6');
+  text(base, 'BASE / INTERFACE DIE', -2.4, .216, -2.05, 2.9, .26, '#c0d1d6');
 
   const dram = component('hbm-dram', 'DRAM 存储层', '八层代表性剖面展示存储裸片垂直堆叠。小阵列表示 bank 结构，具体层数、bank 位置和尺寸不是本标本的厂家版图。', stack, 'hbm-stack');
   const bumps = component('hbm-bumps', '层间微凸点 / Microbumps', '相邻裸片之间的微凸点形成电气连接。TSV 穿过硅片，微凸点跨过裸片之间的连接界面；两者共同构成垂直通路。', stack, 'hbm-stack');
@@ -95,7 +112,7 @@ export function createHBMDetail(T, model = 'h100') {
     // Exposed cut edges make the cross section legible from the default camera.
     box(plate, -1.02, .105, .78, .021, .025, 2.73, materials.copper);
     box(plate, -.35, .105, .47, 1.34, .025, .021, materials.copper);
-    text(plate, 'DRAM ' + String(layer + 1).padStart(2, '0'), -2.41, .129, 1.98, 1.85, .18, '#c3d2cb', '500 39px monospace');
+    text(plate, 'DRAM ' + String(layer + 1).padStart(2, '0'), -2.41, .129, 1.98, 1.85, .28, '#d0ddd6', '500 39px monospace');
     const bumpLayer = new T.Group(); bumpLayer.position.y = plate.position.y - .14; bumps.add(bumpLayer); bumpGroups.push(bumpLayer);
     const balls = [];
     for (let x = -3.57; x < -1.1; x += .29) for (const z of [-1.94, -.97, 0, .97, 1.94]) balls.push({ x, y: 0, z, w: .075, h: .075, d: .075 });
@@ -120,7 +137,7 @@ export function createHBMDetail(T, model = 'h100') {
     for (let pin = 0; pin < 4; pin++) portPads.push({ x: x - channelPitch * .25 + pin * channelPitch / 6, y: .307, z: 2.12, w: .016, h: .009, d: .21 });
   }
   instances(channels, ports, materials.bus); instances(channels, portPads, materials.gold);
-  text(channels, `${specification.channels} CH × ${specification.channelBits}-bit  /  1024-bit`, -1.7, -.266, 2.96, 4.6, .23, '#bddad3');
+  text(channels, `${specification.channels} × ${specification.channelBits}-bit  /  1024-bit`, -1.7, -.266, 2.96, 4.6, .30, '#c4ded7');
 
   const controller = component('hbm-controller', 'GPU 侧 HBM PHY / 控制器', 'PHY 承担物理信号接口，控制器安排命令与访问。右侧方块表示 GPU 内部的接口角色，不是封装旁额外增加的一颗芯片。');
   box(controller, 3.88, -.02, -.10, 2.75, .29, 4.55, materials.black);
@@ -129,7 +146,7 @@ export function createHBMDetail(T, model = 'h100') {
   for (let lane = 0; lane < specification.channels; lane++) phyLanes.push({ x: 2.76, y: .19, z: -1.97 + lane * 3.76 / (specification.channels - 1), w: .30, h: .06, d: .13 });
   for (let row = 0; row < 10; row++) for (let col = 0; col < 4; col++) controllerCells.push({ x: 3.29 + col * .43, y: .19, z: -1.80 + row * .37, w: .32, h: .045, d: .23 });
   instances(controller, phyLanes, materials.gold); instances(controller, controllerCells, materials.array);
-  text(controller, 'GPU PHY / CTRL', 3.89, .223, 2.04, 2.44, .22, '#b7d5d0');
+  text(controller, 'GPU PHY / CTRL', 3.89, .223, 2.04, 2.44, .28, '#c2dcd6');
   const routes = [];
   for (let lane = 0; lane < specification.channels; lane++) {
     const z = -1.97 + lane * 3.76 / (specification.channels - 1);
@@ -137,7 +154,7 @@ export function createHBMDetail(T, model = 'h100') {
     routes.push({ x: .68, y: -.257, z: (z + 2.34) * .5, w: .018, h: .012, d: Math.abs(z - 2.34) });
   }
   instances(interposer, routes, materials.gold);
-  text(interposer, '8-LAYER TEACHING CUTAWAY', -1.7, -.266, -3.50, 5.6, .25, '#b3c8c1');
+  text(interposer, '8 DRAM LAYERS  /  ILLUSTRATIVE', -1.7, -.266, -3.50, 5.6, .30, '#bfd0ca');
 
   // Engineering scale marks help read height without suggesting real dimensions.
   const ruler = [];

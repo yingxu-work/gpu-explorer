@@ -128,6 +128,41 @@ test('pause freezes progress and resuming sequence continues from that point', (
   assert.equal(ui.progress,p); ui=act(ui,'RESUME_SEQUENCE'); ui=act(ui,'TICK',{dt:100});
   assert.ok(ui.progress>p); assert.equal(ui.playback,'sequence');
 });
+test('the completed arithmetic stays fixed while its route keeps cycling', () => {
+  let ui=I.create({},base);
+  for(let i=0;i<60;i++)ui=act(ui,'TICK',{dt:100});
+  assert.equal(ui.progress,1);assert.equal(ui.playback,'paused');assert.equal(ui.motionPlaying,true);
+  const phase=ui.visualPhase,revision=ui.guideRevision;
+  for(let i=0;i<120;i++)ui=act(ui,'TICK',{dt:100});
+  assert.ok(ui.visualPhase>phase+2);assert.equal(ui.progress,1);assert.equal(ui.advanceRequested,false);
+  assert.equal(ui.guideRevision,revision);
+});
+test('explicit pause freezes both clocks; resuming completed motion never reruns arithmetic', () => {
+  let ui=I.create({},base);for(let i=0;i<60;i++)ui=act(ui,'TICK',{dt:100});
+  ui=act(ui,'MOTION_TOGGLE');const phase=ui.visualPhase,revision=ui.guideRevision;
+  for(let i=0;i<40;i++)ui=act(ui,'TICK',{dt:100});
+  assert.equal(ui.motionPlaying,false);assert.equal(ui.visualPhase,phase);assert.equal(ui.progress,1);
+  ui=act(ui,'MOTION_TOGGLE');ui=act(ui,'TICK',{dt:100});
+  assert.equal(ui.motionPlaying,true);assert.ok(ui.visualPhase>phase);assert.equal(ui.progress,1);
+  assert.equal(ui.guideRevision,revision);
+  ui=act(ui,'PAUSE');const frozen=ui.visualPhase;ui=act(ui,'CAMERA',{preset:'top'});ui=act(ui,'NAVIGATE');ui=act(ui,'TICK',{dt:100});
+  assert.equal(ui.visualPhase,frozen);assert.equal(ui.motionPlaying,false);
+});
+test('hardware exploration stops the route clock and returning prepares one clean cycle', () => {
+  for(const level of I.LEVELS){
+    let ui=act(I.create({},base),'TICK',{dt:100});ui=act(ui,'LEVEL',{level});
+    const phase=ui.visualPhase;ui=act(ui,'TICK',{dt:100});
+    assert.equal(ui.motionPlaying,false);assert.equal(ui.visualPhase,phase);
+    ui=act(ui,'ENTER_GUIDE');assert.equal(ui.visualPhase,0);assert.equal(ui.motionPlaying,true);
+  }
+});
+test('reduced motion begins static and can be explicitly enabled without restarting arithmetic', () => {
+  const context={...base,reducedMotion:true};let ui=I.create({},context);
+  for(let i=0;i<10;i++)ui=act(ui,'TICK',{dt:100},context);
+  assert.equal(ui.progress,1);assert.equal(ui.motionPlaying,false);assert.equal(ui.visualPhase,0);
+  ui=act(ui,'MOTION_TOGGLE',{},context);ui=act(ui,'TICK',{dt:100},context);
+  assert.equal(ui.motionPlaying,true);assert.ok(ui.visualPhase>0);assert.equal(ui.progress,1);
+});
 test('timeline/domain navigation always re-enters the guide at the selected step', () => {
   const domain=S.createState({});
   let ui=I.create({mode:'explore',level:'sm',explode:.75,selection:'tensor'},base);

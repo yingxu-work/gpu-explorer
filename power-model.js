@@ -5,13 +5,13 @@ export function createPowerDetail(T, model='h100') {
   const components={},anchors={},layers=[];
   const geo=new T.BoxGeometry(1,1,1);
   const mats={
-    pcb:new T.MeshStandardMaterial({color:0x214c3d,roughness:.65,metalness:.15}),
-    edge:new T.MeshStandardMaterial({color:0x20362c,roughness:.7,metalness:.1}),
-    copper:new T.MeshStandardMaterial({color:0xb68250,roughness:.3,metalness:.88}),
+    pcb:new T.MeshStandardMaterial({color:0x214c3d,roughness:.72,metalness:.06}),
+    edge:new T.MeshStandardMaterial({color:0x263d30,roughness:.88,metalness:.03}),
+    copper:new T.MeshStandardMaterial({color:0xb68250,roughness:.38,metalness:.83}),
     gold:new T.MeshStandardMaterial({color:0xb6a16c,roughness:.35,metalness:.83}),
     silver:new T.MeshStandardMaterial({color:0xbac2bf,roughness:.28,metalness:.87}),
-    black:new T.MeshStandardMaterial({color:0x1b2528,roughness:.46,metalness:.26}),
-    core:new T.MeshStandardMaterial({color:0x49504c,roughness:.5,metalness:.48}),
+    black:new T.MeshStandardMaterial({color:0x1b2528,roughness:.75,metalness:.06}),
+    core:new T.MeshStandardMaterial({color:0x49504c,roughness:.86,metalness:.08}),
     ceramic:new T.MeshStandardMaterial({color:0xb8b19a,roughness:.62,metalness:.12}),
     control:new T.MeshStandardMaterial({color:0x6b8b9b,roughness:.35,metalness:.6}),
     rail:new T.MeshStandardMaterial({color:0x8ba58c,roughness:.35,metalness:.65})
@@ -23,8 +23,18 @@ export function createPowerDetail(T, model='h100') {
   function box(p,x,y,z,w,h,d,m){const a=new T.Mesh(geo,m);a.position.set(x,y,z);a.scale.set(w,h,d);a.castShadow=true;a.receiveShadow=true;p.add(a);return a;}
   function inst(p,list,m,g=geo){const a=new T.InstancedMesh(g,m,list.length),d=new T.Object3D();list.forEach((v,i)=>{d.position.set(v.x||0,v.y||0,v.z||0);d.scale.set(v.w||1,v.h||1,v.d||1);d.rotation.set(v.rx||0,v.ry||0,v.rz||0);d.updateMatrix();a.setMatrixAt(i,d.matrix);});a.castShadow=true;a.receiveShadow=true;p.add(a);return a;}
   function print(p,text,x,y,z,w=3,d=.25,color='#bdcbbd'){
-    const c=document.createElement('canvas');c.width=1024;c.height=128;const q=c.getContext('2d');q.font='500 38px monospace';q.fillStyle=color;q.textAlign='center';q.textBaseline='middle';q.fillText(text,512,64);
-    const tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;const m=new T.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2});const a=new T.Mesh(new T.PlaneGeometry(w,d),m);a.rotation.x=-Math.PI/2;a.position.set(x,y,z);p.add(a);return a;
+    // Match texture pixels to the physical surface. A fixed 8:1 texture made
+    // short package marks look wide and long board legends unnaturally thin.
+    const aspect=w/d,c=document.createElement('canvas');c.height=Math.max(32,Math.min(128,Math.round(2048/aspect)));c.width=Math.round(c.height*aspect);
+    const q=c.getContext('2d');let fontPixels=c.height*.68;
+    q.font=`500 ${fontPixels}px monospace`;
+    const measure=()=>q.measureText?.(text)?.width??text.length*fontPixels*.61;
+    fontPixels*=Math.min(1,c.width*.92/measure());q.font=`500 ${fontPixels}px monospace`;
+    q.fillStyle=color;q.textAlign='center';q.textBaseline='middle';q.fillText(text,c.width/2,c.height/2);
+    const tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4;
+    const m=new T.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-2});
+    const a=new T.Mesh(new T.PlaneGeometry(w,d),m);a.rotation.x=-Math.PI/2;a.position.set(x,y,z);
+    a.userData.surfaceText={text,canvasAspect:c.width/c.height,worldAspect:aspect,fontPixels,canvasWidth:c.width,canvasHeight:c.height,textWidthPixels:measure()};p.add(a);return a;
   }
   function track(p,points,width,mat,y=.08){for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];box(p,(a[0]+b[0])/2,y,(a[1]+b[1])/2,Math.max(Math.abs(b[0]-a[0]),width),.025,Math.max(Math.abs(b[1]-a[1]),width),mat);}}
   const board=group('power-board','多相降压供电板','六相教学电路：展示并联功率级、磁性元件和输出去耦，不代表 H100/A100 的真实相数、供电电压或网表。',root,null);
@@ -49,21 +59,30 @@ export function createPowerDetail(T, model='h100') {
     for(let k=0;k<6;k++){pins.push({x:x-.59,y:.12,z:-2.36+k*.21,w:.12,h:.1,d:.12},{x:x+.59,y:.12,z:-2.36+k*.21,w:.12,h:.1,d:.12});}
     track(rail,[[x,-3.43],[x,-2.56]],.14,mats.copper,.055);
     track(rail,[[x,-1.1],[x,-.63]],.24,mats.copper,.07);
-    box(inductor,x,.11,.15,1.45,.12,1.49,mats.silver);
+    // Separate end terminations rather than a single conducting plate under
+    // the whole inductor. The dark seating layer reads as molded insulation.
+    box(inductor,x,.11,.15,1.3,.1,1.34,mats.black);
+    box(inductor,x,.11,-.51,1.45,.12,.17,mats.silver);box(inductor,x,.11,.81,1.45,.12,.17,mats.silver);
     if(i===0){
       const winding=new T.Group();winding.name='opened-inductor-coil';inductor.add(winding);layers.push({group:winding,base:0,factor:.35});
-      // A cut magnetic core and visible stacked copper winding; no claim of
-      // the real molded-inductor construction used by a particular vendor.
-      box(inductor,x,.52,.55,1.34,.72,.36,mats.core);box(inductor,x-.52,.52,.13,.27,.72,1.15,mats.core);box(inductor,x+.52,.52,.13,.27,.72,1.15,mats.core);
+      // One helical winding around an insulated center leg; each turn meets
+      // the next. Separate closed copper rings would depict shorted turns.
+      // This opened magnetic assembly remains an illustrative construction.
+      box(inductor,x,.52,.62,1.34,.72,.22,mats.core);box(inductor,x-.52,.52,.13,.27,.72,1.15,mats.core);box(inductor,x+.52,.52,.13,.27,.72,1.15,mats.core);
       box(inductor,x,.48,.12,.44,.65,.5,mats.core);
       for(let n=0;n<5;n++){
-        const y=.25+n*.11;
-        track(winding,[[x-.38,-.32],[x+.38,-.32],[x+.38,.47],[x-.38,.47],[x-.38,-.32]],.12,mats.copper,y);
+        const points=Array.from({length:25},(_,k)=>{
+          const a=k/24*Math.PI*2,c=Math.cos(a),s=Math.sin(a);
+          return new T.Vector3(x+.305*Math.sign(c)*Math.sqrt(Math.abs(c)),.23+(n+k/24)*.09,.11+.34*Math.sign(s)*Math.sqrt(Math.abs(s)));
+        });
+        const coil=new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(points),96,.035,8,false),mats.copper);
+        coil.userData.windingTurn=n;coil.castShadow=true;coil.receiveShadow=true;winding.add(coil);
       }
       print(inductor,'CUTAWAY',x,.96,.77,1.2,.18,'#d3b78c');
     }else{
-      const cap=box(inductor,x,.54,.15,1.34,.76,1.34,mats.core);layers.push({group:cap,base:.54,factor:.45});
-      box(inductor,x,.94,.15,1.15,.03,1.15,mats.black);print(inductor,'L'+(i+1),x,.965,.13,.8,.29,'#c2c6be');
+      const shell=new T.Group();shell.name='inductor-shell-'+(i+1);inductor.add(shell);layers.push({group:shell,base:0,factor:.45});
+      box(shell,x,.54,.15,1.34,.76,1.34,mats.core);
+      box(shell,x,.94,.15,1.15,.03,1.15,mats.black);print(shell,'L'+(i+1),x,.965,.13,.8,.29,'#c2c6be');
     }
     track(rail,[[x,.92],[x,2.68]],.26,mats.copper,.065);
     for(let k=0;k<4;k++){const z=1.33+k*.3;cout.push({x:x+.52,y:.19,z,w:.24,h:.3,d:.18});coutEnds.push({x:x+.52,y:.19,z:z-.1,w:.26,h:.32,d:.06},{x:x+.52,y:.19,z:z+.1,w:.26,h:.32,d:.06});}

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as THREE from '../three/three.module.js';
 import { createHardwareModel, calculateCameraFit } from '../hardware-model.js';
-import { lessonPresentation, createTeachingVisuals, routeState, samplePath, pathLength, FLOW_PHASES } from '../teaching-flow.js';
+import { lessonPresentation, createTeachingVisuals, routeState, samplePath, pathLength, signalCycleState, FLOW_PHASES } from '../teaching-flow.js';
 
 const context=new Proxy({}, {get:(o,k)=>k in o?o[k]:(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
 globalThis.document={createElement:()=>({getContext:()=>context})};
@@ -91,5 +91,72 @@ for(const [width,height] of [[800,500],[375,380]])test(`${width}×${height}: act
         assert.ok(Math.abs(p.x)<=1&&Math.abs(p.y)<=1,`${level}, explode ${explode}: preset clips model`);
       }
     }
+  }
+});
+
+
+const instanceTransform = (mesh,index=0) => {
+  const matrix=new THREE.Matrix4();mesh.getMatrixAt(index,matrix);
+  return {position:new THREE.Vector3().setFromMatrixPosition(matrix),matrix:matrix.toArray()};
+};
+const nearArray = (actual,expected) => actual.forEach((value,index)=>assert.ok(Math.abs(value-expected[index])<1e-6,`matrix element ${index} changed across an identical visual cycle`));
+
+test('the visual phase repeats independently and preserves route semantics and stage offsets',()=>{
+  for(let step=0;step<8;step++)for(const route of lessonPresentation(levels[step],step).routes){
+    const early=signalCycleState(route,1.25),later=signalCycleState(route,1.55),repeat=signalCycleState(route,4.25);
+    assert.ok(Math.abs(early.fraction-repeat.fraction)<1e-10);
+    assert.notEqual(early.fraction,later.fraction);
+    assert.equal(early.mode,step<3?'emphasis':'packet');
+    assert.equal(early.started,true);
+    if(route.start>0)assert.equal(signalCycleState(route,0).started,false,'later buses wait for their stage offset on the initial cycle');
+    assert.equal(signalCycleState(route,NaN).fraction,0);
+    assert.equal(signalCycleState(route,Infinity).fraction,0);
+  }
+});
+
+test('steps 1–3 animate dashed reading emphasis without representing operand packets',()=>{
+  const hw=createHardwareModel(THREE,'h100');
+  for(let step=0;step<3;step++){
+    const visual=createTeachingVisuals(THREE,hw,lessonPresentation(levels[step],step));
+    const snapshots=[];
+    for(const phase of [1.18,1.61,3.18]){
+      visual.update(1,phase);
+      snapshots.push(visual.visuals.map(item=>({
+        highlights:item.dashMeshes.map((dash,index)=>dash.mesh.material===item.emphasisMaterial?index:-1).filter(index=>index>=0),
+        colors:Array.from(item.arrows.instanceColor.array)
+      })));
+      for(const item of visual.visuals){
+        assert.ok(item.dashMeshes.length>0);
+        assert.equal(item.cycleState.mode,'emphasis');
+        assert.ok(item.dashMeshes.some(dash=>dash.mesh.material===item.railMaterial),'the full logical path never flashes bright at once');
+        for(let n=0;n<4;n++){
+          const matrix=new THREE.Matrix4();item.packets.getMatrixAt(n,matrix);
+          const scale=new THREE.Vector3();matrix.decompose(new THREE.Vector3(),new THREE.Quaternion(),scale);
+          assert.equal(scale.x,0,'dependencies and CTA assignment may not look like physical data packets');
+        }
+      }
+      assert.ok(visual.markers.filter(item=>item.marker.role==='target').every(item=>item.fill.opacity===.45),'completed mathematical markers stay complete during the visual loop');
+    }
+    assert.notDeepEqual(snapshots[0],snapshots[1],'dashes and direction chevrons must visibly advance');
+    assert.deepEqual(snapshots[0],snapshots[2],'the same emphasis returns every visual cycle');
+    visual.dispose();
+  }
+});
+
+test('completed data steps repeat packet travel, freeze at the same phase, and never reset the mathematical result',()=>{
+  const hw=createHardwareModel(THREE,'h100');
+  for(let step=3;step<8;step++){
+    const presentation=lessonPresentation(levels[step],step),visual=createTeachingVisuals(THREE,hw,presentation);
+    const completedMath=presentation.routes.map(route=>routeState(route,1));
+    visual.update(1,1.25);const start=visual.visuals.map(item=>instanceTransform(item.packets));
+    visual.update(1,1.61);const moved=visual.visuals.map(item=>instanceTransform(item.packets));
+    visual.visuals.forEach((item,index)=>assert.ok(start[index].position.distanceTo(moved[index].position)>.01,'packets must continue travelling after math reaches 100%'));
+    visual.update(1,1.61);visual.visuals.forEach((item,index)=>nearArray(instanceTransform(item.packets).matrix,moved[index].matrix));
+    visual.update(.2,1.61);visual.visuals.forEach((item,index)=>nearArray(instanceTransform(item.packets).matrix,moved[index].matrix));
+    visual.update(1,4.25);visual.visuals.forEach((item,index)=>nearArray(instanceTransform(item.packets).matrix,start[index].matrix));
+    assert.deepEqual(presentation.routes.map(route=>routeState(route,1)),completedMath,'visual loops may not rewind the completed lesson');
+    assert.ok(visual.markers.filter(item=>item.marker.role==='target').every(item=>item.fill.opacity===.45));
+    assert.ok(visual.visuals.every(item=>item.railMaterial.opacity===1),'bus direction stays visible between packet passes');
+    visual.dispose();
   }
 });

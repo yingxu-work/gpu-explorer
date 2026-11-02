@@ -30,13 +30,14 @@
       ...ui, mode: 'learn', level: guideLevel(context), selection: null,
       isolated: false, explode: 0, explodeAuto: false, explodePhase: 0,
       progress: context.reducedMotion ? 1 : 0, dwell: 0,
+      visualPhase: 0, motionPlaying: !context.reducedMotion,
       playback: playback === 'sequence' ? 'sequence' : context.reducedMotion ? 'paused' : 'step',
       cameraPreset: 'three-quarter', guideRevision: ui.guideRevision + 1,
       advanceRequested: false
     };
   }
   function explore(ui) {
-    return { ...ui, mode: 'explore', playback: 'paused', dwell: 0,
+    return { ...ui, mode: 'explore', playback: 'paused', motionPlaying: false, dwell: 0,
       explodeAuto: false, advanceRequested: false };
   }
   function create(options = {}, context = {}) {
@@ -45,6 +46,7 @@
       selection: typeof options.selection === 'string' ? options.selection : null,
       isolated: false, explode: clamp(options.explode), explodeAuto: false, explodePhase: 0,
       progress: context.reducedMotion ? 1 : 0, playback: 'paused', dwell: 0,
+      visualPhase: 0, motionPlaying: false,
       cameraPreset: 'three-quarter', guideRevision: 0, advanceRequested: false
     };
     return options.mode === 'explore' ? ui : enterGuide(ui, context, 'step');
@@ -87,13 +89,14 @@
       case 'EXPLORE_RESET':
         return { ...explore(ui), explode: 0, explodePhase: 0, isolated: false,
           selection: null, cameraPreset: 'three-quarter' };
-      case 'PAUSE': return { ...ui, playback: 'paused', dwell: 0, explodeAuto: false };
+      case 'PAUSE': return { ...ui, playback: 'paused', motionPlaying: false, dwell: 0, explodeAuto: false };
       case 'RESUME_SEQUENCE':
         if (ui.mode !== 'learn') return enterGuide(ui, context, 'sequence');
-        return { ...ui, playback: 'sequence', dwell: 0 };
+        return { ...ui, playback: 'sequence', motionPlaying: !context.reducedMotion, dwell: 0 };
       case 'MOTION_TOGGLE':
-        if (ui.mode !== 'learn' || ui.progress >= 1) return enterGuide(ui, context, 'step');
-        return { ...ui, playback: ui.playback === 'paused' ? 'step' : 'paused', dwell: 0 };
+        if (ui.mode !== 'learn') return enterGuide(ui, context, 'step');
+        return { ...ui, motionPlaying: !ui.motionPlaying,
+          playback: ui.motionPlaying || ui.progress >= 1 ? 'paused' : 'step', dwell: 0 };
       case 'SCENE_LEVEL':
         return LEVELS.includes(event.level) ? { ...ui, level: event.level,
           cameraPreset: event.level === ui.level ? ui.cameraPreset : 'three-quarter',
@@ -114,6 +117,9 @@
           }
           return ui;
         }
+        // The physical illustration repeats while the arithmetic remains at
+        // its completed result. Explicit pause freezes both clocks.
+        if (ui.motionPlaying) ui.visualPhase += dt * speed / 4600;
         if (ui.playback === 'paused') return ui;
         const wasComplete = ui.progress >= 1;
         ui.progress = context.reducedMotion ? 1 : clamp(ui.progress + dt * speed / 5200);

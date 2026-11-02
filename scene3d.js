@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102l';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102l';
+import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102m';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102m';
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -225,7 +225,7 @@ class HardwareScene {
   }
 
   setCamera(name) {
-    const direction=name==='top'?new THREE.Vector3(.001,1,.001):name==='side'?new THREE.Vector3(1,.18,1.05).normalize():new THREE.Vector3(.62,.83,1).normalize();
+    const direction=name==='top'?new THREE.Vector3(0,1,.0001):name==='side'?new THREE.Vector3(1,.18,1.05).normalize():new THREE.Vector3(.62,.83,1).normalize();
     // Each preset fits the actual current assembly. Reusing the old oblique
     // distance can clip tall HBM layers or the connector's underside in SIDE.
     this.autoFrame=true;this.container.dataset.cameraPreset=['top','side'].includes(name)?name:'3d';this.fitView(800,false,direction);
@@ -382,7 +382,12 @@ class HardwareScene {
     else this.outline.visible=false;
     const progress=Number.isFinite(window.__gpuExplorerStepProgress)?clamp(window.__gpuExplorerStepProgress):this.progress;
     const teachingActive=this.guideActive()&&!this.isolated;
-    this.flowVisual?.update(progress);
+    const visualPhase=Number.isFinite(window.__gpuExplorerVisualPhase)?window.__gpuExplorerVisualPhase:progress;
+    const motionPlaying=teachingActive&&!!window.__gpuExplorerMotionPlaying;
+    this.flowVisual?.update(progress,visualPhase);
+    this.container.dataset.flowCycle=visualPhase.toFixed(4);
+    this.container.dataset.flowMotion=motionPlaying?'running':'paused';
+    this.container.dataset.flowPlayback=teachingActive?(motionPlaying?'loop':'paused'):'off';
     for(const item of this.flowObjects)item.group.visible=teachingActive;
     for(const item of this.flowVisual?.markers||[])item.group.visible=teachingActive;
     this.container.dataset.flowState=progress>=1?'complete':this.state?.playing?'sequence':'step';

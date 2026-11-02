@@ -6,7 +6,7 @@ import {createInterconnectDetail} from '../interconnect-model.js';
 
 // Only printed surface textures are mocked. Mesh hierarchy, instancing,
 // transforms and bounding boxes are actual Three.js geometry.
-const context=new Proxy({}, {get:(o,k)=>k in o?o[k]:(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
+const context=new Proxy({measureText(text){return {width:text.length*Number(this.font.match(/([\d.]+)px/)?.[1]||16)*.61};}}, {get:(o,k)=>k in o?o[k]:(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
 globalThis.document={createElement:()=>({getContext:()=>context})};
 const finiteBox=b=>[...b.min.toArray(),...b.max.toArray()].every(Number.isFinite)&&!b.isEmpty();
 for(const model of ['h100','a100']){
@@ -40,6 +40,18 @@ for(const model of ['h100','a100']){
       const reset=new T.Box3().setFromObject(detail.root);
       assert.ok(start.min.distanceTo(reset.min)<1e-8);assert.ok(start.max.distanceTo(reset.max)<1e-8);
     });
+    test(`${model} ${name}: surface lettering keeps its physical aspect and fits inside its texture`,()=>{
+      const detail=create(T,model),marks=[];
+      detail.root.traverse(o=>{if(o.userData.surfaceText)marks.push(o);});
+      assert.ok(marks.length>=6,'surface marks should remain explicit inspectable meshes');
+      for(const mark of marks){
+        const {width,height}=mark.geometry.parameters,image=mark.material.map.image,data=mark.userData.surfaceText;
+        assert.ok(Math.abs(image.width/image.height-width/height)/(width/height)<.01,`${data.text} must not stretch glyphs`);
+        assert.ok(data.fontPixels>=24,`${data.text} needs enough source pixels for oblique views`);
+        assert.ok(data.textWidthPixels<=image.width*.921,`${data.text} must not clip`);
+        assert.equal(mark.material.toneMapped,false,'printed ink should not wash out with metallic lighting');
+      }
+    });
   }
   test(`${model} power: control/sense path is separate from the load-current path`,()=>{
     const detail=createPowerDetail(T,model),power=detail.paths.find(p=>p.kind==='power'),control=detail.paths.find(p=>p.kind==='control');
@@ -49,6 +61,15 @@ for(const model of ['h100','a100']){
     let winding=0,core=0;detail.components['power-inductor'].group.traverse(o=>{if(o.material===detail.materials.copper)winding++;if(o.material===detail.materials.core)core++;});
     assert.ok(winding>=5&&core>=4,'opened inductor must expose both conductor and core');
     assert.ok(detail.components['power-board'].description.includes('不代表'));
+  });
+  test(`${model} power: winding turns connect and the lid markings stay on their shells`,()=>{
+    const detail=createPowerDetail(T,model),turns=[],marks=[];
+    detail.root.traverse(o=>{if(Number.isInteger(o.userData.windingTurn))turns.push(o);if(/^L[2-6]$/.test(o.userData.surfaceText?.text||''))marks.push(o);});
+    turns.sort((a,b)=>a.userData.windingTurn-b.userData.windingTurn);assert.equal(turns.length,5);
+    for(let i=1;i<turns.length;i++)assert.ok(turns[i-1].geometry.parameters.path.getPoint(1).distanceTo(turns[i].geometry.parameters.path.getPoint(0))<1e-6,'a winding must be continuous instead of disconnected closed rings');
+    assert.equal(marks.length,5);detail.setExplode(0);detail.root.updateMatrixWorld(true);
+    const initial=marks.map(o=>o.getWorldPosition(new T.Vector3()));detail.setExplode(1);detail.root.updateMatrixWorld(true);
+    marks.forEach((o,i)=>assert.ok(Math.abs(o.getWorldPosition(new T.Vector3()).y-initial[i].y-.45)<1e-8,'a package marking must move with its physical shell'));
   });
   test(`${model} interconnect: vias, return plane and connector are distinct hierarchical objects`,()=>{
     const detail=createInterconnectDetail(T,model);
