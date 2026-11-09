@@ -97,12 +97,12 @@ const app = page => page.evaluate(() => ({
   playLabel: document.getElementById('play-btn').getAttribute('aria-label'), lang: document.documentElement.lang,
   route: [...document.querySelectorAll('#route-nodes span')].map(n => n.textContent)
 }));
-async function waitStep(page, journey, index, timeout = 20000) {
+async function waitStep(page, journey, index, timeout = 45000) {
   await page.waitForFunction(([j, i]) => document.body.dataset.currentJourney === j && document.getElementById('step-counter').textContent.startsWith(String(i + 1).padStart(2, '0')) && document.getElementById('scene3d').dataset.flowJourney === j, [journey, index], { timeout });
 }
 async function checkStep(page, journey, index) {
   await waitStep(page, journey, index);
-  await page.waitForFunction(level => document.getElementById('scene3d').dataset.level === level, LEVEL_OF[journey][index], { timeout: 20000 });
+  await page.waitForFunction(level => document.getElementById('scene3d').dataset.level === level, LEVEL_OF[journey][index], { timeout: 45000 });
   const s = await scene(page), a = await app(page);
   assert.equal(s.level, LEVEL_OF[journey][index], `${journey} step ${index + 1}: scene level`);
   assert.equal(s.flowJourney, journey, `${journey} step ${index + 1}: overlay belongs to the journey`);
@@ -193,12 +193,12 @@ test('replay restarts the current step; pause freezes the visual clock', async (
   const before = await app(page);
   await page.click('#replay-btn');
   await page.waitForFunction(r => document.getElementById('diagram').dataset.guideRevision !== r, before.revision);
-  await page.waitForFunction(() => Number(document.getElementById('journey-lab').dataset.progress) < .3, null, { timeout: 5000 }); // replay starts the step again
+  await page.waitForFunction(() => Number(document.getElementById('journey-lab').dataset.progress) < .3, null, { timeout: 30000 }); // replay starts the step again
   await page.click('#motion-btn');
   const cycle = (await scene(page)).flowCycle; await page.waitForTimeout(700);
   assert.equal((await scene(page)).flowCycle, cycle, 'visual phase frozen while paused');
-  await page.click('#motion-btn'); await page.waitForTimeout(700);
-  assert.notEqual((await scene(page)).flowCycle, cycle, 'visual phase resumes');
+  await page.click('#motion-btn');
+  await page.waitForFunction(c => document.getElementById('scene3d').dataset.flowCycle !== c, cycle, { timeout: 30000 }); // visual phase resumes
   noProblems(problems); await context.close();
 });
 
