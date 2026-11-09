@@ -1,70 +1,122 @@
 <!doctype html>
 <html lang="zh-CN"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0b1014">
-<meta name="description" content="拆开一颗 GPU，跟着数据走完一次计算。可交互硬件解剖、逐步动画与数值实验。"><title>GPU Explorer — 走进一颗 GPU</title>
-<link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css?v=20261102x">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#141415">
+<meta name="description" data-i18n-content="meta.description" content="可拆解的 H100 / A100 三维模型。看一次矩阵乘法、一次地址翻译、一个像素和一组 HBM 堆叠分别发生在芯片的哪里。"><title>GPU Explorer · 拆开一块 GPU，跟着它算一次</title>
+<link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css?v=20261109a">
 <script type="importmap">{"imports":{"three":"./three/three.module.js","three/addons/":"./three/addons/"}}</script></head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 3.5v5h-5"/></symbol>
+ <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></symbol>
+ <symbol id="i-type" viewBox="0 0 24 24"><path d="M5 7V5h14v2M12 5v14M9 19h6"/></symbol>
+ <symbol id="i-paths" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h5a5 5 0 0 1 5 5v5"/></symbol>
+ <symbol id="i-focus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></symbol>
+ <symbol id="i-isolate" viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><rect x="9" y="9" width="6" height="6" rx="1"/></symbol>
+ <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 3.5v5h5"/></symbol>
+ <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></symbol>
+ <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.2a2.5 2.5 0 1 1 3.4 2.4c-.6.3-1 .8-1 1.5v.6M12 17h.01"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5l12 7.5-12 7.5z"/></symbol>
+ <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+ <symbol id="i-left" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+ <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+ <symbol id="i-external" viewBox="0 0 24 24"><path d="M7 17L17 7M9 7h8v8"/></symbol>
+ <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+ <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+ <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16M15 4v16"/></symbol>
+ <symbol id="i-route" viewBox="0 0 24 24"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="18" r="2"/><path d="M7 6h8a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h8"/></symbol>
+ <symbol id="i-pixel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M9 21h6M12 17v4"/><rect x="10" y="8.5" width="4" height="4"/></symbol>
+ <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.5l9 5 9-5"/><path d="M3 16.5l9 5 9-5"/></symbol>
+</svg>
 <header class="topbar">
- <a class="brand" href="./" aria-label="GPU Explorer 首页"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="7" width="18" height="18" rx="3"/><rect x="12" y="12" width="8" height="8" rx="1"/><path d="M11 3v4m5-4v4m5-4v4M11 25v4m5-4v4m5-4v4M3 11h4m-4 5h4m-4 5h4m18-10h4m-4 5h4m-4 5h4"/></svg><span><strong>GPU Explorer</strong></span></a>
- <nav class="mode-switch" aria-label="探索模式"><button data-mode="explore">解剖硬件</button><button class="active" data-mode="learn">跟着算一次</button></nav>
- <div class="top-actions"><a href="https://github.com/yingxu-work/gpu-explorer" target="_blank" rel="noopener">GitHub ↗</a><button id="help-btn" aria-label="操作帮助">?</button></div>
+ <a class="brand" href="./" data-i18n-aria="brand.home" aria-label="GPU Explorer 首页"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="7" width="18" height="18" rx="3"/><rect x="12" y="12" width="8" height="8" rx="1"/><path d="M11 3v4m5-4v4m5-4v4M11 25v4m5-4v4m5-4v4M3 11h4m-4 5h4m-4 5h4m18-10h4m-4 5h4m-4 5h4"/></svg><strong>GPU Explorer</strong></a>
+ <nav class="mode-switch" data-i18n-aria="mode.nav" aria-label="工作区"><button data-mode="explore" data-i18n="mode.explore">解剖硬件</button><button class="active" data-mode="learn" data-i18n="mode.learn">跟着算一次</button></nav>
+ <div class="top-actions">
+  <div class="lang-switch" role="group" data-i18n-aria="lang.nav" aria-label="界面语言"><button type="button" data-lang="zh" lang="zh-CN" aria-pressed="true">中文</button><button type="button" data-lang="en" lang="en" aria-pressed="false">EN</button></div>
+  <a class="top-link" href="https://github.com/yingxu-work/gpu-explorer" target="_blank" rel="noopener"><span data-i18n="top.github">GitHub</span><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+  <button id="help-btn" class="icon-btn" data-i18n-aria="top.help" data-i18n-title="top.help" aria-label="操作说明"><svg class="icon" aria-hidden="true"><use href="#i-help"/></svg></button>
+ </div>
 </header>
 <div class="shell">
- <aside class="sidebar" aria-label="导航">
-  <section class="specimen-section"><label class="sr-only" for="model-select">型号</label><select id="model-select"><option value="h100">H100 · SXM 80GB</option><option value="a100">A100 · SXM 80GB</option></select></section>
-  <section class="hierarchy-section"><div class="section-heading"><h2>探索尺度</h2></div><nav class="scale-nav" aria-label="硬件层级">
-   <button data-level="board" class="active"><span>01</span><div><strong>SXM 模组</strong><small>板卡、供电与互连</small></div><i>↗</i></button>
-   <button data-level="package"><span>02</span><div><strong>芯片封装</strong><small>GPU、HBM 与中介层</small></div><i>↗</i></button>
-   <button data-level="die"><span>03</span><div><strong>GPU Die</strong><small>计算阵列与 L2 缓存</small></div><i>↗</i></button>
-   <button data-level="sm"><span>04</span><div><strong>SM</strong><small>线程、寄存器与 Tensor Core</small></div><i>↗</i></button>
-   <button data-level="hbm"><span>05</span><div><strong>HBM 内存</strong><small>DRAM 叠层、TSV 与通道</small></div><i>↗</i></button>
-   <button data-level="power"><span>06</span><div><strong>供电模块</strong><small>功率级、电感与去耦</small></div><i>↗</i></button>
-   <button data-level="interconnect"><span>07</span><div><strong>PCB / SXM 互连</strong><small>铜层、通孔与接触阵列</small></div><i>↗</i></button>
+ <aside class="sidebar" data-i18n-aria="side.nav" aria-label="导航">
+  <section class="specimen-section"><label class="side-label" for="model-select" data-i18n="side.model">型号</label><select id="model-select"><option value="h100" data-i18n="model.h100">H100 SXM 80GB</option><option value="a100" data-i18n="model.a100">A100 SXM 80GB</option></select></section>
+  <section class="hierarchy-section"><h2 class="side-label" data-i18n="side.levels">硬件层级</h2><nav class="scale-nav" data-i18n-aria="side.levels" aria-label="硬件层级">
+   <button data-level="board" class="active"><span class="idx">01</span><span class="txt"><strong data-i18n="level.board">SXM 模组</strong><small data-i18n="level.board.sub">电路板、供电、连接器</small></span></button>
+   <button data-level="package"><span class="idx">02</span><span class="txt"><strong data-i18n="level.package">芯片封装</strong><small data-i18n="level.package.sub">GPU 裸片、HBM、中介层</small></span></button>
+   <button data-level="die"><span class="idx">03</span><span class="txt"><strong data-i18n="level.die">GPU 裸片</strong><small data-i18n="level.die.sub">GPC、SM、L2、接口</small></span></button>
+   <button data-level="sm"><span class="idx">04</span><span class="txt"><strong data-i18n="level.sm">SM</strong><small data-i18n="level.sm.sub">调度器、寄存器、Tensor Core</small></span></button>
+   <button data-level="hbm"><span class="idx">05</span><span class="txt"><strong data-i18n="level.hbm">HBM 显存</strong><small data-i18n="level.hbm.sub">DRAM 叠层、TSV、通道</small></span></button>
+   <button data-level="power"><span class="idx">06</span><span class="txt"><strong data-i18n="level.power">供电</strong><small data-i18n="level.power.sub">功率级、电感、电容</small></span></button>
+   <button data-level="interconnect"><span class="idx">07</span><span class="txt"><strong data-i18n="level.interconnect">PCB 与连接器</strong><small data-i18n="level.interconnect.sub">铜层、过孔、触点</small></span></button>
   </nav></section>
-  <section class="journey-section"><div class="section-heading"><h2>选择流程</h2></div><nav class="nav-list" aria-label="旅程">
-   <button class="nav-item active" data-journey="gemm"><b>×</b><div><strong>一次矩阵乘法</strong><small>从 A、B 到 C[3,7]</small></div><span>08</span></button>
-   <button class="nav-item" data-journey="pagetable"><b>⇄</b><div><strong>一次地址翻译</strong><small>虚拟地址如何找到数据</small></div><span>07</span></button>
-   <button class="nav-item" data-journey="pixel"><b>▧</b><div><strong>一个像素的旅程</strong><small>几何到屏幕的图形管线</small></div><span>08</span></button>
-   <button class="nav-item" data-journey="stacking"><b>▱</b><div><strong>芯片为什么堆起来</strong><small>逻辑、存储与垂直连接</small></div><span>08</span></button>
-  </nav><p id="journey-gloss" class="sr-only"></p></section>
-  <details class="components-section"><summary>部件目录 <span>＋</span></summary><nav id="component-tree" aria-label="实体部件"></nav></details>
-  <div class="sidebar-bottom"><div id="compare-controls"><label for="compare-select">规格对照</label><select id="compare-select"><option value="">选择另一颗 GPU…</option><option value="h100">H100 SXM 80GB</option><option value="a100">A100 SXM 80GB</option></select></div><button id="sources-btn">来源 <span>↗</span></button></div>
+  <section class="journey-section"><h2 class="side-label" data-i18n="side.journeys">流程</h2><nav class="nav-list" data-i18n-aria="side.journeys" aria-label="流程">
+   <button class="nav-item active" data-journey="gemm"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg><span class="txt"><strong data-journey-title>一次矩阵乘法</strong><small data-journey-subtitle>从 A、B 算出 C[3,7]</small></span></button>
+   <button class="nav-item" data-journey="pagetable"><svg class="icon" aria-hidden="true"><use href="#i-route"/></svg><span class="txt"><strong data-journey-title>一次地址翻译</strong><small data-journey-subtitle>线程给出的地址怎么找到 HBM</small></span></button>
+   <button class="nav-item" data-journey="pixel"><svg class="icon" aria-hidden="true"><use href="#i-pixel"/></svg><span class="txt"><strong data-journey-title>一个像素的旅程</strong><small data-journey-subtitle>H100 上能跑图形的那两个 TPC</small></span></button>
+   <button class="nav-item" data-journey="stacking"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg><span class="txt"><strong data-journey-title>芯片为什么堆起来</strong><small data-journey-subtitle>HBM、中介层和封装</small></span></button>
+  </nav></section>
+  <details class="components-section"><summary><span data-i18n="side.parts">部件列表</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><nav id="component-tree" data-i18n-aria="side.parts" aria-label="部件列表"></nav></details>
+  <div class="sidebar-bottom"><div id="compare-controls"><label class="side-label" for="compare-select" data-i18n="side.compare">规格对照</label><select id="compare-select"><option value="" data-i18n="side.comparePick">选择另一颗 GPU</option><option value="h100" data-i18n="model.h100">H100 SXM 80GB</option><option value="a100" data-i18n="model.a100">A100 SXM 80GB</option></select></div><button id="sources-btn" class="text-btn"><span data-i18n="side.sources">来源</span><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></button></div>
  </aside>
  <main class="canvas-panel">
-  <div class="canvas-head"><nav id="crumb" class="crumb" aria-label="当前位置"></nav></div>
-  <div class="diagrams"><div id="diagram" class="diagram" aria-label="3D 交互视图">
-   <div id="scene3d" class="scene3d" aria-label="可交互 3D 场景：可切换旋转与平移工具，Shift 拖动平移，滚轮缩放，双击聚焦"></div>
-
-   <div class="stage-toolbar" aria-label="场景控制"><button id="rotate-btn" class="active" aria-label="旋转工具" aria-pressed="true">⟳<small>旋转</small></button><button id="pan-btn" aria-label="平移工具" aria-pressed="false">↔<small>平移</small></button><button id="labels-btn" aria-label="显示或隐藏悬浮标签" aria-pressed="false" title="显示标签">Aa<small>标签</small></button><button id="focus-btn" aria-label="聚焦选中部件">⌖<small>聚焦</small></button><button id="isolate-btn" aria-label="隔离选中部件" aria-pressed="false">◇<small>隔离</small></button><button id="home-btn" aria-label="重置相机和拆解">↺<small>复位</small></button></div>
-
-   <div id="compare-diagram" class="compare-panel" hidden><div class="section-heading"><h2>同一问题，不同硬件</h2><button id="compare-close" aria-label="关闭对照">×</button></div><h3 id="compare-model-name"></h3><p id="compare-model-note"></p><div id="compare-facts"></div><p id="compare-step-note"></p></div>
-   <div class="stage-bottom"><nav class="cam-bar" aria-label="视角预设"><button class="active" data-cam="three-quarter">3D</button><button data-cam="top">TOP</button><button data-cam="side">SIDE</button></nav><button id="fullscreen-btn" aria-label="全屏场景">⛶</button></div>
-   <div id="scene-loading" class="scene-loading">正在准备硬件模型<span></span></div>
+  <div class="canvas-head"><nav id="crumb" class="crumb" data-i18n-aria="crumb.nav" aria-label="当前位置"></nav></div>
+  <div class="diagrams"><div id="diagram" class="diagram">
+   <div id="scene3d" class="scene3d"></div>
+   <div class="stage-toolbar" role="toolbar" data-i18n-aria="scene.toolbar" aria-label="视图工具">
+    <button id="rotate-btn" class="active" aria-pressed="true" data-i18n-aria="tool.rotate" data-i18n-title="tool.rotate" aria-label="旋转"><svg class="icon" aria-hidden="true"><use href="#i-rotate"/></svg></button>
+    <button id="pan-btn" aria-pressed="false" data-i18n-aria="tool.pan" data-i18n-title="tool.pan" aria-label="平移"><svg class="icon" aria-hidden="true"><use href="#i-move"/></svg></button>
+    <button id="labels-btn" aria-pressed="false" data-i18n-aria="tool.labelsAria" data-i18n-title="tool.labels" aria-label="显示或隐藏标签"><svg class="icon" aria-hidden="true"><use href="#i-type"/></svg></button>
+    <button id="paths-btn" aria-pressed="false" data-i18n-aria="tool.pathsAria" data-i18n-title="tool.paths" aria-label="显示这一层的数据通路"><svg class="icon" aria-hidden="true"><use href="#i-paths"/></svg></button>
+    <button id="focus-btn" data-i18n-aria="tool.focusAria" data-i18n-title="tool.focus" aria-label="把镜头对准选中的部件"><svg class="icon" aria-hidden="true"><use href="#i-focus"/></svg></button>
+    <button id="isolate-btn" aria-pressed="false" data-i18n-aria="tool.isolateAria" data-i18n-title="tool.isolate" aria-label="只显示选中的部件"><svg class="icon" aria-hidden="true"><use href="#i-isolate"/></svg></button>
+    <button id="home-btn" data-i18n-aria="tool.resetAria" data-i18n-title="tool.reset" aria-label="复位镜头并合拢"><svg class="icon" aria-hidden="true"><use href="#i-reset"/></svg></button>
+   </div>
+   <p id="paths-note" class="paths-note" data-i18n="paths.note" hidden>通路按功能画出，不是芯片里真实的走线位置</p>
+   <div id="compare-diagram" class="compare-panel" hidden><div class="compare-head"><h2 data-i18n="compare.title">同一道题，两颗 GPU</h2><button id="compare-close" class="icon-btn" data-i18n-aria="compare.close" aria-label="关闭对照"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div><p id="compare-model-note" data-i18n="compare.note">SXM 80GB 产品的公开规格</p><div id="compare-facts"></div><p id="compare-step-note" data-i18n="compare.footer">算出来的数相同，用到的资源和搬运方式不同。</p></div>
+   <div class="stage-bottom"><nav class="cam-bar" data-i18n-aria="cam.nav" aria-label="视角"><button class="active" data-cam="three-quarter" data-i18n="cam.3d">斜视</button><button data-cam="top" data-i18n="cam.top">俯视</button><button data-cam="side" data-i18n="cam.side">侧视</button></nav><button id="fullscreen-btn" class="icon-btn" data-i18n-aria="cam.fullscreen" data-i18n-title="cam.fullscreen" aria-label="全屏"><svg class="icon" aria-hidden="true"><use href="#i-expand"/></svg></button></div>
+   <div id="scene-loading" class="scene-loading"><span data-i18n="scene.loading">正在载入硬件模型</span><i></i></div>
   </div></div>
-  <section class="dissection-controls" aria-label="拆解控制"><button id="explode-auto-btn" aria-label="自动拆解模组">▷</button><div class="explode-caption"><strong>拆开它</strong></div><div class="explode-track"><div><span>完整</span><span>拆解</span></div><input id="explode-slider" type="range" min="0" max="100" value="0" aria-label="拆开程度"></div><output id="explode-value" for="explode-slider">0<span>%</span></output></section>
-
+  <section class="dissection-controls" data-i18n-aria="explode.section" aria-label="拆开"><button id="explode-auto-btn" class="icon-btn" data-i18n-aria="explode.auto" aria-label="播放拆开再合拢" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg></button><strong class="explode-caption" data-i18n="explode.title">拆开</strong><div class="explode-track"><div><span data-i18n="explode.min">合拢</span><span data-i18n="explode.max">拆开</span></div><input id="explode-slider" type="range" min="0" max="100" value="0" data-i18n-aria="explode.slider" aria-label="拆开程度"></div><output id="explode-value" for="explode-slider">0%</output></section>
  </main>
- <aside class="inspector" aria-label="当前步骤详情">
-  <div class="inspector-head"><span class="section-label" id="inspector-label">GUIDED WALKTHROUGH</span><span id="step-counter">01 / 08</span></div>
-  <div class="inspector-scroll"><div id="learn-content"><div class="chapter-heading"><span id="chapter-kicker" class="sr-only">01 — THE OUTPUT</span><h2 id="step-title"></h2><p id="step-body"></p></div>
-   <section id="teaching-status" class="teaching-status" aria-label="当前步骤路径" hidden><div id="route-nodes" class="route-nodes"></div></section>
-   <div id="journey-lab" aria-label="数值计算动画"></div>
-   <div class="step-animation-control"><button id="replay-btn" aria-label="重新演示当前步骤">↻ 重新演示</button><button id="motion-btn" aria-label="暂停当前步骤动画">Ⅱ 暂停动画</button></div>
-   <details id="math-details"><summary>完整公式 <span>＋</span></summary><div id="fact" class="fact"></div></details>
-   <details id="hardware-details"><summary>对应的硬件 <span>＋</span></summary><div class="hardware-link"><p id="hardware-note"></p></div></details>
-   <label class="follow-control" hidden><input id="follow-camera" type="checkbox" checked>镜头跟随步骤</label>
-   <details id="code-details"><summary>伪代码 <span>＋</span></summary><pre id="code-panel" aria-label="相关代码"></pre></details>
-   <details id="predict-details"><summary>想一想 <span>＋</span></summary><section id="predict" class="predict" aria-label="预测"></section></details>
+ <aside class="inspector" data-i18n-aria="inspector.label" aria-label="详情">
+  <div class="inspector-head"><span id="inspector-label"></span><span id="step-counter">01 / 08</span></div>
+  <div class="inspector-scroll"><div id="learn-content"><div class="chapter-heading"><h2 id="step-title"></h2><p id="step-body"></p></div>
+   <section id="teaching-status" class="teaching-status" data-i18n-aria="step.route" aria-label="这一步的路径" hidden><div id="route-nodes" class="route-nodes"></div></section>
+   <div id="journey-lab" data-i18n-aria="step.lab" aria-label="数值演示"></div>
+   <div class="step-animation-control"><button id="replay-btn" class="text-btn" data-i18n-aria="step.replayAria" aria-label="重新演示这一步"><svg class="icon" aria-hidden="true"><use href="#i-reset"/></svg><span data-i18n="step.replay">重新演示</span></button><button id="motion-btn" class="text-btn" data-i18n-aria="step.pauseAria" aria-label="暂停这一步的动画"><svg class="icon" aria-hidden="true"><use href="#i-pause"/></svg><span data-i18n="step.pause">暂停</span></button></div>
+   <details id="hardware-details" open><summary><span data-i18n="details.hardware">发生在哪里</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><p id="hardware-note" class="detail-text"></p></details>
+   <details id="math-details"><summary><span data-i18n="details.math">公式</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><div id="fact" class="fact"></div></details>
+   <details id="code-details"><summary><span data-i18n="details.code">伪代码</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><pre id="code-panel"></pre></details>
+   <details id="predict-details"><summary><span data-i18n="details.predict">想一想</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><section id="predict" class="predict"></section></details>
+   <p id="journey-scope" class="scope-note"></p>
   </div>
-  <div id="explore-content" hidden><p class="explore-kicker">自由探索</p><h2 id="explore-title">一块模组，各司其职。</h2><p id="explore-description">点选部件查看作用，双击进入内部。拖动旋转，滚轮缩放。</p>   <div id="selection-card" class="selection-card" hidden><span class="section-label">选中部件</span><strong id="component-name"></strong><p id="component-detail"></p><button id="selection-enter" class="selection-enter" hidden>进入内部 <span>↗</span></button><button id="selection-close" aria-label="关闭部件说明">×</button></div><details class="explore-notes"><summary>结构说明 <span>＋</span></summary><div class="explore-feature"><div><h3></h3><p></p></div></div><div class="explore-feature"><div><h3></h3><p></p></div></div></details></div>
-  <section id="sm-resource-legend" class="sm-resource-legend" aria-label="SM 资源颜色图例" hidden><div class="resource-legend-heading"><strong>SM 资源</strong><span>数量 / SM</span></div><nav id="sm-resource-items" aria-label="SM 功能资源"></nav></section>
-  </div><div class="inspector-footer"><div class="playback"><button id="prev-btn" aria-label="上一步">←</button><button id="next-btn" class="continue-btn">继续 <span>→</span></button></div></div>
+  <div id="explore-content" hidden><h2 id="explore-title"></h2><p id="explore-description"></p>
+   <div id="selection-card" class="selection-card" hidden><span class="side-label" data-i18n="explore.selected">已选中</span><strong id="component-name"></strong><p id="component-detail"></p><button id="selection-enter" class="text-btn selection-enter" hidden><span data-i18n="explore.enter">进入内部</span><svg class="icon" aria-hidden="true"><use href="#i-right"/></svg></button><button id="selection-close" class="icon-btn" data-i18n-aria="explore.close" aria-label="关闭部件说明"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+   <details class="explore-notes" open><summary><span data-i18n="explore.notes">这一层有什么</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><div class="explore-feature"><h3></h3><p></p></div><div class="explore-feature"><h3></h3><p></p></div></details></div>
+  <section id="sm-resource-legend" class="sm-resource-legend" data-i18n-aria="legend.nav" aria-label="SM 资源图例" hidden><div class="resource-legend-heading"><strong data-i18n="legend.title">SM 里的资源</strong><span data-i18n="legend.count">每 SM</span></div><nav id="sm-resource-items" data-i18n-aria="legend.nav" aria-label="SM 资源图例"></nav></section>
+  </div><div class="inspector-footer"><div class="playback"><button id="prev-btn" class="icon-btn" data-i18n-aria="nav.prev" aria-label="上一步"><svg class="icon" aria-hidden="true"><use href="#i-left"/></svg></button><button id="next-btn" class="continue-btn" data-i18n-aria="nav.nextAria" aria-label="下一步"><span id="next-label" data-i18n="nav.next">下一步</span><svg class="icon" aria-hidden="true"><use href="#i-right"/></svg></button></div></div>
  </aside>
 </div>
-<footer class="bottombar"><div class="timeline-label"><button id="play-btn" aria-label="自动播放全部步骤">▷</button><div><strong id="timeline-title">一次矩阵乘法</strong></div></div><div class="timeline-center"><nav id="overview" class="overview" aria-label="步骤（点击可跳转）"></nav><div class="progress" aria-label="旅程进度"><div id="progress-fill"></div></div></div><div class="timeline-actions"><button id="reset-btn" aria-label="回到开头">↺</button><label class="sr-only" for="speed-select">速度</label><select id="speed-select"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></div></footer>
+<footer class="bottombar"><div class="timeline-label"><button id="play-btn" class="icon-btn play-btn" data-i18n-aria="play.all" aria-label="自动播放全部步骤"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg></button><strong id="timeline-title"></strong></div><div class="timeline-center"><nav id="overview" class="overview" data-i18n-aria="timeline.nav" aria-label="步骤"></nav><div class="progress" role="progressbar" data-i18n-aria="timeline.progress" aria-label="流程进度" aria-valuemin="1"><div id="progress-fill"></div></div></div><div class="timeline-actions"><button id="reset-btn" class="icon-btn" data-i18n-aria="play.restart" data-i18n-title="play.restart" aria-label="从第 1 步重新开始"><svg class="icon" aria-hidden="true"><use href="#i-reset"/></svg></button><label class="sr-only" for="speed-select" data-i18n="play.speed">速度</label><select id="speed-select"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></div></footer>
 <div id="tooltip" class="tooltip" hidden></div><div id="toast" class="toast" role="status"></div>
-<dialog id="help-dialog"><button class="dialog-close" aria-label="关闭帮助">×</button><span class="section-label">A HANDS-ON FIELD GUIDE</span><h2>用手探索，用眼睛理解。</h2><dl><dt>旋转 / 平移工具</dt><dd>旋转工具中左键拖动旋转；平移工具中左键拖动平移。Shift + 拖动或右键拖动也可平移；触屏双指平移</dd><dt>滚轮 / 双指缩放</dt><dd>缩放模型</dd><dt>点击 / 双击</dt><dd>单击选中，再点一次或点空白取消；双击进入内部或聚焦</dd><dt>F / I / R</dt><dd>聚焦 / 隔离 / 相机与拆解复位</dd><dt>← → / 空格</dt><dd>切换步骤 / 自动播放或暂停</dd></dl><p>「解剖硬件」中选择尺度、部件与拆解；「跟着算一次」中选择流程和步骤。旋转、平移和切换视角会保留当前步骤。动画持续循环，数值计算完成后保留结果。</p><button id="help-sources" class="text-link">查看来源与模型说明 ↗</button></dialog>
-<dialog id="sources-dialog"><button class="dialog-close" aria-label="关闭来源">×</button><span class="section-label">SOURCES & ARCHITECTURE</span><h2>来源与模型说明</h2><p><b>H100 SXM 80GB：</b>132 SM、50MB L2、80GB HBM3。每 SM 包含四个子分区，统一 L1 / Shared 容量为 256KB。</p><p><b>A100 SXM 80GB：</b>108 SM、40MB L2、80GB HBM2e。每 SM 的统一 L1 / Shared 容量为 192KB。</p><p>地址翻译展示 x86-64 四级页表；像素旅程展示光栅图形管线；芯片堆叠展示逻辑、存储、垂直互连与散热。</p><p>下列资料用于核对硬件规格、资源组织与工作原理。</p><a href="https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Hopper Architecture In-Depth ↗</a><a href="https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Ampere Architecture In-Depth ↗</a><a href="https://developer.nvidia.com/blog/supercharging-worlds-fastest-ai-supercomputing-platform-on-hgx-a100-80gb-gpus/" target="_blank" rel="noopener">NVIDIA A100 80GB / HBM2e ↗</a><a href="https://www.synopsys.com/designware-ip/interface-ip/hbm/hbm3-phy.html" target="_blank" rel="noopener">Synopsys HBM3 通道与接口 ↗</a><a href="https://docs.amd.com/r/en-US/pg313-network-on-chip/HBM-Topology" target="_blank" rel="noopener">AMD HBM2 / HBM2e 通道组织 ↗</a><a href="https://www.ti.com/document-viewer/lit/html/SSZTC61/GUID-0C11D72C-F6B3-479F-81D7-D5EFA802CA64" target="_blank" rel="noopener">TI 多相供电原理 ↗</a><a href="https://www.ti.com/lit/an/sbaa405a/sbaa405a.pdf" target="_blank" rel="noopener">TI 通用 PCB 参考平面与回流 ↗</a><p>交互设计参考 PC Anatomy 与 LLM Visualization。</p></dialog>
-<script src="state.js?v=20261102x"></script><script src="scene-map.js?v=20261102x"></script><script src="journey-lab.js?v=20261102x"></script><script src="interaction-state.js?v=20261102x"></script><script src="lesson-story.js?v=20261102x"></script><script src="app.js?v=20261102x"></script><script type="module" src="scene3d.js?v=20261102x"></script>
+<dialog id="help-dialog" aria-labelledby="help-title"><button class="dialog-close icon-btn" data-i18n-aria="help.close" aria-label="关闭说明"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button><h2 id="help-title" data-i18n="help.title">怎么操作</h2><dl>
+ <dt data-i18n="help.drag">拖动</dt><dd data-i18n="help.dragText"></dd>
+ <dt data-i18n="help.zoom">滚轮或双指</dt><dd data-i18n="help.zoomText"></dd>
+ <dt data-i18n="help.click">点击与双击</dt><dd data-i18n="help.clickText"></dd>
+ <dt><kbd>F</kbd> <kbd>I</kbd> <kbd>R</kbd></dt><dd data-i18n="help.keysText"></dd>
+ <dt><kbd>←</kbd> <kbd>→</kbd> <kbd data-i18n="help.space">Space</kbd></dt><dd data-i18n="help.stepsText"></dd>
+</dl><p data-i18n="help.body"></p><button id="help-sources" class="text-btn"><span data-i18n="help.sources">来源与模型说明</span><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></button></dialog>
+<dialog id="sources-dialog" aria-labelledby="sources-title"><button class="dialog-close icon-btn" data-i18n-aria="sources.close" aria-label="关闭来源"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button><h2 id="sources-title" data-i18n="sources.title">来源与模型说明</h2><p data-i18n="sources.h100"></p><p data-i18n="sources.a100"></p><p data-i18n="sources.model"></p><p data-i18n="sources.journeys"></p><p data-i18n="sources.list"></p><ul class="source-links">
+ <li><a href="https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Hopper Architecture In-Depth</a></li>
+ <li><a href="https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/" target="_blank" rel="noopener">NVIDIA Ampere Architecture In-Depth</a></li>
+ <li><a href="https://developer.nvidia.com/blog/supercharging-worlds-fastest-ai-supercomputing-platform-on-hgx-a100-80gb-gpus/" target="_blank" rel="noopener">NVIDIA HGX A100 80GB</a></li>
+ <li><a href="https://www.nvidia.com/en-us/data-center/h100/" target="_blank" rel="noopener">NVIDIA H100 product specifications</a></li>
+ <li><a href="https://www.nvidia.com/en-us/data-center/a100/" target="_blank" rel="noopener">NVIDIA A100 product specifications</a></li>
+ <li><a href="https://github.com/NVIDIA/open-gpu-kernel-modules/blob/main/src/nvidia/src/kernel/gpu/mmu/arch/hopper/kern_gmmu_fmt_gh10x.c" target="_blank" rel="noopener">NVIDIA open-gpu-kernel-modules · Hopper GMMU format</a></li>
+ <li><a href="https://nvidia.github.io/open-gpu-doc/pascal/gp100-mmu-format.pdf" target="_blank" rel="noopener">NVIDIA open-gpu-doc · GP100 MMU format</a></li>
+ <li><a href="https://www.synopsys.com/designware-ip/interface-ip/hbm/hbm3-phy.html" target="_blank" rel="noopener">Synopsys HBM3 PHY</a></li>
+ <li><a href="https://docs.amd.com/r/en-US/pg313-network-on-chip/HBM-Topology" target="_blank" rel="noopener">AMD HBM topology (HBM2 / HBM2e)</a></li>
+ <li><a href="https://www.ti.com/document-viewer/lit/html/SSZTC61/GUID-0C11D72C-F6B3-479F-81D7-D5EFA802CA64" target="_blank" rel="noopener">TI multiphase power</a></li>
+ <li><a href="https://www.ti.com/lit/an/sbaa405a/sbaa405a.pdf" target="_blank" rel="noopener">TI PCB reference planes and return paths</a></li>
+</ul><p data-i18n="sources.credit"></p></dialog>
+<script src="i18n.js?v=20261109a"></script><script src="state.js?v=20261109a"></script><script src="journey-lab.js?v=20261109a"></script><script src="interaction-state.js?v=20261109a"></script><script src="app.js?v=20261109a"></script><script type="module" src="scene3d.js?v=20261109a"></script>
 </body></html>

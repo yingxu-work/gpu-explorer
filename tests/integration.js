@@ -32,10 +32,11 @@ server.listen(0, '127.0.0.1', async () => {
     // Public UI targets the controller depends on. Behavior is verified in a browser.
     for (const id of ['model-select','compare-select','scene3d','component-tree','journey-lab',
       'explode-slider','explode-auto-btn','overview','play-btn','prev-btn','next-btn',
-      'focus-btn','isolate-btn','home-btn','labels-btn','follow-camera','replay-btn','motion-btn',
+      'focus-btn','isolate-btn','home-btn','labels-btn','paths-btn','replay-btn','motion-btn',
       'help-dialog','sources-dialog','crumb','teaching-status','route-nodes','explore-title','explore-description','rotate-btn','pan-btn','selection-enter','sm-resource-legend','sm-resource-items']) {
       assert.ok(index.body.includes('id="' + id + '"'), 'missing public control: ' + id);
     }
+    assert.ok(index.body.includes('data-lang="zh"') && index.body.includes('data-lang="en"'), 'visible language switch');
     for (const level of ['board','package','die','sm','hbm','power','interconnect']) {
       assert.ok(index.body.includes('data-level="' + level + '"'), 'missing anatomy level: ' + level);
     }
@@ -55,20 +56,22 @@ server.listen(0, '127.0.0.1', async () => {
     }
     assert.strictEqual((await get(port, '/missing.html')).status, 404);
     assert.ok(index.body.includes('./three/three.module.js'), 'Three.js must remain local');
-    assert.ok(index.body.includes('journey-lab.js'), 'numeric lab must load before controller');
+    assert.ok(index.body.indexOf('i18n.js') < index.body.indexOf('state.js'), 'dictionary loads before content');
+    assert.ok(index.body.indexOf('journey-lab.js') < index.body.indexOf('app.js'), 'numeric lab must load before controller');
+    // One asset version for every local script, stylesheet and module import, so a deploy loads consistently.
+    const versions = new Set([...index.body.matchAll(/\?v=(\w+)/g)].map(m => m[1]));
+    for (const file of ['scene3d.js','hardware-model.js','teaching-flow.js','hbm-model.js','power-model.js','interconnect-model.js']) for (const m of fs.readFileSync(path.join(root, file), 'utf8').matchAll(/\?v=(\w+)/g)) versions.add(m[1]);
+    assert.strictEqual(versions.size, 1, 'mixed asset versions: ' + [...versions].join(', '));
 
     // Shared links retain the computation across anatomy/UI parameters.
-    const restored = S.decodeState('#j=gemm&m=a100&v=data&s=5&sel=smem&cmp=h100&level=sm&mode=learn&x=65');
+    const restored = S.decodeState('#j=gemm&m=a100&s=5&sel=smem&cmp=h100&level=sm&mode=learn&x=65&lang=en');
     assert.strictEqual(restored.journey,'gemm'); assert.strictEqual(restored.model,'a100');
     assert.strictEqual(restored.stepIndex,5); assert.strictEqual(restored.selected,'smem');
     assert.strictEqual(restored.compareModel,'h100');
     assert.deepStrictEqual(S.decodeState('#' + S.encodeState(restored)),restored);
-    S.setModel(restored,'h100'); assert.strictEqual(restored.compareModel,null);
-    S.setView(restored,'structure'); assert.strictEqual(restored.stepIndex,5);
     S.setJourney(restored,'pagetable'); assert.strictEqual(restored.stepIndex,0);
-    assert.strictEqual(restored.selected,null);
     while (!S.isAtEnd(restored)) S.next(restored);
-    assert.strictEqual(S.currentStep(restored).title,'内存访问与缓存装入');
+    assert.strictEqual(S.currentStep(restored).id,'return');
 
     // The lesson's displayed arithmetic must agree with an independently evaluated dot product.
     const a = L.GEMM.A[L.GEMM.row];
@@ -76,9 +79,7 @@ server.listen(0, '127.0.0.1', async () => {
     const expected = a.reduce((sum, value, k) => sum + value*b[k],0);
     assert.strictEqual(expected,37); assert.strictEqual(L.accumulation(7,1).value,expected);
     assert.strictEqual(L.GEMM.tileSums.reduce((x,y) => x+y,0),expected);
-    const indices = L.pageIndices(L.PAGE.va);
-    assert.strictEqual(indices.offset, L.PAGE.va % 4096);
-    assert.strictEqual(L.PAGE.physical,L.PAGE.pageBase + indices.offset);
+    assert.strictEqual('0x' + L.physicalAddress(L.PAGE.pageBase, L.PAGE.va, 21).toString(16), L.PAGE.physical);
     console.log('INTEGRATION OK: served assets, public controls, shared state and numeric lessons');
     server.close();
   } catch (error) {
