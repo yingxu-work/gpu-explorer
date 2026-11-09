@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261102x';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261102x';
-import { createConceptModel } from './concept-models.js?v=20261102x';
-import { createSelectionFeedback } from './selection-feedback.js?v=20261102x';
+import { lessonPresentation, anatomyPaths, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261109a';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261109a';
+import { createSelectionFeedback } from './selection-feedback.js?v=20261109a';
+
+const I18N = window.GpuExplorerI18n;
+const tr = value => I18N ? I18N.pick(value) : (value && typeof value === 'object' ? value.zh : value);
+const tk = key => I18N ? I18N.t(key) : key;
 
 // The hardware and the lesson share a scene, but never confuse a logical
 // operation with a separate physical chip. A/B/C are regions in HBM; Shared
@@ -11,8 +14,7 @@ import { createSelectionFeedback } from './selection-feedback.js?v=20261102x';
 const ALIASES = { 'a-tile': 'hbm', 'b-tile': 'hbm', 'c-out': 'hbm' };
 const LEVELS = ['board', 'package', 'die', 'sm', 'hbm', 'power', 'interconnect'];
 const PARENT_LEVEL = { board:'board', package:'board', die:'package', sm:'die', hbm:'package', power:'board', interconnect:'board' };
-const LABELS = { board: ['gpu-die', 'hbm', 'power'], package: ['gpu-die', 'hbm', 'interposer'], die: ['sm', 'l2'], sm: ['warp', 'registers', 'tensor', 'smem'], hbm:['hbm-dram','hbm-tsv','hbm-base','hbm-channel'], power:['power-input','power-stage','power-inductor','power-output'], interconnect:['link-layers','link-vias','link-socket','link-pairs'] };
-const LEVEL_INFO = { board:'SXM MODULE', package:'GPU PACKAGE', die:'SILICON FLOORPLAN', sm:'STREAMING MULTIPROCESSOR',hbm:'HBM STACK CUTAWAY',power:'POWER DELIVERY',interconnect:'SXM / PACKAGE INTERCONNECT' };
+const LABELS = { board: ['gpu-die', 'hbm', 'power', 'sxm'], package: ['gpu-die', 'hbm', 'interposer', 'hbm-inactive'], die: ['sm', 'l2', 'memory-controller', 'nvlink', 'pcie'], sm: ['warp', 'registers', 'tensor', 'smem'], hbm:['hbm-dram','hbm-tsv','hbm-base','hbm-channel'], power:['power-input','power-stage','power-inductor','power-output'], interconnect:['link-layers','link-vias','link-socket','link-pairs'] };
 const EASE = t => 1 - Math.pow(1 - t, 3);
 const clamp = n => Math.max(0, Math.min(1, Number(n) || 0));
 const cameraDirection = name => name==='top'?new THREE.Vector3(0,1,.0001):name==='side'?new THREE.Vector3(1,.18,1.05).normalize():new THREE.Vector3(.62,.83,1).normalize();
@@ -31,7 +33,7 @@ function environment(renderer) {
 class HardwareScene {
   constructor(container, compare = false) {
     this.container=container;this.compare=compare;this.level='board';this.model='h100';this.selected=null;this.hovered=null;this.explode=0;this.explodeTarget=0;this.progress=0;this.labelsVisible=true;this.isolated=false;this.flowObjects=[];this.labelNodes=[];this.picking=true;this.lastStep='';this.userSelection=false;this.autoFrame=true;
-    this.labelsVisible=false;this.navigationMode='rotate';this.conceptModel=null;this.conceptShowing=false;
+    this.labelsVisible=false;this.navigationMode='rotate';this.pathsVisible=false;
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.75));
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
@@ -39,10 +41,10 @@ class HardwareScene {
     this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
     const canvas=this.renderer.domElement;
     canvas.style.cssText='display:block;width:100%;height:100%;touch-action:none;outline:none;';
-    canvas.tabIndex=0;canvas.setAttribute('role','img');canvas.setAttribute('aria-label','可交互三维模型。拖动旋转，Shift 拖动或切换平移工具来平移，滚轮缩放，双击进入。F 聚焦，I 隔离，R 复位。');
+    canvas.tabIndex=0;canvas.setAttribute('role','img');canvas.setAttribute('aria-label',tk('scene.label'));this.canvas=canvas;
     container.appendChild(canvas);
     this.scene=new THREE.Scene();
-    this.scene.fog=new THREE.FogExp2(0x11191b,.011);
+    this.scene.fog=new THREE.FogExp2(0x101315,.009);
     this.camera=new THREE.PerspectiveCamera(38,1,.08,180);this.camera.position.set(16,18.2,21.8);
     this.controls=new OrbitControls(this.camera,canvas);this.controls.target.set(0,.2,0);this.controls.enableDamping=true;this.controls.dampingFactor=.075;this.controls.minDistance=2.8;this.controls.maxDistance=52;this.controls.maxPolarAngle=Math.PI*.86;this.controls.panSpeed=.7;this.controls.rotateSpeed=.65;this.controls.zoomSpeed=.9;
     this.controls.enablePan=true;this.controls.screenSpacePanning=true;this.controls.touches.TWO=THREE.TOUCH.DOLLY_PAN;
@@ -70,6 +72,7 @@ class HardwareScene {
     this.selectionFeedback?.dispose();
     if(this.hardware){this.scene.remove(this.hardware.root);this.disposeObject(this.hardware.root);}
     // The old isolation paths and user-picked groups belong to the disposed model.
+    this.ghostShells=[];this.ghostHidden=[];
     this.isolationHidden=[];this.isolated=false;this.selected=null;this.userSelection=false;this.lastStateSelection=null;this.lastStep='';this.hovered=null;
     this.model=model;
     this.hardware=createHardwareModel(THREE,model==='a100'?'a100':'h100');
@@ -127,7 +130,7 @@ class HardwareScene {
       if(this.navigationMode==='pan'){this.hovered=null;canvas.style.cursor='grab';const tip=document.getElementById('tooltip');if(tip){tip.hidden=true;tip.style.display='none';}return;}
       const hit=this.pick(event);this.hovered=hit;canvas.style.cursor=hit?'pointer':'grab';
       const tip=document.getElementById('tooltip');
-      if(tip&&hit){const info=this.hardware.components[hit];tip.textContent=info?.label||hit;tip.hidden=false;tip.style.display='block';tip.style.left=`${Math.min(event.clientX+14,window.innerWidth-250)}px`;tip.style.top=`${Math.min(event.clientY+15,window.innerHeight-65)}px`;}
+      if(tip&&hit){const info=this.hardware.components[hit];tip.textContent=tr(info?.label)||hit;tip.hidden=false;tip.style.display='block';tip.style.left=`${Math.min(event.clientX+14,window.innerWidth-250)}px`;tip.style.top=`${Math.min(event.clientY+15,window.innerHeight-65)}px`;}
       else if(tip){tip.hidden=true;tip.style.display='none';}
     });
     canvas.addEventListener('pointerleave',()=>{this.hovered=null;const tip=document.getElementById('tooltip');if(tip){tip.hidden=true;tip.style.display='none';}});
@@ -198,7 +201,7 @@ class HardwareScene {
     this.selected=id;this.userSelection=true;
     if(this.isolated)this.setVisibility();
     if(notify&&!this.compare){
-      window.dispatchEvent(new CustomEvent('gpu-component-select',{detail:{id,label:component.label,description:component.description,level:component.level}}));
+      window.dispatchEvent(new CustomEvent('gpu-component-select',{detail:{id,label:tr(component.label),description:tr(component.description),level:component.level}}));
       // Preserve the existing app contract for logical teaching nodes.
       if(this.state?.journey==='gemm'&&this.journey?.nodes?.some(node=>node.id===id)&&window.__gpuExplorerOnSelect)window.__gpuExplorerOnSelect(id);
     }
@@ -234,7 +237,7 @@ class HardwareScene {
     this.lastFlowKey='';
     this.autoFrame=true;this.container.dataset.cameraPreset='3d';this.fitView(animate?850:0);
     if(wasIsolated&&!this.compare)window.dispatchEvent(new CustomEvent('gpu-isolation-change',{detail:{isolated:false}}));
-    if(changed&&!this.compare)window.dispatchEvent(new CustomEvent('gpu-level-change',{detail:{level,label:LEVEL_INFO[level]}}));
+    if(changed&&!this.compare)window.dispatchEvent(new CustomEvent('gpu-level-change',{detail:{level}}));
   }
 
   setExplode(value) {
@@ -259,8 +262,7 @@ class HardwareScene {
     // a fixed camera distance clips it on a narrow phone viewport.
     hw.setExplode(this.explodeTarget);hw.root.updateMatrixWorld(true);
     let bounds;
-    if(this.conceptShowing&&this.conceptModel)bounds=this.conceptModel.bounds?.clone()||new THREE.Box3().setFromObject(this.conceptModel.fitObject);
-    else if(this.isolated&&this.selected&&hw.components[this.canonical(this.selected)])bounds=new THREE.Box3().setFromObject(hw.components[this.canonical(this.selected)].group);
+    if(this.isolated&&this.selected&&hw.components[this.canonical(this.selected)])bounds=new THREE.Box3().setFromObject(hw.components[this.canonical(this.selected)].group);
     else if(this.level==='board')bounds=new THREE.Box3().setFromObject(hw.pcb).union(new THREE.Box3().setFromObject(hw.serial));
     else if(this.level==='package')bounds=new THREE.Box3().setFromObject(hw.serial);
     else if(this.level==='die')bounds=new THREE.Box3().setFromObject(hw.components['gpu-die'].group);
@@ -271,7 +273,7 @@ class HardwareScene {
     hw.setExplode(this.explode);hw.root.updateMatrixWorld(true);
     if(bounds.isEmpty())return;
     const direction=directionOverride||(preserveDirection?this.camera.position.clone().sub(this.controls.target).normalize():new THREE.Vector3(.62,.83,1).normalize());
-    const margin=Math.max(this.camera.aspect<1.1?1.10:1,{board:1.18,package:1.22,die:1.26,sm:1.22,hbm:1.22,power:1.22,interconnect:1.22}[this.level]);
+    const margin=Math.max(this.camera.aspect<1.1?1.10:1,{board:1.08,package:1.12,die:1.12,sm:1.06,hbm:1.14,power:1.14,interconnect:1.14}[this.level]);
     const fit=calculateCameraFit(THREE,bounds,direction,this.camera.fov,this.camera.aspect,margin);
     this.controls.maxDistance=fit.maxDistance;this.camera.far=fit.far;this.camera.updateProjectionMatrix();
     this.moveCamera(fit.position,fit.target,duration);
@@ -313,10 +315,9 @@ class HardwareScene {
     for(const id of LABELS[this.level]||[]){
       const info=this.hardware.components[id];if(!info)continue;
       const node=document.createElement('span');node.className='hardware-label';node.dataset.component=id;
-      const short={ 'gpu-die':this.hardware.specification.die+' GPU',hbm:`5 × ${this.hardware.specification.hbm}`,power:'VRM / POWER',interposer:'SILICON INTERPOSER',sm:this.hardware.specification.sm+' ACTIVE SMs',l2:this.hardware.specification.l2+' L2',warp:'WARP SCHEDULER',registers:'REGISTER FILE',tensor:'TENSOR CORE',smem:'L1 DATA / SHARED' };
-      node.textContent=short[id]||info.label;
-      node.setAttribute('aria-label',info.label);
-      node.style.cssText='position:absolute;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap;background:rgba(15,24,26,.82);color:#c8d2cb;border:1px solid rgba(174,195,177,.22);border-radius:3px;padding:4px 7px;font:500 9px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.025em;';
+      node.textContent=tr(info.shortLabel)||tr(info.label);
+      node.setAttribute('aria-label',tr(info.label));
+      node.style.cssText='position:absolute;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap;background:rgba(20,22,24,.9);color:#e4e6e2;border:1px solid rgba(237,237,237,.12);border-radius:6px;padding:4px 8px;font:500 12px/1.3 var(--sans,system-ui),sans-serif;';
       const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('stroke','rgba(174,195,177,.5)');line.setAttribute('stroke-width','1');svg.appendChild(line);
       const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');dot.setAttribute('r','2');dot.setAttribute('fill','#c7b484');svg.appendChild(dot);
       this.labelLayer.appendChild(node);this.labelNodes.push({id,node,line,dot});
@@ -341,11 +342,25 @@ class HardwareScene {
     return result;
   }
 
+  setPaths(value) {
+    const next=!!value;if(next===this.pathsVisible)return next;
+    this.pathsVisible=next;this.lastFlowKey='';if(this.state?.presentationMode!=='learn')this.buildFlows();
+    return next;
+  }
+
+  setLanguage(lang) {
+    this.hardware?.setLanguage?.(lang);
+    this.renderer.domElement.setAttribute('aria-label',tk('scene.label'));
+    this.makeLabels();
+    for(const item of this.flowMarkerNodes){item.node.textContent=tr(item.marker.label);item.node.setAttribute('aria-label',tr(item.marker.label)+' · '+tr(this.flowPresentation?.note));}
+    if(this.flowPresentation)this.container.dataset.flowPhase=tr(this.flowPresentation.title);
+  }
+
   userNavigate(action) {
     if(!this.compare)window.dispatchEvent(new CustomEvent('gpu-user-navigate',{detail:{action,source:'user'}}));
   }
 
-  guideActive() {return this.state?.presentationMode==='learn'&&this.state?.journey==='gemm';}
+  guideActive() {return this.state?.presentationMode==='learn';}
 
   prepareGuide(options={}) {
     // OrbitControls keeps rotation/pan deltas while damping. Drain them before
@@ -353,14 +368,16 @@ class HardwareScene {
     const damping=this.controls.enableDamping;
     this.controls.enableDamping=false;this.controls.update();this.controls.enableDamping=damping;
     this.cameraTween=null;this.isolated=false;this.selected=null;this.userSelection=false;this.hovered=null;this.selectionFeedback?.reset();
-    this.explode=0;this.explodeTarget=0;this.progress=0;this.lastStateSelection=null;
-    this.hardware.setExplode(0);this.clearFlows();this.lastStep='';this.lastFlowKey='';
+    const explode=clamp(options.explode);
+    this.explode=explode;this.explodeTarget=explode;this.progress=0;this.lastStateSelection=null;
+    this.hardware.setExplode(explode);this.clearFlows();this.lastStep='';this.lastFlowKey='';
     this.setLevel(LEVELS.includes(options.level)?options.level:'board',options.animate!==false);
     this.setVisibility();this.syncDomState();
     if(!this.compare)window.dispatchEvent(new CustomEvent('gpu-isolation-change',{detail:{isolated:false,selected:null}}));
   }
 
   clearFlows() {
+    this.applyGhost();
     this.flowVisual?.dispose();this.flowVisual=null;this.flowObjects=[];this.flowMarkerNodes=[];
     this.flowMarkerLayer?.replaceChildren();
     if(this.container){this.container.dataset.signalRoutes='0';this.container.dataset.flowMarkers='0';this.container.dataset.flowVisible='false';this.container.dataset.flowMarkersVisible='0';this.container.dataset.flowMinWidth='0';}
@@ -370,7 +387,7 @@ class HardwareScene {
     const eye=this.camera.position.clone().sub(this.controls.target);
     this.container.dataset.cameraElevation=(Math.atan2(eye.y,Math.hypot(eye.x,eye.z))*180/Math.PI).toFixed(1);
     this.container.dataset.cameraTarget=this.controls.target.toArray().map(v=>v.toFixed(3)).join(',');
-    const values={isolated:String(this.isolated),explode:this.explode.toFixed(3),explodeTarget:this.explodeTarget.toFixed(3),selected:this.selected||'',userSelected:String(this.userSelection),presentationMode:this.state?.presentationMode||'explore'};
+    const values={cameraMoving:String(!!this.cameraTween||Math.abs(this.explode-this.explodeTarget)>.002),isolated:String(this.isolated),explode:this.explode.toFixed(3),explodeTarget:this.explodeTarget.toFixed(3),selected:this.selected||'',userSelected:String(this.userSelection),presentationMode:this.state?.presentationMode||'explore'};
     for(const [key,value]of Object.entries(values))if(this.container.dataset[key]!==value)this.container.dataset[key]=value;
   }
 
@@ -384,52 +401,71 @@ class HardwareScene {
     this.container.dataset.teachingCutaway=String(translucent);
   }
 
+  // Some steps look through the dies to what is underneath (the interposer).
+  // Their meshes temporarily share one translucent material; labels hide.
+  applyGhost(ids=[],boxes=[]) {
+    for(const mesh of this.ghostHidden||[])mesh.visible=true;
+    for(const object of this.ghostShells||[]){object.removeFromParent();object.geometry?.dispose();}
+    this.ghostHidden=[];this.ghostShells=[];
+    if(!ids.length){this.container.dataset.ghost='';return;}
+    this.ghostFill??=new THREE.MeshBasicMaterial({color:0x7f98aa,transparent:true,opacity:.12,depthWrite:false});
+    this.ghostLine??=new THREE.LineBasicMaterial({color:0xc7d3da,transparent:true,opacity:.7});
+    for(const id of ids)this.hardware.components[id]?.group.traverse(o=>{
+      if((o.isMesh||o.isLine)&&!o.userData.teachingSignal&&o.visible){o.visible=false;this.ghostHidden.push(o);}
+    });
+    // One glass shell per die or stack shows where the lifted chips are.
+    for(const shell of boxes){
+      const host=this.hardware.components[shell.host]?.group;if(!host)continue;
+      const geometry=new THREE.BoxGeometry(...shell.size);
+      const fill=new THREE.Mesh(geometry,this.ghostFill);fill.position.set(...shell.center);fill.userData.teachingSignal=true;
+      const edges=new THREE.LineSegments(new THREE.EdgesGeometry(geometry),this.ghostLine);edges.position.set(...shell.center);edges.userData.teachingSignal=true;
+      host.add(fill,edges);this.ghostShells.push(fill,edges);
+    }
+    this.container.dataset.ghost=ids.join(',');
+  }
+
   buildFlows() {
     this.clearFlows();
     const active=this.guideActive();
-    const presentation=lessonPresentation(this.level,this.state?.stepIndex||0,this.model);
-    this.flowPresentation=presentation;this.applyTeachingCutaway(active&&presentation.xray);
-    if(!active)return;
-    this.flowVisual=createTeachingVisuals(THREE,this.hardware,presentation);
+    const anatomy=!active&&this.pathsVisible&&this.state?.presentationMode==='explore';
+    const presentation=anatomy?anatomyPaths(this.level,this.model):lessonPresentation(this.level,this.state?.stepIndex||0,this.model,this.state?.journey||'gemm');
+    this.flowPresentation=presentation;this.applyTeachingCutaway(active&&presentation.xray);this.applyGhost(active?presentation.ghost||[]:[],active?presentation.ghostBoxes||[]:[]);
+    this.container.dataset.anatomyPaths=String(anatomy?presentation.routes.length:0);
+    this.container.dataset.flowJourney=active?(this.state?.journey||'gemm'):'anatomy';
+    if(!active&&!anatomy)return;
+    this.flowVisual=createTeachingVisuals(THREE,this.hardware,presentation,{static:anatomy});
+    this.flowStatic=anatomy;
     this.flowObjects=this.flowVisual.visuals;
     for(const item of this.flowVisual.markers){
       const node=document.createElement('div');node.className='teaching-location-marker';
       node.dataset.flowMarker=item.marker.id;node.dataset.flowRole=item.marker.role;
-      node.setAttribute('role','note');node.setAttribute('aria-label',item.marker.label+'：'+presentation.note);
+      node.setAttribute('role','note');node.setAttribute('aria-label',tr(item.marker.label)+' · '+tr(presentation.note));
       const color='#'+(FLOW_COLORS[item.marker.color]||FLOW_COLORS.a).toString(16).padStart(6,'0');
-      node.style.cssText=`position:absolute;transform:translate(-50%,-50%);padding:6px 10px;border:1px solid ${color};border-radius:4px;white-space:nowrap;background:rgba(9,21,25,.94);color:${color};font:600 11px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.015em;box-shadow:0 2px 12px #0005;pointer-events:none;`;
-      node.textContent=item.marker.label;this.flowMarkerLayer.appendChild(node);this.flowMarkerNodes.push({...item,node});
+      node.style.cssText=`position:absolute;transform:translate(-50%,-50%);padding:4px 8px;border:1px solid ${color}66;border-left:3px solid ${color};border-radius:6px;white-space:nowrap;background:rgba(20,22,24,.92);color:#ededed;font:500 12px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;pointer-events:none;`;
+      node.textContent=tr(item.marker.label);this.flowMarkerLayer.appendChild(node);this.flowMarkerNodes.push({...item,node});
     }
     this.flowMarkerLayer.style.display=this.labelsVisible?'':'none';
     this.container.dataset.transport='routed-ribbons';this.container.dataset.signalRoutes=String(this.flowObjects.length);
     this.container.dataset.flowMarkers=String(this.flowMarkerNodes.length);this.container.dataset.flowKind=presentation.kind;
-    this.container.dataset.flowPhase=presentation.title;this.container.dataset.flowMinWidth=String(presentation.routes.length?Math.min(...presentation.routes.map(route=>route.width)):0);
+    this.container.dataset.flowPhase=tr(presentation.title);this.container.dataset.flowJourney=active?(this.state?.journey||'gemm'):'anatomy';this.container.dataset.flowXray=String(!!(active&&presentation.xray));this.container.dataset.flowMinWidth=String(presentation.routes.length?Math.min(...presentation.routes.map(route=>route.width)):0);
     this.container.dataset.flowVisible=String(this.flowObjects.length+this.flowMarkerNodes.length>0);
   }
 
   update(journey,step,state) {
     if(state.presentationMode==='learn'){this.hovered=null;this.selectionFeedback?.set({enabled:false});}
     this.journey=journey;this.step=step;this.state=state;
-    const flowKey=`${state.model}:${state.journey}:${state.stepIndex}:${state.presentationMode}:${this.level}`;
+    const flowKey=`${state.model}:${state.journey}:${state.stepIndex}:${state.presentationMode}:${this.level}:${this.pathsVisible}`;
     if(state.model!==this.model)this.makeModel(state.model);
-    const conceptActive=state.presentationMode==='learn'&&state.journey!=='gemm';
-    const conceptChanged=conceptActive!==this.conceptShowing||(conceptActive&&this.conceptJourney!==state.journey);
-    if(conceptActive&&this.conceptJourney!==state.journey){
-      if(this.conceptModel){this.scene.remove(this.conceptModel.root);this.conceptModel.dispose?.();}
-      this.conceptModel=createConceptModel(THREE,state.journey);this.conceptJourney=state.journey;this.scene.add(this.conceptModel.root);
-    }
-    this.conceptShowing=conceptActive;this.hardware.root.visible=!conceptActive;
-    if(this.conceptModel)this.conceptModel.root.visible=conceptActive;
-    this.ground.visible=!conceptActive&&this.level==='board';
-    this.container.dataset.sceneKind=conceptActive?state.journey:'hardware';
-    if(conceptChanged){this.autoFrame=true;this.makeLabels();this.fitView(0,false);}
+    this.ground.visible=this.level==='board';
+    this.container.dataset.sceneKind='hardware';
+    this.container.dataset.journey=state.presentationMode==='learn'?state.journey:'';
     // User inspection is sticky while a step animates, but changing steps
     // returns the highlight to the lesson's active physical location.
     const key=`${state.journey}:${state.stepIndex}`;
     const restarted=(Number(state.stepProgress)||0)<.01&&this.progress>.02;
     if(state.journey!=='gemm'){
-      if(this.lastStep!==key){if(!this.userSelection)this.selected=null;this.lastStep=key;this.buildFlows(step);}
-    }else if(this.lastStep!==key||restarted){this.lastStep=key;this.userSelection=false;this.selected=state.selected||step.active?.[0]||null;this.progress=Number(state.stepProgress)||0;this.buildFlows(step);}
+      if(this.lastStep!==key){if(!this.userSelection)this.selected=null;this.lastStep=key;this.progress=Number(state.stepProgress)||0;this.buildFlows();}
+    }else if(this.lastStep!==key||restarted){this.lastStep=key;this.userSelection=false;this.selected=state.selected||null;this.progress=Number(state.stepProgress)||0;this.buildFlows();}
     else if(state.selected!==this.lastStateSelection){this.selected=state.selected||null;this.userSelection=false;}
     this.lastStateSelection=state.selected;
     this.lastProgress=Number(state.stepProgress)||0;
@@ -446,7 +482,7 @@ class HardwareScene {
     else if(this.explode!==this.explodeTarget){this.explode=this.explodeTarget;this.hardware.setExplode(this.explode);}
     this.controls.update();this.hardware.root.updateMatrixWorld(true);
     this.syncDomState();
-    const inspecting=this.state?.presentationMode==='explore'&&!this.conceptShowing;
+    const inspecting=this.state?.presentationMode==='explore';
     const selected=inspecting&&this.userSelection?this.hardware.components[this.canonical(this.selected)]?.group||null:null;
     const hovered=inspecting?this.hardware.components[this.canonical(this.hovered)]?.group||null:null;
     this.selectionFeedback.set({selected,hovered,enabled:inspecting});
@@ -460,19 +496,13 @@ class HardwareScene {
     const teachingActive=this.state?.presentationMode==='learn'&&!this.isolated;
     const visualPhase=Number.isFinite(window.__gpuExplorerVisualPhase)?window.__gpuExplorerVisualPhase:progress;
     const motionPlaying=teachingActive&&!!window.__gpuExplorerMotionPlaying;
-    if(this.conceptShowing&&this.conceptModel){
-      const view=this.conceptModel.update(this.state.stepIndex,progress,visualPhase);
-      this.container.dataset.conceptStage=view?.stage||this.conceptModel.stepInfo[this.state.stepIndex]?.title||'';
-      this.container.dataset.conceptStep=String(this.state.stepIndex);
-      this.container.dataset.conceptActive=(view?.activeResources||[]).join(',');
-      this.container.dataset.flowKind=this.state.journey;this.container.dataset.flowVisible='true';this.container.dataset.flowPhase=this.container.dataset.conceptStage;
-    }
-    this.flowVisual?.update(progress,visualPhase);
+    if(!this.flowStatic)this.flowVisual?.update(progress,visualPhase);
     this.container.dataset.flowCycle=visualPhase.toFixed(4);
     this.container.dataset.flowMotion=motionPlaying?'running':'paused';
     this.container.dataset.flowPlayback=teachingActive?(motionPlaying?'loop':'paused'):'off';
-    for(const item of this.flowObjects)item.group.visible=teachingActive;
-    for(const item of this.flowVisual?.markers||[])item.group.visible=teachingActive;
+    const flowShown=teachingActive||(this.flowStatic&&this.state?.presentationMode==='explore');
+    for(const item of this.flowObjects)item.group.visible=flowShown;
+    for(const item of this.flowVisual?.markers||[])item.group.visible=flowShown;
     this.container.dataset.flowState=progress>=1?'complete':this.state?.playing?'sequence':'step';
     // Data-location badges project from the same coordinate system as their
     // surface patches. They remain legible when motion has finished.
@@ -485,7 +515,7 @@ class HardwareScene {
       for(const previous of flowOccupied)if(Math.abs(previous.x-x)<128&&Math.abs(previous.y-y)<29)y=previous.y+31;
       y=Math.max(28,Math.min(this.height-35,y));flowOccupied.push({x,y});
       item.node.style.left=`${x}px`;item.node.style.top=`${y}px`;item.node.style.display=visible?'':'none';
-      item.node.dataset.complete=String(progress>=1);item.node.textContent=item.marker.label+(progress>=1&&item.marker.role==='target'?' ✓':'');
+      item.node.dataset.complete=String(progress>=1);const text=tr(item.marker.label)+(progress>=1&&item.marker.role==='target'?' ✓':'');if(item.node.textContent!==text)item.node.textContent=text;
     }
     this.container.dataset.flowMarkersVisible=String(visibleFlowMarkers);
     // Sparse labels projected from the actual hardware, with local collision
@@ -495,7 +525,7 @@ class HardwareScene {
       const item=this.hardware.components[this.canonical(label.id)];let visible=this.labelsVisible&&!!item&&!(teachingActive&&this.flowMarkerNodes.length),cursor=item?.group;while(cursor){if(!cursor.visible)visible=false;cursor=cursor.parent;}
       const point=this.anchor(label.id).project(this.camera);if(point.z>1||point.z< -1)visible=false;
       let x=(point.x*.5+.5)*this.width,y=(-point.y*.5+.5)*this.height;const anchorX=x,anchorY=y;
-      const offset={ 'gpu-die':[-30,-52],hbm:[-42,-25],power:[42,-35],interposer:[20,40],sm:[-18,-25],l2:[80,10],warp:[0,-30],registers:[-42,0],tensor:[-20,10],smem:[0,38] }[label.id]||[0,0];x+=offset[0];y+=offset[1];
+      const offset={ 'gpu-die':[-30,-52],hbm:[-42,-25],power:[42,-35],interposer:[20,40],sm:[-18,-25],l2:[80,10],warp:[0,-30],registers:[-42,0],tensor:[-20,10],smem:[0,38],sxm:[0,30],'hbm-inactive':[40,-25],'memory-controller':[-50,0],nvlink:[0,24],pcie:[0,-24] }[label.id]||[0,0];x+=offset[0];y+=offset[1];
       x=Math.max(76,Math.min(this.width-76,x));y=Math.max(32,Math.min(this.height-30,y));
       for(const previous of occupied)if(Math.abs(previous.x-x)<145&&Math.abs(previous.y-y)<31)y=previous.y+34;
       occupied.push({x,y});label.node.style.left=`${x}px`;label.node.style.top=`${Math.min(this.height-22,y)}px`;label.node.style.display=visible?'':'none';
@@ -523,13 +553,15 @@ if(container){
       prepareGuide(options){main.prepareGuide(options);compare?.prepareGuide(options);},
       getComponents(){return main.getComponents();},selectComponent(id){main.selectComponent(id);},
       getLevel(){return main.level;},getSelected(){return main.selected;},
-      getStatus(){return {model:main.model,level:main.level,selected:main.selected,isolated:main.isolated,exploded:main.explode,drawCalls:main.renderer.info.render.calls,triangles:main.renderer.info.render.triangles};}
+      setPaths(value){return main.setPaths(value);},
+      setLanguage(lang){main.setLanguage(lang);compare?.setLanguage(lang);},
+      getStatus(){return {model:main.model,level:main.level,selected:main.selected,isolated:main.isolated,exploded:main.explode,paths:main.pathsVisible,drawCalls:main.renderer.info.render.calls,triangles:main.renderer.info.render.triangles};}
     };
     window.GpuExplorer3D=api;window.dispatchEvent(new CustomEvent('gpu-scene-ready',{detail:{components:main.getComponents()}}));
     if(window.__gpuExplorerRender)window.__gpuExplorerRender();
   }catch(error){
-    console.error('GPU Explorer 3D initialization failed',error);
-    const message=document.createElement('div');message.className='webgl-fallback';message.style.cssText='padding:40px;color:#d5dfd9;font:14px/1.8 system-ui;';message.textContent='三维视图未能启动。请开启浏览器的硬件加速后重载；右侧仍可逐步阅读计算过程。';container.appendChild(message);
+    console.warn('GPU Explorer 3D initialization failed',error);
+    const message=document.createElement('div');message.className='webgl-fallback';message.dataset.i18n='scene.error';message.style.cssText='padding:40px;color:#d5dfd9;font:14px/1.8 system-ui;';message.textContent=tk('scene.error');container.appendChild(message);
     window.dispatchEvent(new CustomEvent('gpu-scene-error',{detail:{message:error.message}}));
   }
 }

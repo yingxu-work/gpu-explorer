@@ -1,11 +1,16 @@
-/* Numeric teaching overlays. Scalar examples are deliberately separate from
- * the hardware geometry and from instruction-level Tensor Core fragment maps. */
+/* Worked examples shown beside the 3D model. The scalar arithmetic is kept
+ * separate from the hardware geometry and from Tensor Core fragment maps. */
 (function (root, factory) {
-  var api = factory();
+  var api = factory(root);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.GpuExplorerLab = api;
-})(typeof window !== 'undefined' ? window : this, function () {
+})(typeof window !== 'undefined' ? window : this, function (root) {
   'use strict';
+  var I18N = (root && root.GpuExplorerI18n) || (typeof require === 'function' ? require('./i18n.js') : null);
+  function L(zh, en) { return { zh: zh, en: en }; }
+  function lang() { return (I18N && I18N.lang) || 'zh'; }
+  function tr(v) { return v && typeof v === 'object' && 'zh' in v ? v[lang()] : v; }
+
   var ROW = 3, COL = 7, K = 8, TILE_K = 4;
   var A = Array.from({ length: 4 }, function (_, i) {
     return Array.from({ length: K }, function (_, k) { return 1 + (i * 3 + k * 2) % 4; });
@@ -39,18 +44,27 @@
     if (step === 5) count = Math.min(4, Math.floor(p * 4.999));
     else if (step === 6) count = Math.min(8, 4 + Math.floor(p * 4.999));
     else count = K;
-    return { count: count, value: count ? TRACE[count - 1].acc : 0,
-      currentK: count < K ? count : K - 1, complete: count === K };
+    return { count: count, value: count ? TRACE[count - 1].acc : 0, currentK: count < K ? count : K - 1, complete: count === K };
   }
-  // x86-64, 4-level translation, 4 KiB pages; not a claim about GPU page tables.
-  var VA = 0x00007f001234;
-  function pageIndices(address) {
-    if (!Number.isSafeInteger(address) || address < 0 || address >= Math.pow(2, 48)) throw new Error('Expected an unsigned 48-bit address');
-    return { pgd: Math.floor(address / Math.pow(2, 39)) % 512,
-      pud: Math.floor(address / Math.pow(2, 30)) % 512,
-      pmd: Math.floor(address / Math.pow(2, 21)) % 512,
-      pte: Math.floor(address / Math.pow(2, 12)) % 512,
-      offset: address % 4096 };
+
+  // GPU virtual address split by the Hopper GMMU layout (57-bit VA):
+  // PD4[56] PD3[55:47] PD2[46:38] PD1[37:29] PD0[28:21], 2 MiB page offset [20:0].
+  var GPU_FIELDS = [
+    { id: 'pd4', hi: 56, lo: 56 }, { id: 'pd3', hi: 55, lo: 47 }, { id: 'pd2', hi: 46, lo: 38 },
+    { id: 'pd1', hi: 37, lo: 29 }, { id: 'pd0', hi: 28, lo: 21 }, { id: 'offset', hi: 20, lo: 0 }
+  ];
+  function gpuAddressFields(address) {
+    var va = typeof address === 'bigint' ? address : BigInt(address);
+    if (va < 0n || va >= (1n << 57n)) throw new Error('Expected an unsigned 57-bit address');
+    var out = {};
+    GPU_FIELDS.forEach(function (f) { out[f.id] = Number((va >> BigInt(f.lo)) & ((1n << BigInt(f.hi - f.lo + 1)) - 1n)); });
+    return out;
+  }
+  var PAGE = { va: '0x7f3ac2d64a40', pageBase: '0x24e000000', physical: '0x24e164a40', pageBits: 21 };
+  PAGE.fields = gpuAddressFields(BigInt(PAGE.va));
+  function physicalAddress(pageBase, va, pageBits) {
+    var mask = (1n << BigInt(pageBits)) - 1n;
+    return BigInt(pageBase) + (BigInt(va) & mask);
   }
   function barycentricColor(weights, colors) {
     if (weights.length !== colors.length) throw new Error('One weight per vertex is required');
@@ -58,46 +72,71 @@
       return weights.reduce(function (sum, weight, i) { return sum + weight * colors[i][channel]; }, 0);
     });
   }
-  function escapeHTML(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]; }); }
-  var STYLE = `
-.lab-root {--lab-a:#74d6c2;--lab-b:#e9b77d;--lab-c:#91b5ec;--lab-line:rgba(184,201,218,.14);--lab-dim:#82909d;color:#d9e1e7;font-family:inherit;font-size:12px;line-height:1.5;min-width:0}
-.lab-root * {box-sizing:border-box}.lab-root button{font:inherit}.lab-matrices{display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 12px minmax(0,1fr);gap:4px;align-items:center;padding:12px 0 14px}
-.lab-matrix{min-width:0}.lab-matrix-title{display:flex;align-items:baseline;gap:5px;margin-bottom:7px;font:600 12px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--lab-a)}.lab-matrix-title small{font-size:9px;color:var(--lab-dim);font-weight:400;white-space:nowrap}.lab-matrix-b .lab-matrix-title{color:var(--lab-b)}.lab-matrix-c .lab-matrix-title{color:var(--lab-c)}
-.lab-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:2px}.lab-cell{display:flex;align-items:center;justify-content:center;min-width:0;height:13px;border-radius:1px;background:rgba(140,159,176,.045);color:#53616c;font:9px/1 ui-monospace,SFMono-Regular,Consolas,monospace;transition:background .2s,color .2s,box-shadow .2s}.lab-cell.lab-a{background:rgba(116,214,194,.19);color:var(--lab-a)}.lab-cell.lab-b{background:rgba(233,183,125,.19);color:var(--lab-b)}.lab-cell.lab-c{background:rgba(145,181,236,.14);color:var(--lab-c)}.lab-cell.lab-output{box-shadow:0 0 0 1px var(--lab-c);color:var(--lab-c);background:rgba(145,181,236,.24);font-weight:700}.lab-cell.lab-k-focus{box-shadow:0 0 0 1px currentColor;filter:brightness(1.45)}.lab-cell.lab-computed{background:rgba(145,181,236,.7);color:#09131e}.lab-operator{text-align:center;font:16px Georgia,serif;color:var(--lab-dim)}
-.lab-vectors{display:grid;gap:5px;padding:10px 0 12px}.lab-vector-row{display:grid;grid-template-columns:52px repeat(8,minmax(0,1fr));align-items:center;gap:3px}.lab-vector-label{font:10px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--lab-a)}.lab-vector-row:last-child .lab-vector-label{color:var(--lab-b)}.lab-vector-row .lab-cell{height:19px;font-size:11px}.lab-final-result{display:flex;align-items:center;justify-content:space-between;padding:7px 0 0;color:var(--lab-c);font:13px ui-monospace,SFMono-Regular,Consolas,monospace}.lab-final-result strong{font-size:34px;font-weight:500;line-height:1}.lab-root[data-step="5"] .lab-equation-status strong,.lab-root[data-step="6"] .lab-equation-status strong{font-size:30px;line-height:1.1}.lab-root[data-step="5"] .lab-expression,.lab-root[data-step="6"] .lab-expression{font-size:14px;min-height:28px;padding-top:6px}.lab-caption{display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--lab-line);padding-top:9px;margin-bottom:9px;color:var(--lab-dim);font-size:10px}.lab-caption strong{font:500 11px ui-monospace,SFMono-Regular,Consolas,monospace;color:#d9e1e7}.lab-kicker{font:9px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.11em;text-transform:uppercase;color:var(--lab-dim)}
-.lab-stage{position:relative;padding:12px;border:1px solid var(--lab-line);border-radius:6px;background:rgba(6,12,18,.24);min-height:97px}.lab-formula{display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap;font:21px/1.5 Georgia,'Times New Roman',serif;min-height:42px;letter-spacing:.01em}.lab-formula .lab-acolor{color:var(--lab-a)}.lab-formula .lab-bcolor{color:var(--lab-b)}.lab-formula .lab-ccolor{color:var(--lab-c)}.lab-formula sub{font-size:.56em}.lab-sigma{display:inline-flex;align-items:center;justify-content:center;flex-direction:column;line-height:1;font-size:26px;margin:0 4px}.lab-sigma sup,.lab-sigma sub{font:9px ui-monospace,SFMono-Regular,Consolas,monospace}.lab-note{font-size:10px;color:var(--lab-dim);margin:7px 0 0;line-height:1.55}.lab-note em{font-style:normal;color:#b2bdc8}.lab-small-note{color:var(--lab-dim);font-size:9px;margin:8px 0 0;line-height:1.5}
-.lab-products{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;margin-top:10px}.lab-product{display:flex;flex-direction:column;align-items:center;gap:2px;position:relative;padding:5px 0;border:1px solid transparent;border-radius:3px;background:rgba(255,255,255,.035);color:#9ca8b3;cursor:pointer;font:10px ui-monospace,SFMono-Regular,Consolas,monospace!important}.lab-product .lab-product-k{font-size:8px;color:#65747f}.lab-product .lab-product-number{font-size:13px;color:#b4c5d7}.lab-product:hover,.lab-product:focus-visible,.lab-product.lab-product-on{background:rgba(145,181,236,.1);border-color:rgba(145,181,236,.55);outline:none}.lab-product .lab-av{color:var(--lab-a)}.lab-product .lab-bv{color:var(--lab-b)}.lab-product.lab-product-done{background:rgba(116,214,194,.08)}.lab-product.lab-product-done .lab-product-number{color:var(--lab-a)}
-.lab-equation-status{display:flex;justify-content:space-between;align-items:center;gap:5px;color:var(--lab-dim);font:10px ui-monospace,SFMono-Regular,Consolas,monospace}.lab-equation-status strong{color:var(--lab-c);font-size:20px;font-weight:500}.lab-expression{font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:#b5c0ca;margin-top:4px;min-height:20px}.lab-expression .lab-av{color:var(--lab-a)}.lab-expression .lab-bv{color:var(--lab-b)}.lab-expression .lab-cv{color:var(--lab-c)}
-.lab-transfer{display:grid;grid-template-columns:1fr 27px 1fr;gap:5px;align-items:center;margin-top:8px}.lab-transfer-box{padding:7px;border:1px solid var(--lab-line);border-radius:4px;min-width:0}.lab-transfer-box .lab-kicker{font-size:8px;letter-spacing:.02em}.lab-pair-row{display:flex;gap:3px;margin-top:5px}.lab-pair{flex:1;text-align:center;font:12px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--lab-a);border-radius:2px;background:rgba(116,214,194,.1);padding:3px 0;transition:opacity .15s,transform .15s}.lab-pair.lab-b{color:var(--lab-b);background:rgba(233,183,125,.1)}.lab-transfer-arrow{font-size:21px;text-align:center;color:var(--lab-a)}.lab-stage .lab-packet{opacity:var(--packet-alpha,0);transform:translateY(calc((1 - var(--packet-alpha,0)) * 4px))}.lab-copy-progress{height:2px;background:rgba(116,214,194,.12);margin-top:9px;overflow:hidden}.lab-copy-progress i{display:block;background:var(--lab-a);height:100%;width:var(--lab-progress,0%);transition:width .08s linear}
-.lab-lanes{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:3px;margin-top:9px}.lab-lane{height:17px;display:flex;align-items:center;justify-content:center;border-radius:2px;background:rgba(116,214,194,.12);color:var(--lab-a);font:8px ui-monospace,SFMono-Regular,Consolas,monospace;opacity:.4;transition:opacity .15s}.lab-root[data-animate="true"] .lab-lane{animation:lab-lane-pulse 2s ease-in-out infinite;animation-delay:calc(var(--i) * 15ms)}@keyframes lab-lane-pulse{0%,100%{opacity:.4}50%{opacity:1}}.lab-lane.lab-lane-on{opacity:1;background:rgba(116,214,194,.3)}
-.lab-blocks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin-top:7px}.lab-block{padding:7px;border:1px solid var(--lab-line);text-align:center;font:10px ui-monospace,SFMono-Regular,Consolas,monospace;color:#82909d;border-radius:3px}.lab-block:last-child{border-color:var(--lab-c);background:rgba(145,181,236,.1);color:var(--lab-c)}.lab-output-badge{font:32px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--lab-c);padding:2px 0}.lab-output-path{display:flex;align-items:center;justify-content:space-between;font:10px ui-monospace,SFMono-Regular,Consolas,monospace;gap:5px;margin:9px 0 3px}.lab-output-path span{padding:6px;border:1px solid var(--lab-line);border-radius:3px;color:var(--lab-c)}
-.lab-address{font:17px ui-monospace,SFMono-Regular,Consolas,monospace;color:#d9e1e7;margin:8px 0 12px;letter-spacing:.02em}.lab-address-bits{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) 1.3fr;gap:3px}.lab-address-bit{background:rgba(145,181,236,.07);border-top:2px solid rgba(145,181,236,.18);padding:7px 2px;text-align:center;font:12px ui-monospace,SFMono-Regular,Consolas,monospace;color:#8d9ba7}.lab-address-bit small{display:block;font-size:8px;margin-bottom:4px;color:var(--lab-dim)}.lab-address-bit.lab-active{border-color:var(--lab-c);color:var(--lab-c);background:rgba(145,181,236,.17)}.lab-address-bit:last-child{border-color:var(--lab-b);color:var(--lab-b)}
-.lab-walk{display:flex;align-items:center;gap:5px;margin:15px 0;justify-content:space-between;font:10px ui-monospace,SFMono-Regular,Consolas,monospace}.lab-walk-node{padding:9px 5px;border:1px solid var(--lab-line);border-radius:3px;color:var(--lab-dim);text-align:center}.lab-walk-node.lab-active{border-color:var(--lab-c);color:var(--lab-c);background:rgba(145,181,236,.08)}.lab-walk-node.lab-done{color:var(--lab-a);border-color:rgba(116,214,194,.4)}.lab-walk-arrow{color:#52606d}.lab-tlb{display:flex;align-items:center;justify-content:space-between;padding:10px;border:1px solid var(--lab-line);border-radius:4px;font:11px ui-monospace,SFMono-Regular,Consolas,monospace;margin:12px 0}.lab-miss{color:var(--lab-b)}
-.lab-pixel-view{display:flex;gap:12px;align-items:center;justify-content:center;margin:7px 0 9px}.lab-triangle{width:150px;height:115px;overflow:visible}.lab-framebuffer{display:grid;grid-template-columns:repeat(8,10px);gap:2px}.lab-pixel{height:10px;background:rgba(145,181,236,.07);border-radius:1px}.lab-pixel.lab-target{background:#33804d;box-shadow:0 0 12px #33804d88}.lab-rgb{display:flex;gap:3px;justify-content:center;margin-top:8px}.lab-rgb span{padding:5px 8px;font:11px ui-monospace,SFMono-Regular,Consolas,monospace;border-radius:2px}.lab-rgb span:nth-child(1){background:#743d3d55;color:#f3a3a3}.lab-rgb span:nth-child(2){background:#3d743d55;color:#a3f3a3}.lab-rgb span:nth-child(3){background:#3d3d7455;color:#a3a3f3}
-.lab-stack{display:flex;flex-direction:column;gap:5px;margin:8px auto 10px;width:82%;perspective:700px}.lab-stack-layer{position:relative;padding:5px 10px;background:rgba(145,181,236,.09);border:1px solid rgba(145,181,236,.2);border-radius:2px;font:10px ui-monospace,SFMono-Regular,Consolas,monospace;color:#9eb4ca;transform:rotateX(30deg) skewX(-12deg);transition:background .2s,border-color .2s,transform .4s}.lab-stack-layer.lab-active{background:rgba(116,214,194,.2);border-color:var(--lab-a);color:var(--lab-a);transform:rotateX(30deg) skewX(-12deg) translateX(5px)}.lab-stack-layer span{display:block;transform:skewX(12deg)}.lab-stack-layer:after{content:'';position:absolute;inset:3px -3px -3px 3px;border-right:2px solid rgba(145,181,236,.2);border-bottom:2px solid rgba(145,181,236,.2);z-index:-1}.lab-two-metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.lab-metric{border:1px solid var(--lab-line);border-radius:4px;padding:8px;font-size:10px;color:var(--lab-dim)}.lab-metric strong{display:block;font:17px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--lab-a);margin-top:4px}
-@media(prefers-reduced-motion:reduce){.lab-root *{animation:none!important;transition:none!important}}@media(max-width:400px){.lab-product{font-size:9px!important}.lab-stage{padding:9px}.lab-cell{height:12px;font-size:8px}}
-`;
-  STYLE += `
-.lab-concept-svg{display:block;width:100%;max-height:178px;overflow:visible;margin:1px 0 8px;background:radial-gradient(ellipse at center,rgba(116,214,194,.025),transparent 72%)}
-.lab-concept-svg text{font:9px ui-monospace,SFMono-Regular,Consolas,monospace;text-anchor:middle;fill:#9aabb9}
-.lab-concept-svg .lab-svg-text{font-size:10px;fill:#96a6b3}.lab-concept-svg .lab-svg-active{fill:#c0eee0}.lab-concept-svg .lab-svg-annotation{font-size:8px;fill:#7e929f}.lab-concept-svg .lab-svg-result{font-size:12px;fill:var(--lab-a)}.lab-concept-svg .lab-svg-a{fill:var(--lab-a);font-size:9px}
-.lab-motion-caption{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0 5px}.lab-motion-caption .lab-kicker{color:#a5b8c7;letter-spacing:.04em}.lab-motion-status{font:9px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--lab-a);white-space:nowrap;min-height:14px}
-.lab-concept-math{padding:11px 12px 10px;border:1px solid var(--lab-line);border-radius:5px;background:rgba(5,12,17,.3)}.lab-concept-math strong{font:500 13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--lab-c);display:block;overflow-wrap:anywhere}.lab-concept-math p{font-size:10px;line-height:1.7;margin:6px 0 0;color:#8fa3b1}.lab-address-bits-compact{margin-top:11px}.lab-address-bits-compact .lab-address-bit{padding:5px 2px;font-size:11px}.lab-address-bits-compact .lab-address-bit small{font-size:7.5px;margin-bottom:2px}
-.lab-process-box{fill:#111d25;stroke:#3e505c;stroke-width:.8}.lab-process-box.lab-active{fill:#17362f;stroke:#74d6c2;stroke-width:1.2}.lab-signal-path{fill:none;stroke:#41545f;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}.lab-return-path{stroke:#74d6c2;stroke-dasharray:3 4;opacity:.5}.lab-motion-dot{fill:#9cf0d4;stroke:#c9ffec;stroke-width:.8;filter:drop-shadow(0 0 3px #74d6c277)}.lab-motion-dot-1{fill:#edba79;stroke:#ffe1ba}.lab-motion-dot-2{fill:#9dbbe9;stroke:#d2e4ff}.lab-scan-bar{fill:rgba(116,214,194,.38);stroke:#9cf0d4;stroke-width:.4}
-.lab-svg-pixel{fill:#172831;stroke:#324650;stroke-width:.4}.lab-svg-pixel-target{fill:#152c2c;stroke:#8fd5c5;stroke-width:1}.lab-svg-pixel-filled{fill:#33804d;stroke:#92c8a1;stroke-width:1}.lab-screen-outline{fill:#0b121a;stroke:#5e7887;stroke-width:1}.lab-triangle-fill{fill:#18302b;stroke:#6b9b8b;stroke-width:1}.lab-weight-lines{fill:none;stroke:#9cb4b1;stroke-width:.6;stroke-dasharray:3 3;opacity:.6}.lab-triangle-target{fill:#a8e2cf}.lab-channel-bar{stroke-width:.6;opacity:.8}.lab-channel-0{fill:#a86363;stroke:#e29b9b}.lab-channel-1{fill:#5d9f74;stroke:#a5dab1}.lab-channel-2{fill:#657eab;stroke:#b2c5e7}.lab-concept-svg [data-channel]{opacity:.35}.lab-concept-svg [data-channel].lab-signal-on{opacity:1;filter:drop-shadow(0 0 3px #91b5ec44)}
-.lab-texture-pixel{fill:#c0c9c5;stroke:#6e827e;stroke-width:.7}.lab-texture-selected{fill:white;stroke:#74d6c2;stroke-width:2}.lab-depth-near{fill:#74d6c2}.lab-depth-far{fill:#aa7e63;opacity:.6}.lab-display-scan{fill:#74d6c233;stroke:#74d6c2;stroke-width:.5}
-.lab-stack-svg-layer{fill:#162830;stroke:#45606f;stroke-width:.7}.lab-stack-svg-layer.lab-active{fill:#1b3a33;stroke:#74d6c2;stroke-width:1}.lab-stack-svg-layer.lab-heat-source{fill:#51362c;stroke:#e4a06d}.lab-core-cell{fill:#31604e;stroke:#92c6a6;stroke-width:.5}.lab-core-disabled{fill:#352e2a;stroke:#b4876b}.lab-concept-svg .lab-core-cross{font-size:12px;fill:#e9b77d}.lab-bond-point{fill:#b9d4c9}.lab-vertical-route{stroke:#74d6c2;stroke-width:2}.lab-horizontal-route{stroke:#e9b77d;stroke-width:2;opacity:.7}
-@media(max-width:500px){.lab-concept-svg{max-height:165px}.lab-concept-math strong{font-size:12px}.lab-motion-status{font-size:8px}}
-`;
-  var caches = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  // HBM bandwidth per data line, from the published product bandwidth.
+  function perLineRate(bytesPerSecond, stacks, bitsPerStack) { return bytesPerSecond * 8 / (stacks * bitsPerStack); }
+
+  function escapeHTML(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  var MONO = 'ui-monospace,SFMono-Regular,"JetBrains Mono",Consolas,monospace';
+  var STYLE = [
+    '.lab-root{--lab-a:#6fd3bf;--lab-b:#e7b67a;--lab-c:#94b6ee;--lab-addr:#c9a7f2;--lab-heat:#f08a5d;--lab-line:rgba(237,237,237,.09);--lab-dim:#8b8f93;color:#e6e7e4;font-size:13px;line-height:1.5;min-width:0}',
+    '.lab-root *{box-sizing:border-box}.lab-root button{font:inherit}',
+    '.lab-caption{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:0 0 8px;color:var(--lab-dim);font-size:12px}',
+    '.lab-caption strong{font:500 12px ' + MONO + ';color:#e6e7e4;font-variant-numeric:tabular-nums;white-space:nowrap}',
+    '.lab-kicker{font-size:12px;color:var(--lab-dim);margin-bottom:6px}',
+    '.lab-matrices{display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 12px minmax(0,1fr);gap:4px;align-items:center;padding:4px 0 12px}',
+    '.lab-matrix{min-width:0}.lab-matrix-title{display:flex;align-items:baseline;gap:6px;margin-bottom:6px;font:500 12px ' + MONO + ';color:var(--lab-a)}.lab-matrix-title small{font-size:11px;color:var(--lab-dim);font-weight:400}',
+    '.lab-matrix-b .lab-matrix-title{color:var(--lab-b)}.lab-matrix-c .lab-matrix-title{color:var(--lab-c)}',
+    '.lab-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:2px}',
+    '.lab-cell{display:flex;align-items:center;justify-content:center;min-width:0;height:14px;border-radius:2px;background:rgba(237,237,237,.04);color:#5d6266;font:10px/1 ' + MONO + ';transition:background-color .15s,color .15s}',
+    '.lab-cell.lab-a{background:rgba(111,211,191,.16);color:var(--lab-a)}.lab-cell.lab-b{background:rgba(231,182,122,.16);color:var(--lab-b)}.lab-cell.lab-c{background:rgba(148,182,238,.14);color:var(--lab-c)}',
+    '.lab-cell.lab-output{box-shadow:0 0 0 1px var(--lab-c);color:var(--lab-c);background:rgba(148,182,238,.22)}.lab-cell.lab-k-focus{box-shadow:0 0 0 1px currentColor}',
+    '.lab-operator{text-align:center;color:var(--lab-dim)}',
+    '.lab-vectors{display:grid;gap:4px;padding:2px 0 12px}.lab-vector-row{display:grid;grid-template-columns:56px repeat(8,minmax(0,1fr));align-items:center;gap:3px}',
+    '.lab-vector-label{font:11px ' + MONO + ';color:var(--lab-a)}.lab-vector-row:last-child .lab-vector-label{color:var(--lab-b)}.lab-vector-row .lab-cell{height:22px;font-size:12px}',
+    '.lab-final-result{display:flex;align-items:baseline;justify-content:space-between;padding:0 0 12px;color:var(--lab-c);font:13px ' + MONO + '}.lab-final-result strong{font-size:32px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums}',
+    '.lab-stage{position:relative;padding:12px;border:1px solid var(--lab-line);border-radius:10px;background:#18191b;min-height:96px}',
+    '.lab-formula{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;font:20px/1.5 ' + MONO + ';min-height:40px}',
+    '.lab-acolor{color:var(--lab-a)}.lab-bcolor{color:var(--lab-b)}.lab-ccolor{color:var(--lab-c)}.lab-formula sub{font-size:.6em}',
+    '.lab-note{font-size:12px;color:var(--lab-dim);margin:8px 0 0;line-height:1.55}',
+    '.lab-products{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;margin-top:10px}',
+    '.lab-product{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;border:1px solid transparent;border-radius:6px;background:rgba(237,237,237,.04);color:#9a9ea1;font:11px ' + MONO + ';cursor:pointer;transition:background-color .15s,border-color .15s}',
+    '.lab-product .lab-product-k{font-size:10px;color:#6c7174}.lab-product .lab-product-number{font-size:14px;color:#c9cdd0}',
+    '.lab-product:hover,.lab-product:focus-visible,.lab-product.lab-product-on{background:rgba(148,182,238,.1);border-color:rgba(148,182,238,.5);outline:none}',
+    '.lab-av{color:var(--lab-a)}.lab-bv{color:var(--lab-b)}.lab-cv{color:var(--lab-c)}.lab-product.lab-product-done .lab-product-number{color:var(--lab-a)}',
+    '.lab-equation-status{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--lab-dim);font:12px ' + MONO + '}.lab-equation-status strong{color:var(--lab-c);font-size:28px;font-weight:500;font-variant-numeric:tabular-nums}',
+    '.lab-expression{font:13px/1.6 ' + MONO + ';color:#b9bdc0;margin-top:4px;min-height:22px}',
+    '.lab-transfer{display:grid;grid-template-columns:1fr 24px 1fr;gap:6px;align-items:center}.lab-transfer-box{padding:8px;border:1px solid var(--lab-line);border-radius:6px;min-width:0}',
+    '.lab-pair-row{display:flex;gap:3px;margin-top:6px}.lab-pair{flex:1;text-align:center;font:12px ' + MONO + ';color:var(--lab-a);border-radius:4px;background:rgba(111,211,191,.1);padding:3px 0}.lab-pair.lab-b{color:var(--lab-b);background:rgba(231,182,122,.1)}',
+    '.lab-transfer-arrow{text-align:center;color:var(--lab-a)}.lab-packet{opacity:var(--packet-alpha,0)}',
+    '.lab-copy-progress{height:2px;background:rgba(111,211,191,.12);margin-top:10px;overflow:hidden}.lab-copy-progress i{display:block;background:var(--lab-a);height:100%;width:var(--lab-progress,0%)}',
+    '.lab-lanes{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:3px;margin-top:8px}.lab-lane{height:18px;display:flex;align-items:center;justify-content:center;border-radius:3px;background:rgba(111,211,191,.1);color:var(--lab-a);font:10px ' + MONO + ';opacity:.45}.lab-lane.lab-lane-on{opacity:1;background:rgba(111,211,191,.26)}',
+    '.lab-blocks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.lab-block{padding:8px;border:1px solid var(--lab-line);text-align:center;font:11px ' + MONO + ';color:var(--lab-dim);border-radius:6px}.lab-block.lab-target{border-color:var(--lab-c);background:rgba(148,182,238,.1);color:var(--lab-c)}',
+    '.lab-output-path{display:flex;align-items:center;justify-content:space-between;font:12px ' + MONO + ';gap:6px;margin:4px 0}.lab-output-path span{padding:6px 8px;border:1px solid var(--lab-line);border-radius:6px;color:var(--lab-c)}',
+    '.lab-bits{display:grid;gap:3px;margin-bottom:10px}.lab-bit{min-width:0;padding:6px 2px;text-align:center;border-top:2px solid rgba(201,167,242,.2);background:rgba(201,167,242,.05);border-radius:0 0 4px 4px;font:12px ' + MONO + ';color:#8e9195;font-variant-numeric:tabular-nums}',
+    '.lab-bit small{display:block;font-size:10px;color:#6f7377;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lab-bit.lab-active{border-color:var(--lab-addr);color:var(--lab-addr);background:rgba(201,167,242,.13)}.lab-bit.lab-offset.lab-active{border-color:var(--lab-b);color:var(--lab-b);background:rgba(231,182,122,.12)}',
+    '.lab-svg{display:block;width:100%;overflow:visible;margin:0 0 8px}',
+    '.lab-svg text{font:10px ' + MONO + ';text-anchor:middle;fill:#9a9ea1}.lab-svg .lab-svg-strong{fill:#e6e7e4;font-size:11px}.lab-svg .lab-svg-result{fill:var(--lab-a);font-size:12px}.lab-svg .lab-svg-dim{fill:#6f7377}',
+    '.lab-box{fill:#1d1f21;stroke:rgba(237,237,237,.14);stroke-width:1}.lab-box.lab-active{fill:#1c2e2b;stroke:var(--lab-a)}.lab-box.lab-addr{fill:#272231;stroke:var(--lab-addr)}.lab-box.lab-warn{fill:#2c2519;stroke:var(--lab-b)}.lab-box.lab-off{fill:#121314;stroke:rgba(237,237,237,.06)}',
+    '.lab-path{fill:none;stroke:rgba(237,237,237,.16);stroke-width:1.4}.lab-path.lab-live{stroke:var(--lab-a);stroke-width:1.6}.lab-path.lab-addr{stroke:var(--lab-addr)}.lab-path.lab-heat{stroke:var(--lab-heat)}',
+    '.lab-dot{fill:#f2f2ee}.lab-dot.lab-dot-addr{fill:var(--lab-addr)}.lab-dot.lab-dot-heat{fill:var(--lab-heat)}',
+    '.lab-pixel{fill:rgba(237,237,237,.06)}.lab-pixel.lab-target{fill:none;stroke:var(--lab-c);stroke-width:1.5}.lab-pixel.lab-filled{fill:#33804d}',
+    '.lab-tri{fill:url(#lab-tri-grad);opacity:.55;stroke:rgba(148,182,238,.5)}.lab-weight{stroke:rgba(237,237,237,.25);stroke-dasharray:3 3;fill:none}',
+    '.lab-bar-r{fill:#d47b7b}.lab-bar-g{fill:#6cbc7c}.lab-bar-b{fill:#7b92d4}',
+    '.lab-scan{fill:rgba(148,182,238,.5)}',
+    '.lab-status{display:flex;justify-content:space-between;gap:10px;align-items:baseline;font-size:12px;color:var(--lab-dim);margin:0 0 6px}.lab-status span:last-child{font:12px ' + MONO + ';color:var(--lab-a);white-space:nowrap}',
+    '.lab-result{font:13px ' + MONO + ';color:#e6e7e4;padding:10px 12px;border:1px solid var(--lab-line);border-radius:8px;background:#18191b;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}',
+    '@media(prefers-reduced-motion:reduce){.lab-root *{transition:none!important}}'
+  ].join('\n');
   function installStyle(doc) {
     if (doc.getElementById('gpu-explorer-lab-style')) return;
     var style = doc.createElement('style'); style.id = 'gpu-explorer-lab-style'; style.textContent = STYLE;
     doc.head.appendChild(style);
   }
+
+  // ---------- GEMM ----------
   function matrix(data, name, which, step) {
     var cols = data[0].length;
-    var out = '<div class="lab-matrix lab-matrix-' + which + '"><div class="lab-matrix-title">' + name + '<small>' + data.length + ' × ' + cols + '</small></div><div class="lab-grid" role="img" aria-label="矩阵 ' + name + '，' + data.length + ' 行 ' + cols + ' 列">';
+    var out = '<div class="lab-matrix lab-matrix-' + which + '"><div class="lab-matrix-title">' + name + '<small>' + data.length + ' × ' + cols + '</small></div><div class="lab-grid" role="img" aria-label="' + escapeHTML(tr(L('矩阵 ' + name + '，' + data.length + ' 行 ' + cols + ' 列', 'Matrix ' + name + ', ' + data.length + ' rows by ' + cols + ' columns'))) + '">';
     data.forEach(function (row, i) { row.forEach(function (value, j) {
       var cls = 'lab-cell', content = value, k = -1;
       if (which === 'a' && i === ROW && step >= 1) { cls += ' lab-a'; k = j; }
@@ -115,20 +154,20 @@
     return '<div class="lab-matrices">' + matrix(A, 'A', 'a', step) + '<div class="lab-operator">×</div>' + matrix(B, 'B', 'b', step) + '<div class="lab-operator">=</div>' + matrix(C, 'C', 'c', step) + '</div>';
   }
   function vectors() {
-    return '<div class="lab-vectors" aria-label="目标输出使用的 A 行与 B 列">' + ['a','b'].map(function(which) {
-      return '<div class="lab-vector-row"><span class="lab-vector-label">' + (which === 'a' ? 'A[3,:]' : 'B[:,7]') + '</span>' + TRACE.map(function(t) {
+    return '<div class="lab-vectors" aria-label="' + escapeHTML(tr(L('C[3,7] 用到的 A 行和 B 列', 'The row of A and column of B used by C[3,7]'))) + '">' + ['a', 'b'].map(function (which) {
+      return '<div class="lab-vector-row"><span class="lab-vector-label">' + (which === 'a' ? 'A[3,:]' : 'B[:,7]') + '</span>' + TRACE.map(function (t) {
         return '<span class="lab-cell lab-' + which + '" data-matrix-k="' + t.k + '" title="' + (which === 'a' ? 'A[3,' + t.k + ']' : 'B[' + t.k + ',7]') + ' = ' + t[which] + '">' + t[which] + '</span>';
       }).join('') + '</div>';
     }).join('') + '</div>';
   }
-  function products(step) {
+  function products() {
     return '<div class="lab-products">' + TRACE.map(function (t) {
-      return '<button type="button" class="lab-product" data-lab-k="' + t.k + '" aria-label="k=' + t.k + '：' + t.a + ' 乘 ' + t.b + ' 等于 ' + t.product + '" title="A[3,' + t.k + '] × B[' + t.k + ',7] = ' + t.product + '"><span class="lab-product-k">k' + t.k + '</span><span><span class="lab-av">' + t.a + '</span>·<span class="lab-bv">' + t.b + '</span></span><span class="lab-product-number">' + t.product + '</span></button>';
+      return '<button type="button" class="lab-product" data-lab-k="' + t.k + '" aria-label="' + escapeHTML(tr(L('k=' + t.k + '：' + t.a + ' 乘 ' + t.b + ' 等于 ' + t.product, 'k=' + t.k + ': ' + t.a + ' times ' + t.b + ' is ' + t.product))) + '" title="A[3,' + t.k + '] × B[' + t.k + ',7] = ' + t.product + '"><span class="lab-product-k">k' + t.k + '</span><span><span class="lab-av">' + t.a + '</span>·<span class="lab-bv">' + t.b + '</span></span><span class="lab-product-number">' + t.product + '</span></button>';
     }).join('') + '</div>';
   }
   function transfer(start, end) {
     function bank(isDestination) {
-      return '<div class="lab-transfer-box"><div class="lab-kicker">' + (isDestination ? 'Shared memory · 片上' : 'HBM · 片外') + '</div>' + ['a', 'b'].map(function (which) {
+      return '<div class="lab-transfer-box"><div class="lab-kicker">' + escapeHTML(tr(isDestination ? L('共享内存 · 片上', 'Shared memory · on chip') : L('HBM · 片外', 'HBM · off chip'))) + '</div>' + ['a', 'b'].map(function (which) {
         return '<div class="lab-pair-row">' + TRACE.slice(start, end).map(function (t, i) {
           return '<span class="lab-pair' + (which === 'b' ? ' lab-b' : '') + (isDestination ? ' lab-packet' : '') + '"' + (isDestination ? ' data-packet="' + i + '"' : '') + '>' + t[which] + '</span>';
         }).join('') + '</div>';
@@ -136,194 +175,223 @@
     }
     return '<div class="lab-transfer">' + bank(false) + '<span class="lab-transfer-arrow">→</span>' + bank(true) + '</div><div class="lab-copy-progress"><i></i></div>';
   }
+  var GEMM_CAPTIONS = [L('只看一个输出', 'One output'), L('它依赖的输入', 'Its inputs'), L('一个 CTA 负责一块输出', 'One CTA per output tile'), L('载入第 1 个 K 块', 'Load K tile 1'), L('32 个 lane 一起工作', '32 lanes together'), L('累加第 1 个 K 块', 'Accumulate K tile 1'), L('同步，换下一块', 'Sync, then the next tile'), L('写回显存', 'Write back')];
+  var GEMM_LOCATIONS = ['C[3,7]', 'A[3,:] · B[:,7]', 'tile → CTA → SM', 'k = 0…3', 'warp = 32 threads', 'acc = 0 → 19', 'acc = 19 → 37', 'C[3,7] = 37'];
   function gemm(step) {
-    var html = step >= 3 && step <= 6 ? vectors() : (step === 7 ? '<div class="lab-final-result" role="status" aria-label="目标输出 C 第 3 行第 7 列等于 37"><span>C[3,7] = 19 + 18</span><strong>37</strong></div>' : '') + matrices(step), body;
-    var captions = ['选择一个输出', '追踪输入依赖', '一个 CTA 负责一个输出块', '载入第 1 个 K-tile', '32 个 lane 协同工作', '累加第 1 个 K-tile', '同步 · 复用 · 下一块', '结果写回显存'];
-    var locations = ['C[3,7]', 'A[3,:] · B[:,7]', 'tile → CTA → SM', 'k = 0…3', 'warp = 32 threads', 'acc = 0 → 19', 'acc = 19 → 37', 'C[3,7] = 37'];
-    html += '<div class="lab-caption"><span>' + captions[step] + '</span><strong>' + locations[step] + '</strong></div>';
+    var html = step >= 3 && step <= 6 ? vectors() : (step === 7 ? '<div class="lab-final-result" role="status" aria-label="' + escapeHTML(tr(L('C[3,7] 等于 37', 'C[3,7] equals 37'))) + '"><span>C[3,7] = 19 + 18</span><strong>37</strong></div>' : '') + matrices(step), body;
+    html += '<div class="lab-caption"><span>' + escapeHTML(tr(GEMM_CAPTIONS[step])) + '</span><strong>' + GEMM_LOCATIONS[step] + '</strong></div>';
     if (step === 0) {
-      body = '<div class="lab-formula"><span class="lab-ccolor">C<sub>3,7</sub></span><span>=</span><span class="lab-sigma"><sup>7</sup>∑<sub>k = 0</sub></span><span class="lab-acolor">A<sub>3,k</sub></span><span>·</span><span class="lab-bcolor">B<sub>k,7</sub></span></div><p class="lab-note">从一个输出出发，跟随它经过<em>显存 → 共享内存 → 计算 → 写回</em>。索引从 0 开始。</p>';
+      body = '<div class="lab-formula"><span class="lab-ccolor">C<sub>3,7</sub></span><span>=</span><span>Σ<sub>k=0..7</sub></span><span class="lab-acolor">A<sub>3,k</sub></span><span>·</span><span class="lab-bcolor">B<sub>k,7</sub></span></div><p class="lab-note">' + escapeHTML(tr(L('跟着这一个数，看它经过显存、共享内存、计算，再写回。', 'Follow this one number from memory to shared memory, through compute and back.'))) + '</p>';
     } else if (step === 1) {
-      body = '<div class="lab-kicker">依赖一行与一列 · 点击任意一项追踪</div>' + products(step) + '<p class="lab-note">每一对彩色数值相乘，8 项相加得到目标输出。</p>';
+      body = '<div class="lab-kicker">' + escapeHTML(tr(L('点任意一项，看它来自哪两个数', 'Click a term to trace its two inputs'))) + '</div>' + products() + '<p class="lab-note">' + escapeHTML(tr(L('每对数相乘，8 项加起来就是 C[3,7]。', 'Multiply each pair; the eight products add up to C[3,7].'))) + '</p>';
     } else if (step === 2) {
-      body = '<div class="lab-kicker">缩小的输出矩阵 · 每块 2 × 4</div><div class="lab-blocks"><div class="lab-block">CTA 0 · C[0:2, 0:4]</div><div class="lab-block">CTA 1 · C[0:2, 4:8]</div><div class="lab-block">CTA 2 · C[2:4, 0:4]</div><div class="lab-block">CTA 3 · C[2:4, 4:8]</div></div><p class="lab-note">目标位于 CTA 3；每个 CTA 计算各自的输出块。</p>';
+      body = '<div class="lab-blocks"><div class="lab-block">CTA 0 · C[0:2, 0:4]</div><div class="lab-block">CTA 1 · C[0:2, 4:8]</div><div class="lab-block">CTA 2 · C[2:4, 0:4]</div><div class="lab-block lab-target">CTA 3 · C[2:4, 4:8]</div></div><p class="lab-note">' + escapeHTML(tr(L('C[3,7] 在 CTA 3 里，每个 CTA 算自己那一块。', 'C[3,7] is in CTA 3. Each CTA computes its own tile.'))) + '</p>';
     } else if (step === 3) {
-      body = '<div class="lab-kicker">K-tile 01 / 02 · k = 0…3</div>' + transfer(0, 4) + '<p class="lab-note">A、B 的二维 tile 载入共享内存后，可被多个输出复用。</p>';
+      body = '<div class="lab-kicker">' + escapeHTML(tr(L('第 1 / 2 个 K 块 · k = 0…3', 'K tile 1 of 2 · k = 0…3'))) + '</div>' + transfer(0, 4) + '<p class="lab-note">' + escapeHTML(tr(L('搬进共享内存后，同一块 A、B 会被多个输出反复读取。', 'Once in shared memory, the same tiles are read by many outputs.'))) + '</p>';
     } else if (step === 4) {
-      body = '<div class="lab-kicker">一条指令 · 32 个 lane · 分布式数据片段</div><div class="lab-lanes">' + Array.from({length:32}, function (_, i) { return '<span class="lab-lane" style="--i:' + i + '">' + i + '</span>'; }).join('') + '</div><p class="lab-note">Tensor Core MMA 由线程协同提供矩阵片段。<em>数值面板展开目标输出的内积计算。</em></p>';
+      body = '<div class="lab-kicker">' + escapeHTML(tr(L('一条指令，32 个 lane', 'One instruction, 32 lanes'))) + '</div><div class="lab-lanes">' + Array.from({ length: 32 }, function (_, i) { return '<span class="lab-lane">' + i + '</span>'; }).join('') + '</div><p class="lab-note">' + escapeHTML(tr(L('线程一起给 Tensor Core 提供矩阵片段。下一步把目标输出的内积展开来算。', 'The threads feed matrix fragments to the Tensor Core together. The next step unrolls the dot product for our output.'))) + '</p>';
     } else if (step === 5 || step === 6) {
-      body = '<div class="lab-equation-status"><span>' + (step === 5 ? 'K-tile 01 / 02' : 'K-tile 02 / 02 · 同步完成后继续') + '</span><span>acc <strong data-lab-acc role="status" aria-label="当前累加值">' + (step === 5 ? '0' : '19') + '</strong></span></div><div class="lab-expression" data-lab-expression></div>' + products(step);
+      body = '<div class="lab-equation-status"><span>' + escapeHTML(tr(step === 5 ? L('第 1 / 2 个 K 块', 'K tile 1 of 2') : L('第 2 / 2 个 K 块', 'K tile 2 of 2'))) + '</span><span>acc <strong data-lab-acc role="status" aria-label="' + escapeHTML(tr(L('当前累加值', 'Current accumulator'))) + '">' + (step === 5 ? '0' : '19') + '</strong></span></div><div class="lab-expression" data-lab-expression></div>' + products();
     } else {
-      body = '<div class="lab-kicker">8 项乘积 · 2 个 K-tile · 累加完成</div><div class="lab-output-path"><span>累加结果</span>→<span>Store</span>→<span>C[3,7]</span></div><p class="lab-note">19 + 18 = 37。仅在所有 K-tile 累加完成后写回。</p>';
+      body = '<div class="lab-output-path"><span>acc = 37</span>→<span>Store</span>→<span>C[3,7]</span></div><p class="lab-note">' + escapeHTML(tr(L('19 + 18 = 37。两个 K 块都加完才写回。', '19 + 18 = 37. It is only written once both K tiles are added.'))) + '</p>';
     }
     return html + '<div class="lab-stage">' + body + '</div>';
   }
-  // Per-step concept animations are driven by the application's frozen or
-  // advancing visual phase. A phase is an unbounded number of cycles, not time.
-  // Replaying a signal does not replay a hardware instruction or change results.
-  var PANEL_STEPS = {
-    pagetable: [
-      {active:'cpu', label:'发出虚拟地址', formula:'VA = 0x0000_7f00_1234', detail:'CPU 发出程序可见的虚拟地址。高位索引决定页表路径，低 12 位是页内偏移。', stages:['CPU 发出','携带 VA','送往 TLB']},
-      {active:'tlb', label:'检查翻译缓存', formula:'TLB[VPN 0x7f001] → MISS', detail:'TLB 中没有对应的翻译项，CPU 进入四级页表遍历，以获得物理页号。', stages:['比较 VPN','未找到项','启动遍历']},
-      {active:'pgd', label:'第 1 级 · PGD[0]', formula:'⌊VA / 2³⁹⌋ mod 512 = 0', detail:'读取 PGD 的第 0 项。示例根基址 0x00100000，条目给出下一级基址 0x00200000。', stages:['索引 0','读取条目','得到 PUD 基址']},
-      {active:'pud', label:'第 2 级 · PUD[1]', formula:'0x00200000 + 1 × 8 = 0x00200008', detail:'条目宽 8 字节。读取 PUD 第 1 项，示例条目指向 PMD 基址 0x00300000。', stages:['索引 1','读取条目','得到 PMD 基址']},
-      {active:'pmd', label:'第 3 级 · PMD[504]', formula:'0x00300000 + 504 × 8 = 0x00300fc0', detail:'读取 PMD 第 504 项，示例条目指向 PTE 页表基址 0x00400000。', stages:['索引 504','读取条目','得到 PTE 基址']},
-      {active:'pte>tlb', label:'叶条目 · 组合物理地址', formula:'PA = 0x12345000 + 0x234 = 0x12345234', detail:'PTE[1] 给出物理页基址。偏移不变；翻译结果可回填 TLB，供后续访问复用。', stages:['读取 PTE[1]','保留 offset','回填 TLB']},
-      {active:'ram>cache>cpu', label:'从物理内存返回数据', formula:'load(0x12345234) → 0x2A', detail:'示例数据为 0x2A。绿色信号按内存 → 缓存 → CPU 返回，地址翻译到此完成。', stages:['物理内存','缓存装入','CPU 收到']}
-    ],
-    pixel: [
-      {active:'pixel', label:'选定目标像素', formula:'target = framebuffer[3,4]', detail:'先固定一个像素的位置，再追踪覆盖它的几何与最后写入的颜色。', stages:['像素坐标','选中目标','追踪来源']},
-      {active:'tri>pixel', label:'覆盖测试', formula:'w₀ ≥ 0, w₁ ≥ 0, w₂ ≥ 0 → inside', detail:'扫描线扫过三角形。目标位于内部，因此产生候选片元；本例不展开边界填充规则。', stages:['扫描覆盖','命中目标','产生片元']},
-      {active:'raster>tri', label:'重心插值', formula:'c = 0.2v₀ + 0.5v₁ + 0.3v₂', detail:'三个权重相加为 1。RGB 三原色顶点插值得到线性颜色 (0.2, 0.5, 0.3)。', stages:['红色贡献 0.2','绿色贡献 0.5','蓝色贡献 0.3']},
-      {active:'shader', label:'片元着色', formula:'shade(c) = c = (0.2, 0.5, 0.3)', detail:'本例着色器保留插值颜色。R、G、B 通道依次高亮，表示一次片元程序处理的数据。', stages:['R = 0.2','G = 0.5','B = 0.3']},
-      {active:'tex>shader', label:'纹理采样与调制', formula:'c × texture(0.25,0.75) = c × (1,1,1)', detail:'按最近邻方式采样，选中的纹素为白色。与 RGB 三个通道分别相乘后，颜色保持不变。', stages:['uv = (0.25,0.75)','读取白色纹素','调制颜色']},
-      {active:'depth>pixel', label:'深度比较', formula:'z = 0.4 < stored z = 0.7 → PASS', detail:'更小的深度表示更近。候选片元通过测试；若更远，则在本例的写入步骤前丢弃。', stages:['候选深度 0.4','比较已存 0.7','允许写入']},
-      {active:'fb', label:'写入帧缓冲', formula:'C[3,4] ← round(255c) = (51,128,77)', detail:'绿色数据点到达目标格后，帧缓冲保存新颜色，同时更新深度值为 0.4。', stages:['Store RGB','目标格更新','深度写入']},
-      {active:'fb>pixel', label:'显示与反向追溯', formula:'display[3,4] ← framebuffer[3,4]', detail:'显示阶段从帧缓冲读取颜色。追溯该像素，可回到纹理、顶点属性及覆盖它的三角形。', stages:['帧缓冲读取','传送像素','屏幕显示']}
-    ],
-    stacking: [
-      {active:'lid>logic-top', label:'查看完整剖面', formula:'盖 → 上层逻辑 → 键合 → 下层 → 内存 → 基板', detail:'从顶部散热盖到封装基板逐层读图，观察逻辑、互连、存储与承载结构的位置关系。', stages:['散热盖','逻辑与互连','封装基板']},
-      {active:'cut-core>logic-top', label:'关闭单元仍存在', formula:'可用单元 = 8 − 1 = 7', detail:'上层 8 个单元中，打叉的一个被关闭。它仍保留在硅片上，其余 7 个单元继续参与工作。', stages:['同一硅片','关闭 1 单元','剩余 7 可用']},
-      {active:'lid>bond>substrate', label:'分离六个层面', formula:'6 层结构 · 每层承担不同职责', detail:'展开层间距离，逐层观察键合层、上下逻辑、存储层与封装基板。', stages:['辨认上层','查看键合','辨认基板']},
-      {active:'logic-top', label:'上层逻辑的位置', formula:'热源：上层逻辑 → 散热盖', detail:'上层逻辑同时靠近散热盖与键合层。绿色信号走向下层，暖色热流走向散热盖。', stages:['上层计算','向下传信号','向上传热']},
-      {active:'bond', label:'穿过混合键合层', formula:'上层信号 → 垂直互连 → 下层逻辑', detail:'高亮小点表示层间连接。数据沿垂直方向穿过互连，键合层不负责执行程序。', stages:['上层发出','穿过键合','下层收到']},
-      {active:'logic-low>mem-layer', label:'下层访问附近存储', formula:'read → memory → return', detail:'请求从下层逻辑发出，到附近存储后带数据返回。靠近存储可以缩短互连，同时传输的数据量取决于带宽。', stages:['下层请求','存储读取','返回下层']},
-      {active:'bond>mem-layer', label:'对比互连的几何路径', formula:'E ≈ C · V²；连线长度影响寄生 C', detail:'两路信号以相同速度出发，较短的垂直路径先到达。观察路径长度如何影响传输距离。', stages:['同时出发','短路径先到','长路径继续']},
-      {active:'lid>logic-top', label:'热量必须导出', formula:'ΔT ≈ P · Rθ', detail:'热从逻辑层向散热盖流动。堆叠可能提高热阻；收益需与温度、供电、良率及制造成本一起权衡。', stages:['逻辑产生热','逐层导热','散热盖导出']}
-    ]
-  };
-  var PAGE_POINTS = {cpu:[33,25],tlb:[110,25],pgd:[187,25],pud:[264,25],pmd:[264,99],pte:[187,99],ram:[110,99],cache:[33,99]};
+
+  // ---------- Other walkthroughs: small diagrams driven by the visual clock ----------
+  function svgText(x, y, text, klass) { return '<text x="' + x + '" y="' + y + '" class="' + (klass || '') + '">' + escapeHTML(tr(text)) + '</text>'; }
+  function box(x, y, w, h, label, state) { return '<rect class="lab-box' + (state ? ' lab-' + state : '') + '" x="' + (x - w / 2) + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="5"/>' + svgText(x, y + 4, label, state ? 'lab-svg-strong' : ''); }
+  function poly(points, klass) { return '<polyline class="lab-path ' + (klass || '') + '" points="' + points.map(function (p) { return p.join(','); }).join(' ') + '"/>'; }
+  function dots(count, klass) { var out = ''; for (var i = 0; i < count; i++) out += '<circle data-phase-marker="' + i + '" class="lab-dot ' + (klass || '') + '" cx="-20" cy="-20" r="3.5"/>'; return out; }
+  function svg(inner, label, height) { return '<svg class="lab-svg" viewBox="0 0 340 ' + (height || 150) + '" role="img" aria-label="' + escapeHTML(tr(label)) + '"><defs><linearGradient id="lab-tri-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d47b7b"/><stop offset=".5" stop-color="#6cbc7c"/><stop offset="1" stop-color="#7b92d4"/></linearGradient></defs>' + inner + '</svg>'; }
+
+  var PAGE_NODES = { lsu: [34, 26], tlb1: [102, 26], tlb2: [170, 26], gmmu: [238, 26], hbm: [306, 26], pd4: [34, 104], pd3: [92, 104], pd2: [150, 104], pd1: [208, 104], pd0: [266, 104], page: [318, 104] };
+  var PAGE_LABELS = { lsu: 'LD/ST', tlb1: 'L1 TLB', tlb2: 'L2 TLB', gmmu: 'GMMU', hbm: 'HBM', pd4: 'PD4[0]', pd3: 'PD3[0]', pd2: 'PD2[508]', pd1: 'PD1[470]', pd0: 'PD0[22]', page: '2 MiB' };
+  function pageDiagram(spec) {
+    var inner = poly([[34, 26], [306, 26]]) + poly([[238, 26], [238, 64], [34, 64], [34, 104]]) + poly([[34, 104], [318, 104]]);
+    spec.paths.forEach(function (p) { inner += poly(p, 'lab-live lab-addr'); });
+    Object.keys(PAGE_NODES).forEach(function (id) {
+      var p = PAGE_NODES[id], w = id === 'page' ? 40 : id.indexOf('pd') === 0 ? 52 : 56;
+      var state = spec.miss && spec.miss.indexOf(id) >= 0 ? 'warn' : spec.active.indexOf(id) >= 0 ? 'addr' : spec.done && spec.done.indexOf(id) >= 0 ? 'active' : null;
+      inner += box(p[0], p[1], w, 26, PAGE_LABELS[id], state);
+    });
+    inner += svgText(170, 140, spec.note, 'lab-svg-dim') + dots(spec.paths.length, 'lab-dot-addr');
+    return inner;
+  }
+  var PAGE_STEPS = [
+    { active: ['lsu'], paths: [[[34, 52], [34, 26]]], bits: [0, 1, 2, 3, 4, 5], note: L('程序只看得到虚拟地址', 'Programs only see virtual addresses'), stages: [L('算地址', 'Compute address'), L('交给 LD/ST', 'Hand to LD/ST'), L('准备翻译', 'Translate')] },
+    { active: ['tlb1'], miss: ['tlb1'], paths: [[[34, 26], [102, 26]]], bits: [0, 1, 2, 3, 4], note: L('虚拟页号 = 地址 >> 21', 'Virtual page = address >> 21'), stages: [L('查 L1 TLB', 'Check L1 TLB'), L('没有这一项', 'No entry'), L('未命中', 'Miss')] },
+    { active: ['tlb2', 'gmmu'], miss: ['tlb1', 'tlb2'], paths: [[[102, 26], [170, 26], [238, 26]]], bits: [0, 1, 2, 3, 4], note: L('GMMU 开始查页表', 'The GMMU starts the walk'), stages: [L('查共享 TLB', 'Check shared TLB'), L('未命中', 'Miss'), L('GMMU 接手', 'GMMU takes over')] },
+    { active: ['pd4', 'pd3', 'pd2', 'hbm'], miss: ['tlb1', 'tlb2'], paths: [[[238, 26], [306, 26]], [[34, 104], [92, 104], [150, 104]]], bits: [0, 1, 2], note: L('每一层都要读一次显存', 'Each level is one memory read'), stages: ['PD4[0]', 'PD3[0]', 'PD2[508]'] },
+    { active: ['pd1', 'pd0', 'page'], done: ['pd4', 'pd3', 'pd2'], miss: ['tlb1', 'tlb2'], paths: [[[150, 104], [208, 104], [266, 104], [318, 104]]], bits: [3, 4], note: L('PD0 这一项就是 2 MiB 页的页表项', 'The PD0 entry is the 2 MiB page entry'), stages: ['PD1[470]', 'PD0[22]', L('页基址', 'Page base')] },
+    { active: ['page', 'tlb1', 'tlb2'], done: ['pd4', 'pd3', 'pd2', 'pd1', 'pd0'], paths: [[[318, 104], [318, 64], [102, 64], [102, 26]]], bits: [5], pa: true, note: '0x24e000000 + 0x164a40', stages: [L('页基址', 'Page base'), L('+ 偏移', '+ offset'), L('填回 TLB', 'Fill TLBs')] },
+    { active: ['hbm'], done: ['tlb1', 'tlb2', 'gmmu'], paths: [[[238, 26], [306, 26]]], bits: [], pa: true, note: L('物理地址 → 堆栈、通道、bank', 'PA → stack, channel, bank'), stages: [L('L2 未命中', 'L2 miss'), L('存储控制器', 'Memory controller'), L('读 DRAM', 'Read DRAM')] },
+    { active: ['lsu'], done: ['tlb1', 'tlb2', 'hbm'], paths: [[[306, 26], [306, 64], [34, 64], [34, 26]]], bits: [], pa: true, note: L('同一页的下次访问：TLB 命中', 'Next access in this page: TLB hit'), stages: ['HBM', 'L2', L('寄存器', 'Register')] }
+  ];
+  function addressBits(spec) {
+    var labels = ['PD4', 'PD3', 'PD2', 'PD1', 'PD0', 'offset'];
+    var widths = [1, 9, 9, 9, 8, 21];
+    var cols = widths.map(function (w) { return Math.max(w, 6) + 'fr'; }).join(' ');
+    var values = [PAGE.fields.pd4, PAGE.fields.pd3, PAGE.fields.pd2, PAGE.fields.pd1, PAGE.fields.pd0, '0x' + PAGE.fields.offset.toString(16)];
+    return '<div class="lab-bits" style="grid-template-columns:' + cols + '" aria-label="' + escapeHTML(tr(L('虚拟地址 0x7f3ac2d64a40 按页表层级拆开', 'Virtual address 0x7f3ac2d64a40 split by page-table level'))) + '">' + labels.map(function (name, i) {
+      return '<div class="lab-bit' + (i === 5 ? ' lab-offset' : '') + (spec.bits.indexOf(i) >= 0 ? ' lab-active' : '') + '" title="' + widths[i] + ' bit"><small>' + escapeHTML(i === 5 ? tr(L('偏移', 'offset')) : name) + '</small>' + values[i] + '</div>';
+    }).join('') + '</div>';
+  }
+
+  var PIXEL_STEPS = [
+    { stages: [L('132 个 SM', '132 SMs'), L('2 个图形 TPC', '2 graphics TPCs'), L('像素 (3, 4)', 'Pixel (3, 4)')], paths: [[[90, 75], [150, 75]]], height: 150 },
+    { stages: ['v₀', 'v₁', 'v₂'], paths: [[[30, 120], [68, 13]], [[30, 120], [10, 121]], [[30, 120], [136, 121]]], height: 150 },
+    { stages: [L('读位置', 'Read position'), 'M · p', L('屏幕坐标', 'Screen position')], paths: [[[150, 70], [230, 70]]], height: 150 },
+    { stages: [L('扫描', 'Scan'), L('判断在内部', 'Inside test'), L('生成片元', 'Emit fragment')], paths: [[[68, 13], [59.4, 99.4]], [[10, 121], [59.4, 99.4]], [[136, 121], [59.4, 99.4]]], scan: true, height: 150 },
+    { stages: ['R 0.2', 'G 0.5', 'B 0.3'], paths: [[[40, 75], [150, 75]]], height: 150 },
+    { stages: ['uv (0.25, 0.75)', L('白色纹素', 'White texel'), L('颜色不变', 'Color unchanged')], paths: [[[50, 106], [50, 80], [170, 80], [170, 46], [260, 46]]], height: 150 },
+    { stages: [L('新 z = 0.4', 'New z = 0.4'), L('已有 z = 0.7', 'Stored z = 0.7'), L('通过，写入', 'Pass, write')], paths: [[[40, 42], [150, 42], [150, 72], [250, 72]]], height: 150 },
+    { stages: [L('帧缓冲', 'Framebuffer'), L('PCIe / NVLink', 'PCIe / NVLink'), L('主机', 'Host')], paths: [[[100, 75], [240, 75]]], height: 150 }
+  ];
+  function pixelGrid(x, y, size, filled) {
+    var out = '';
+    for (var i = 0; i < 64; i++) {
+      var col = i % 8, row = Math.floor(i / 8), target = col === 3 && row === 4;
+      out += '<rect x="' + (x + col * size) + '" y="' + (y + row * size) + '" width="' + (size - 2) + '" height="' + (size - 2) + '" rx="1" class="lab-pixel' + (target ? ' lab-target' : '') + (target && filled ? ' lab-filled' : '') + '"/>';
+    }
+    return out;
+  }
+  function triangle() {
+    return '<path class="lab-tri" d="M68 13 10 121 136 121Z"/><path class="lab-weight" d="M68 13 59.4 99.4 10 121M59.4 99.4 136 121"/>' + svgText(68, 9, 'v₀') + svgText(8, 136, 'v₁') + svgText(140, 136, 'v₂') + '<circle cx="59.4" cy="99.4" r="3.5" fill="#f2f2ee"/>';
+  }
+  function pixelDiagram(step, model) {
+    var inner = '';
+    if (step === 0) {
+      for (var t = 0; t < 8; t++) for (var r2 = 0; r2 < 9; r2++) inner += '<rect x="' + (14 + t * 9) + '" y="' + (18 + r2 * 12) + '" width="7" height="10" rx="1" class="lab-box' + (t === 0 && r2 === 3 ? ' lab-active' : '') + '"/>';
+      inner += svgText(50, 140, L('一个 GPC（9 个 TPC）', 'One GPC (9 TPCs)'), 'lab-svg-dim') + pixelGrid(170, 18, 13, false) + svgText(222, 140, L('目标像素 (3, 4)', 'Target pixel (3, 4)'), 'lab-svg-dim');
+      if (model === 'a100') inner += svgText(170, 8, L('A100 的图形能力 NVIDIA 没有说明，按 H100 讲', 'NVIDIA doesn’t describe A100 graphics; shown as on H100'), 'lab-svg-dim');
+    } else if (step === 1) {
+      inner = '<g transform="translate(160,0)">' + triangle() + '</g>' + box(40, 75, 64, 30, L('顶点缓冲', 'Vertex buffer'), 'active') + poly([[72, 75], [150, 75]], 'lab-live') + svgText(48, 120, 'HBM → L2 → SM', 'lab-svg-dim');
+    } else if (step === 2) {
+      inner = box(60, 70, 80, 34, 'p = (x, y, z, 1)', null) + box(190, 70, 70, 34, 'M · p', 'active') + box(290, 70, 80, 34, L('屏幕 x, y', 'Screen x, y'), null) + poly([[100, 70], [155, 70]], 'lab-live') + poly([[225, 70], [250, 70]], 'lab-live') + svgText(170, 125, L('在 SM 的 FP32 通道上执行', 'Runs on the SM’s FP32 lanes'), 'lab-svg-dim');
+    } else if (step === 3) {
+      inner = '<clipPath id="lab-tri-clip"><path d="M68 13 10 121 136 121Z"/></clipPath>' + triangle() + '<rect data-phase-scan class="lab-scan" x="8" y="14" width="132" height="2"/>' + svgText(250, 50, 'w = (0.2, 0.5, 0.3)', 'lab-svg-result') + svgText(250, 74, L('三个权重都 ≥ 0', 'All three weights ≥ 0'), 'lab-svg-dim') + svgText(250, 96, L('在三角形内', 'Inside the triangle'), 'lab-svg-dim');
+    } else if (step === 4) {
+      inner = box(40, 75, 60, 34, L('片元', 'Fragment'), null) + box(150, 75, 90, 40, 'Σ wᵢ · vᵢ', 'active') + poly([[70, 75], [105, 75]], 'lab-live');
+      [.2, .5, .3].forEach(function (v, i) { inner += '<rect class="' + ['lab-bar-r', 'lab-bar-g', 'lab-bar-b'][i] + '" x="' + (232 + i * 28) + '" y="' + (115 - v * 90) + '" width="18" height="' + (v * 90) + '" rx="2"/>' + svgText(241 + i * 28, 132, ['R', 'G', 'B'][i]); });
+    } else if (step === 5) {
+      for (var yy = 0; yy < 2; yy++) for (var xx = 0; xx < 2; xx++) inner += '<rect x="' + (20 + xx * 30) + '" y="' + (94 + yy * 22) + '" width="28" height="20" class="lab-box' + (xx === 0 && yy === 1 ? ' lab-active' : '') + '"/>';
+      inner += svgText(50, 86, L('纹理', 'Texture'), 'lab-svg-dim') + box(170, 46, 90, 34, 'sample(uv)', 'active') + svgText(285, 42, '(1, 1, 1)', 'lab-svg-result') + svgText(200, 122, 'c × 1 = c', 'lab-svg-result') + poly([[50, 106], [50, 80], [170, 80], [170, 63]], 'lab-live');
+    } else if (step === 6) {
+      inner = '<rect x="20" y="36" width="88" height="10" rx="2" fill="#6fd3bf"/>' + svgText(64, 28, 'z = 0.4') + '<rect x="20" y="96" width="154" height="10" rx="2" fill="#5d6266"/>' + svgText(97, 122, L('已有 z = 0.7', 'Stored z = 0.7')) + box(210, 72, 74, 34, '0.4 < 0.7', 'active') + svgText(300, 76, 'pass', 'lab-svg-result') + svgText(210, 130, 'fb[3,4] = (51, 128, 77)', 'lab-svg-strong');
+    } else {
+      inner = pixelGrid(20, 30, 11, true) + svgText(64, 22, L('帧缓冲 · HBM', 'Framebuffer · HBM'), 'lab-svg-dim') + box(270, 75, 90, 34, L('主机', 'Host'), 'active') + poly([[110, 75], [225, 75]], 'lab-live') + svgText(168, 66, 'PCIe / NVLink', 'lab-svg-dim') + svgText(170, 135, L('H100 SXM 没有显示接口', 'H100 SXM has no display output'), 'lab-svg-dim');
+    }
+    return inner + dots(PIXEL_STEPS[step].paths.length);
+  }
+
+  var STACK_STEPS = [
+    { stages: ['A100 2.04 TB/s', 'H100 3.35 TB/s', L('5 组 HBM', '5 stacks')], paths: [[[40, 110], [40, 30]]] },
+    { stages: L('DRAM ×8 · 底部芯片 · 中介层', 'DRAM ×8 · base die · interposer'), paths: [[[300, 130], [300, 20]]] },
+    { stages: ['TSV', L('微凸点', 'Microbump'), L('底部芯片', 'Base die')], paths: [[[130, 134], [130, 18]], [[210, 134], [210, 18]]] },
+    { stages: [L('通道并行', 'Channels in parallel'), '1024 bit', '× 5'], paths: [[[20, 70], [320, 70]]] },
+    { stages: ['HBM', L('中介层', 'Interposer'), 'PHY'], paths: [[[64, 40], [138, 40]], [[64, 78], [138, 78]], [[64, 116], [138, 116]], [[276, 40], [202, 40]], [[276, 78], [202, 78]]] },
+    { stages: L('微凸点 · 凸点 · 焊球', 'Microbumps · bumps · balls'), paths: [[[24, 18], [24, 138]]] },
+    { stages: [L('发热', 'Heat'), L('顶面', 'Top surface'), L('冷板', 'Cold plate')], paths: [[[170, 112], [170, 20]], [[70, 112], [70, 30]], [[270, 112], [270, 30]]], heat: true },
+    { stages: ['144 → 132 SM', L('6 → 5 组 HBM', '6 → 5 stacks'), L('位置每颗不同', 'Varies per chip')], paths: [[[14, 10], [166, 10]], [[212, 12], [316, 12]]] }
+  ];
+  function stackDiagram(step, model) {
+    var inner = '', a100 = model === 'a100', i;
+    if (step === 0) {
+      inner += svgText(40, 140, L('需求', 'Need'), 'lab-svg-dim');
+      [['A100', 2.04], ['H100', 3.35]].forEach(function (row, n) {
+        var w = row[1] / 3.35 * 200, y = 40 + n * 44, on = (n === 1) !== a100;
+        inner += svgText(100, y + 4, row[0], on ? 'lab-svg-strong' : '') + '<rect x="130" y="' + (y - 9) + '" width="' + w.toFixed(1) + '" height="16" rx="3" fill="' + (on ? '#6fd3bf' : '#3b3f42') + '"/>' + svgText(130 + w + 26, y + 4, row[1] + ' TB/s', on ? 'lab-svg-result' : '');
+      });
+    } else if (step === 1 || step === 2) {
+      for (i = 0; i < 8; i++) inner += '<rect class="lab-box' + (step === 1 ? ' lab-active' : '') + '" x="70" y="' + (18 + i * 13) + '" width="200" height="10" rx="2"/>';
+      inner += '<rect class="lab-box lab-addr" x="60" y="124" width="220" height="12" rx="2"/>' + svgText(170, 148, L('底部接口芯片', 'Base die'), 'lab-svg-dim');
+      if (step === 2) for (i = 0; i < 9; i++) { inner += '<line x1="130" x2="130" y1="' + (18 + i * 13 - 3) + '" y2="' + (18 + i * 13 + 10) + '" stroke="#b87a4c" stroke-width="3"/><line x1="210" x2="210" y1="' + (18 + i * 13 - 3) + '" y2="' + (18 + i * 13 + 10) + '" stroke="#b87a4c" stroke-width="3"/>'; }
+      else inner += svgText(300, 76, '×8', 'lab-svg-strong');
+    } else if (step === 3) {
+      var ch = a100 ? 8 : 16, w = 280 / ch;
+      for (i = 0; i < ch; i++) inner += '<rect class="lab-box lab-active" x="' + (30 + i * w) + '" y="44" width="' + (w - 3) + '" height="52" rx="2"/>';
+      inner += svgText(170, 30, a100 ? '8 × 128 bit' : '16 × 64 bit', 'lab-svg-strong') + svgText(170, 122, a100 ? '2.04e12 × 8 ÷ 5120 ≈ 3.2 Gb/s' : '3.35e12 × 8 ÷ 5120 ≈ 5.2 Gb/s', 'lab-svg-result') + svgText(170, 142, L('每根数据线的速率', 'Rate per data line'), 'lab-svg-dim');
+    } else if (step === 4) {
+      inner += box(170, 78, 64, 116, 'GPU', 'active');
+      [40, 78, 116].forEach(function (y) { inner += box(40, y, 48, 30, 'HBM', 'addr'); });
+      [40, 78].forEach(function (y) { inner += box(300, y, 48, 30, 'HBM', 'addr'); });
+      inner += box(300, 116, 48, 30, L('未启用', 'off'), 'off');
+      [40, 78, 116].forEach(function (y) { inner += poly([[64, y], [138, y]], 'lab-live'); });
+      [40, 78].forEach(function (y) { inner += poly([[276, y], [202, y]], 'lab-live'); });
+      inner += svgText(170, 150, L('每组 1024 根线，长约 1 mm', '1024 lines per stack, about 1 mm long'), 'lab-svg-dim');
+    } else if (step === 5) {
+      var rows = [[L('裸片 / HBM', 'Die / HBM'), '#4d565d'], [L('微凸点', 'Microbumps'), '#9aa1a6'], [L('硅中介层', 'Silicon interposer'), '#3b4248'], [L('C4 凸点', 'C4 bumps'), '#9aa1a6'], [L('有机基板', 'Organic substrate'), '#2f3a33'], [L('焊球', 'Solder balls'), '#9aa1a6'], ['PCB', '#1b4a3a']];
+      rows.forEach(function (r, n) { var h = n % 2 ? 6 : 14, y = 18 + n * 17; inner += '<rect x="60" y="' + y + '" width="220" height="' + h + '" rx="2" fill="' + r[1] + '"/>' + svgText(310, y + 8, r[0], 'lab-svg-dim'); });
+    } else if (step === 6) {
+      inner += '<rect x="30" y="16" width="280" height="10" rx="2" fill="#3b3f42"/>' + svgText(170, 12, L('冷板（模型里没有画）', 'Cold plate (not in the model)'), 'lab-svg-dim');
+      inner += box(170, 124, 70, 24, 'GPU', 'warn') + box(70, 124, 50, 24, 'HBM', 'warn') + box(270, 124, 50, 24, 'HBM', 'warn');
+      [70, 170, 270].forEach(function (x) { inner += poly([[x, 112], [x, 30]], 'lab-live lab-heat'); });
+      inner += svgText(170, 80, a100 ? '400 W' : '≤ 700 W', 'lab-svg-strong');
+    } else {
+      var off = a100 ? function (g, t) { return g === 7 || (g >= 5 && t === (g * 3 + 2) % 8); } : function (g, t) { return g < 6 && t === (g * 5 + 3) % 9; };
+      var tpcs = a100 ? 8 : 9;
+      for (var g = 0; g < 8; g++) for (var t2 = 0; t2 < tpcs; t2++) inner += '<rect x="' + (14 + (g % 4) * 38 + (g % 4 > 1 ? 4 : 0)) + '" y="' + (16 + Math.floor(g / 4) * 64 + t2 * 6.4) + '" width="32" height="5" rx="1" class="lab-box' + (off(g, t2) ? ' lab-off' : ' lab-active') + '"/>';
+      for (var s = 0; s < 6; s++) inner += '<rect x="' + (212 + (s % 2) * 56) + '" y="' + (18 + Math.floor(s / 2) * 40) + '" width="48" height="32" rx="3" class="lab-box' + (s === 5 ? ' lab-off' : ' lab-addr') + '"/>';
+      inner += svgText(84, 148, a100 ? '108 / 128 SM' : '132 / 144 SM', 'lab-svg-strong') + svgText(264, 148, L('5 / 6 组 HBM', '5 / 6 stacks'), 'lab-svg-strong');
+    }
+    return inner + dots(STACK_STEPS[step].paths.length, STACK_STEPS[step].heat ? 'lab-dot-heat' : '');
+  }
+
+  var SPECS = { pagetable: PAGE_STEPS, pixel: PIXEL_STEPS, stacking: STACK_STEPS };
+  function stagesOf(spec) { var st = spec.stages; return Array.isArray(st) ? st : tr(st).split(' · '); }
   function along(points, fraction) {
     var lengths = [], total = 0;
     for (var i = 1; i < points.length; i++) {
-      var dx = points[i][0] - points[i-1][0], dy = points[i][1] - points[i-1][1];
-      total += Math.sqrt(dx*dx + dy*dy); lengths.push(total);
+      var dx = points[i][0] - points[i - 1][0], dy = points[i][1] - points[i - 1][1];
+      total += Math.sqrt(dx * dx + dy * dy); lengths.push(total);
     }
     var target = clamp(fraction) * total, last = 0;
     for (var j = 0; j < lengths.length; j++) {
-      if (target <= lengths[j] || j === lengths.length-1) {
-        var p = (target-last) / (lengths[j]-last || 1);
-        return {x:points[j][0] + (points[j+1][0]-points[j][0])*p, y:points[j][1] + (points[j+1][1]-points[j][1])*p};
+      if (target <= lengths[j] || j === lengths.length - 1) {
+        var p = (target - last) / (lengths[j] - last || 1);
+        return { x: points[j][0] + (points[j + 1][0] - points[j][0]) * p, y: points[j][1] + (points[j + 1][1] - points[j][1]) * p };
       }
       last = lengths[j];
     }
-    return {x:points[0][0],y:points[0][1]};
+    return { x: points[0][0], y: points[0][1] };
   }
   function cycle(phase) { phase = Number(phase); return Number.isFinite(phase) ? ((phase % 1) + 1) % 1 : 0; }
+  // The repeating illustration is driven by an unbounded visual phase; it never
+  // changes the worked result, which follows the separate progress clock.
   function visualState(journey, step, phase, progress) {
-    var table = PANEL_STEPS[journey]; if (!table) return null;
-    step = Math.max(0, Math.min(table.length-1, Math.floor(Number(step) || 0)));
-    var u = cycle(phase), spec = table[step], segment = Math.min(2, Math.floor(u*3));
-    var result = {journey:journey, step:step, phase:Number(phase)||0, cycle:u, active:spec.active,
-      signal:spec.stages[segment], label:spec.label, segment:segment, pulse:.5-.5*Math.cos(u*Math.PI*2),
-      progress:progress === undefined ? null : clamp(progress), particles:[], scan:null, channel:-1, gap:0};
-    if (journey === 'pagetable') {
-      var routes = [ ['cpu','tlb'], ['tlb','tlb'], ['tlb','pgd'], ['pgd','pud'], ['pud','pmd'], ['pmd','pte'], ['pte','ram','cache','cpu'] ];
-      if (step === 1) result.particles.push({x:88+u*44,y:25});
-      else result.particles.push(along(routes[step].map(function(id){return PAGE_POINTS[id];}),u));
-      if (step === 1) result.scan = {x:86+u*42,y:10,width:3,height:30};
-      if (step === 5) result.particles.push(along([[187,99],[187,62],[110,62],[110,25]],cycle(phase+.5)));
-    } else if (journey === 'pixel') {
-      if (step === 0) result.particles.push({x:149+Math.cos(u*Math.PI*2)*15,y:87+Math.sin(u*Math.PI*2)*15});
-      if (step === 1) { result.particles.push({x:59.4,y:99.4}); result.scan={x:8,y:14+u*107,width:132,height:2}; }
-      if (step === 2) [[68,13],[10,121],[136,121]].forEach(function(v,i){result.particles.push(along([v,[59.4,99.4]],cycle(phase+i/3)));});
-      if (step === 3) {result.particles.push(along([[36,76],[135,76],[255,76],[301,76]],u));result.channel=segment;}
-      if (step === 4) result.particles.push(along([[46,107],[46,80],[169,80],[169,46],[267,46]],u));
-      if (step === 5) result.particles.push(along([[35,42],[142,42],[142,72],[267,72]],u));
-      if (step === 6) result.particles.push(along([[24,75],[120,75],[164,75],[226,88]],u));
-      if (step === 7) {result.particles.push(along([[63,83],[175,83],[267,83]],u));result.scan={x:235,y:44+u*75,width:73,height:2};}
-    } else if (journey === 'stacking') {
-      if (step === 0) result.particles.push({x:35,y:18+u*124});
-      if (step === 1) {result.particles.push({x:55+u*222,y:41});result.scan={x:48+u*239,y:31,width:4,height:23};}
-      if (step === 2) {result.gap=3+result.pulse*3;result.particles.push({x:35,y:12+u*140});}
-      if (step === 3) {result.particles.push(along([[112,43],[112,71],[171,91]],u));result.particles.push(along([[224,43],[224,19]],cycle(phase+.5)));}
-      if (step === 4) {result.particles.push(along([[171,43],[171,70],[171,91]],u));result.particles.push(along([[211,43],[211,70],[211,91]],cycle(phase+.5)));}
-      if (step === 5) result.particles.push(along([[132,91],[132,117],[215,117],[215,91]],u));
-      if (step === 6) {result.particles.push(along([[89,38],[89,112]],Math.min(1,u*(292/74))));result.particles.push(along([[175,38],[284,38],[284,112],[175,112]],u));}
-      if (step === 7) {result.particles.push(along([[171,119],[171,91],[171,43],[171,16]],u));result.particles.push(along([[219,91],[219,43],[219,16]],cycle(phase+.4)));}
-    }
-    return result;
+    var table = SPECS[journey]; if (!table) return null;
+    step = Math.max(0, Math.min(table.length - 1, Math.floor(Number(step) || 0)));
+    var u = cycle(phase), spec = table[step], stages = stagesOf(spec), segment = Math.min(stages.length - 1, Math.floor(u * stages.length));
+    var paths = journey === 'pagetable' ? spec.paths : spec.paths;
+    return { journey: journey, step: step, phase: Number(phase) || 0, cycle: u, segment: segment, signal: tr(stages[segment]),
+      pulse: .5 - .5 * Math.cos(u * Math.PI * 2), progress: progress === undefined ? null : clamp(progress),
+      particles: paths.map(function (p, i) { return along(p, cycle(u + i * (journey === 'stacking' && step === 4 ? .2 : 0))); }),
+      scan: spec.scan ? { x: 8, y: 14 + u * 107, width: 132, height: 2 } : null };
   }
-  function svgText(x,y,text,klass) {return '<text x="'+x+'" y="'+y+'" class="'+(klass||'')+'">'+escapeHTML(text)+'</text>';}
-  function marker(count) {return Array.from({length:count},function(_,i){return '<circle data-phase-marker="'+i+'" class="lab-motion-dot lab-motion-dot-'+i+'" cx="0" cy="0" r="4"/>';}).join('');}
-  function line(points,klass) {return '<polyline class="lab-signal-path '+(klass||'')+'" points="'+points.map(function(p){return p.join(',');}).join(' ')+'"/>';}
-  function box(x,y,w,h,label,active) {return '<rect class="lab-process-box'+(active?' lab-active':'')+'" x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="3"/>'+svgText(x+w/2,y+h/2+3,label,active?'lab-svg-text lab-svg-active':'lab-svg-text');}
-  function diagram(inner,label,height) {return '<svg class="lab-concept-svg" viewBox="0 0 340 '+(height||155)+'" role="img" aria-label="'+escapeHTML(label)+'">'+inner+'</svg>';}
-  function conceptCaption(spec) {return '<div class="lab-motion-caption"><span class="lab-kicker">'+escapeHTML(spec.label)+'</span><span class="lab-motion-status" data-phase-status>'+escapeHTML(spec.stages[0])+'</span></div>';}
-  function conceptMath(spec) {return '<div class="lab-concept-math"><strong>'+escapeHTML(spec.formula)+'</strong><p>'+escapeHTML(spec.detail)+'</p></div>';}
-  function pagetable(step) {
-    var spec=PANEL_STEPS.pagetable[step],idx=pageIndices(VA),fields=['pgd','pud','pmd','pte','offset'];
-    var active=Math.max(0,Math.min(3,step-2));
-    var bits='<div class="lab-address-bits lab-address-bits-compact">'+fields.map(function(key,i){return '<div class="lab-address-bit'+((step>=2&&i===active)||(step>=5&&i===4)?' lab-active':'')+'"><small>'+key.toUpperCase()+' · '+(i===4?'12':'9')+'b</small>'+(i===4?'0x'+idx[key].toString(16):idx[key])+'</div>';}).join('')+'</div>';
-    var inner='';
-    [['cpu','tlb'],['tlb','pgd'],['pgd','pud'],['pud','pmd'],['pmd','pte'],['pte','ram'],['ram','cache'],['cache','cpu']].forEach(function(route){inner+=line(route.map(function(id){return PAGE_POINTS[id];}));});
-    if(step===5)inner+=line([[187,99],[187,62],[110,62],[110,25]],'lab-return-path');
-    Object.keys(PAGE_POINTS).forEach(function(id){var p=PAGE_POINTS[id];inner+=box(p[0]-25,p[1]-15,50,30,({cpu:'CPU',tlb:'TLB',ram:'MEM',cache:'CACHE'})[id]||id.toUpperCase(),spec.active.split('>').indexOf(id)>=0);});
-    if(step===1)inner+='<rect data-phase-scan class="lab-scan-bar" x="87" y="10" width="3" height="30"/>';
-    inner+=svgText(170,65,step===1?'MISS → 逐级查表':step===5?'翻译可回填 TLB':step===6?'0x2A → CPU':'VA → 页表项 → 下一层基址','lab-svg-annotation');
-    inner+=marker(step===5?2:1);
-    return '<div class="lab-kicker">CPU 内存访问 · x86-64 · 4 KiB 普通页</div>'+bits+conceptCaption(spec)+diagram(inner,'CPU、TLB 与四级页表的逐级信号路径',132)+conceptMath(spec);
+  function concept(journey, step, model) {
+    var spec = SPECS[journey][step], stages = stagesOf(spec), status = '<div class="lab-status"><span>' + escapeHTML(tr(L('循环演示', 'Looping'))) + '</span><span data-phase-status>' + escapeHTML(tr(stages[0])) + '</span></div>';
+    var body;
+    if (journey === 'pagetable') body = addressBits(spec) + svg(pageDiagram(spec), L('地址翻译经过的部件', 'Parts the translation passes through'), 150) + (spec.pa ? '<div class="lab-result">PA = 0x24e000000 + 0x164a40 = 0x24e164a40</div>' : '');
+    else if (journey === 'pixel') body = svg(pixelDiagram(step, model), L('像素 (3, 4) 在这一步的处理', 'Pixel (3, 4) at this step'), spec.height);
+    else body = svg(stackDiagram(step, model), L('封装和堆叠示意', 'Package and stacking sketch'), 152);
+    return status + body;
   }
-  function pixelGrid(x,y,size,filled,screen) {
-    var out='';
-    for(var i=0;i<64;i++){
-      var col=i%8,row=Math.floor(i/8),target=i===35;
-      out+='<rect x="'+(x+col*size)+'" y="'+(y+row*size)+'" width="'+(size-2)+'" height="'+(size-2)+'" rx="1" class="lab-svg-pixel'+(target?' lab-svg-pixel-target':'')+(target&&filled?' lab-svg-pixel-filled':'')+'"/>';
-    }
-    if(screen)out='<rect class="lab-screen-outline" x="'+(x-5)+'" y="'+(y-5)+'" width="'+(size*8+8)+'" height="'+(size*8+8)+'" rx="4"/>'+out;
-    return out;
-  }
-  function triangle(inner,clip) {
-    return '<defs><clipPath id="lab-triangle-clip"><path d="M68 13 10 121 136 121Z"/></clipPath></defs><path class="lab-triangle-fill" d="M68 13 10 121 136 121Z"/>'+(clip?'<g clip-path="url(#lab-triangle-clip)">'+inner+'</g>':inner)+'<path class="lab-weight-lines" d="M68 13 59.4 99.4 10 121M59.4 99.4 136 121"/>'+svgText(68,9,'v₀','lab-svg-a')+svgText(8,137,'v₁','lab-svg-a')+svgText(139,137,'v₂','lab-svg-a')+'<circle cx="59.4" cy="99.4" r="3" class="lab-triangle-target"/>';
-  }
-  function pixel(step) {
-    var spec=PANEL_STEPS.pixel[step],inner='',name='通用图形管线教学示例';
-    if(step===0){inner=pixelGrid(101,25,14,false,true)+svgText(167,17,'目标像素 (x=3, y=4)','lab-svg-annotation')+svgText(167,151,'屏幕位置 → 几何来源','lab-svg-annotation')+marker(1);}
-    if(step===1){inner=triangle('<rect data-phase-scan class="lab-scan-bar" x="8" y="15" width="132" height="2"/>',true)+svgText(235,56,'inside = true','lab-svg-result')+svgText(235,79,'P 的三个权重均 ≥ 0','lab-svg-annotation')+svgText(235,100,'产生候选片元','lab-svg-annotation')+marker(1);}
-    if(step===2){inner=triangle('',false)+svgText(236,35,'w₀ + w₁ + w₂ = 1','lab-svg-annotation')+svgText(236,61,'0.2R + 0.5G + 0.3B','lab-svg-result');['R','G','B'].forEach(function(c,i){inner+='<rect x="'+(182+i*35)+'" y="'+(121-[.2,.5,.3][i]*80)+'" width="23" height="'+([.2,.5,.3][i]*80)+'" class="lab-channel-bar lab-channel-'+i+'"/>'+svgText(193+i*35,138,c,'lab-svg-annotation');});inner+=marker(3);}
-    if(step===3){inner=line([[36,76],[135,76],[255,76],[301,76]])+box(20,53,69,46,'c input',false)+box(120,41,93,70,'shade(c)',true);[.2,.5,.3].forEach(function(v,i){inner+='<g data-channel="'+i+'"><rect class="lab-channel-bar lab-channel-'+i+'" x="'+(253+i*25)+'" y="'+(112-v*100)+'" width="17" height="'+(v*100)+'"/>'+svgText(261+i*25,129,['R','G','B'][i],'lab-svg-annotation')+'</g>';});inner+=svgText(165,24,'本例为 passthrough shader','lab-svg-annotation')+marker(1);}
-    if(step===4){inner=line([[46,107],[46,80],[169,80],[169,46],[267,46]]);for(var y=0;y<2;y++)for(var x=0;x<2;x++)inner+='<rect x="'+(18+x*31)+'" y="'+(93+y*24)+'" width="29" height="22" class="lab-texture-pixel'+(x===0&&y===1?' lab-texture-selected':'')+'"/>';inner+=svgText(49,82,'texture','lab-svg-annotation')+box(125,24,89,44,'sample(uv)',true)+svgText(269,39,'(1,1,1)','lab-svg-result')+svgText(269,60,'白色纹素','lab-svg-annotation')+svgText(193,119,'c × 1 = c','lab-svg-result')+marker(1);}
-    if(step===5){inner=line([[35,42],[142,42],[142,72],[267,72]])+svgText(64,25,'候选 z = 0.4','lab-svg-annotation')+'<rect x="20" y="37" width="88" height="10" class="lab-depth-near"/>'+svgText(71,116,'已存 z = 0.7','lab-svg-annotation')+'<rect x="20" y="94" width="154" height="10" class="lab-depth-far"/>'+box(193,48,73,49,'0.4 < 0.7',true)+svgText(301,79,'PASS','lab-svg-result')+svgText(166,142,'本例采用更小深度优先','lab-svg-annotation')+marker(1);}
-    if(step===6){inner=line([[24,75],[120,75],[164,75],[226,88]])+box(11,54,111,43,'RGB(51,128,77)',true)+pixelGrid(185,35,12,true,false)+svgText(231,21,'Framebuffer','lab-svg-annotation')+svgText(231,149,'color + depth = 0.4','lab-svg-annotation')+marker(1);}
-    if(step===7){inner=line([[63,83],[175,83],[267,83]])+pixelGrid(25,34,11,true,false)+pixelGrid(236,43,9,true,true)+svgText(69,22,'Framebuffer','lab-svg-annotation')+svgText(274,26,'Display','lab-svg-annotation')+svgText(169,103,'scanout','lab-svg-annotation')+'<rect data-phase-scan class="lab-display-scan" x="235" y="44" width="73" height="2"/>'+marker(1);}
-    return '<div class="lab-kicker">光栅图形管线 · 从三角形到像素</div>'+conceptCaption(spec)+diagram(inner,name,158)+conceptMath(spec);
-  }
-  var STACK_LAYERS=['散热盖','上层逻辑','混合键合','下层逻辑','内存 / 缓存','封装基板'];
-  var STACK_IDS=['lid','logic-top','bond','logic-low','mem-layer','substrate'];
-  function stacking(step) {
-    var spec=PANEL_STEPS.stacking[step],inner=line([[35,18],[35,145]],'lab-return-path');
-    if(step===6){
-      inner=line([[89,38],[89,112]],'lab-vertical-route')+line([[175,38],[284,38],[284,112],[175,112]],'lab-horizontal-route');
-      inner+=box(59,17,61,20,'上层',true)+box(59,112,61,20,'下层',true)+box(145,17,61,20,'起点',false)+box(145,112,61,20,'终点',false)+svgText(89,150,'短的垂直路径','lab-svg-annotation')+svgText(248,150,'更长的横向绕行','lab-svg-annotation')+marker(2);
-    } else {
-      STACK_LAYERS.forEach(function(label,i){
-        var y=[10,35,62,84,111,137][i],active=spec.active.split('>').indexOf(STACK_IDS[i])>=0;
-        inner+='<g data-stack-layer="'+i+'"><rect x="48" y="'+y+'" width="244" height="16" rx="2" class="lab-stack-svg-layer'+(active?' lab-active':'')+(step===7&&i===1?' lab-heat-source':'')+'"/>'+svgText(171,y+11,label,'lab-svg-text')+'</g>';
-      });
-      if(step===1){for(var c=0;c<8;c++){inner+='<rect x="'+(54+c*29)+'" y="37" width="24" height="12" rx="1" class="lab-core-cell'+(c===5?' lab-core-disabled':'')+'"/>';if(c===5)inner+=svgText(66+c*29,47,'×','lab-core-cross');}inner+='<rect data-phase-scan class="lab-scan-bar" x="48" y="31" width="4" height="23"/>';}
-      if(step===4){for(var b=0;b<16;b++)inner+='<circle cx="'+(61+b*14.5)+'" cy="70" r="2" class="lab-bond-point"/>';}
-      if(step===5)inner+=line([[132,91],[132,117],[215,117],[215,91]],'lab-return-path');
-      if(step===7)inner+=svgText(319,25,'↑ heat','lab-svg-annotation');
-      inner+=marker(step===3||step===4||step===7?2:1);
-    }
-    return '<div class="lab-kicker">3D 逻辑堆叠 · 结构与信号路径</div>'+conceptCaption(spec)+diagram(inner,'通用六层剖面与当前步骤中的信号或热流',step===2?185:163)+conceptMath(spec);
-  }
+
+  var caches = typeof WeakMap === 'function' ? new WeakMap() : null;
   function setVisualPhase(container, phase, progress) {
-    if(!container||!caches)return;
-    var cache=caches.get(container);if(!cache||cache.journey==='gemm')return;
-    var descriptor=visualState(cache.journey,cache.step,phase,progress);if(!descriptor)return;
-    var root=cache.root;
-    root.dataset.phase=Number(descriptor.phase).toFixed(4);
-    root.dataset.active=descriptor.active;
-    root.dataset.signal=descriptor.signal;
-    root.dataset.segment=String(descriptor.segment);
-    if(progress!==undefined)root.dataset.progress=clamp(progress).toFixed(3);
-    cache.phaseMarkers.forEach(function(node,i){var p=descriptor.particles[i];if(!p)return;node.setAttribute('cx',p.x.toFixed(2));node.setAttribute('cy',p.y.toFixed(2));node.setAttribute('r',(3.2+descriptor.pulse*.9).toFixed(2));});
-    if(descriptor.scan)cache.phaseScans.forEach(function(node){['x','y','width','height'].forEach(function(key){node.setAttribute(key,descriptor.scan[key].toFixed(2));});});
-    cache.channels.forEach(function(node){node.classList.toggle('lab-signal-on',Number(node.dataset.channel)===descriptor.channel);});
-    if(cache.step===2&&cache.journey==='stacking')cache.stackLayers.forEach(function(node,i){node.setAttribute('transform','translate(0,'+(8+(i-2.5)*descriptor.gap).toFixed(2)+')');});
-    if(cache.phaseStatus&&cache.phaseStatus.textContent!==descriptor.signal)cache.phaseStatus.textContent=descriptor.signal;
-    cache.lastVisualPhase=Number(phase)||0;
+    if (!container || !caches) return;
+    var cache = caches.get(container); if (!cache || cache.journey === 'gemm') return;
+    var d = visualState(cache.journey, cache.step, phase, progress); if (!d) return;
+    var rootNode = cache.root;
+    rootNode.dataset.phase = Number(d.phase).toFixed(4);
+    rootNode.dataset.signal = d.signal;
+    rootNode.dataset.segment = String(d.segment);
+    if (progress !== undefined) rootNode.dataset.progress = clamp(progress).toFixed(3);
+    cache.phaseMarkers.forEach(function (node, i) { var p = d.particles[i]; if (!p) return; node.setAttribute('cx', p.x.toFixed(2)); node.setAttribute('cy', p.y.toFixed(2)); });
+    if (d.scan) cache.phaseScans.forEach(function (node) { node.setAttribute('y', d.scan.y.toFixed(2)); });
+    if (cache.phaseStatus && cache.phaseStatus.textContent !== d.signal) cache.phaseStatus.textContent = d.signal;
+    cache.lastVisualPhase = Number(phase) || 0;
   }
   function focusK(cache, k) {
     cache.k = k;
@@ -333,12 +401,10 @@
   function setProgress(container, progress) {
     if (!container || !caches) return;
     var cache = caches.get(container); if (!cache) return;
-    var p = clamp(progress), root = cache.root;
-    root.style.setProperty('--lab-progress', (p * 100).toFixed(1) + '%');
+    var p = clamp(progress);
+    cache.root.style.setProperty('--lab-progress', (p * 100).toFixed(1) + '%');
     if (cache.journey !== 'gemm') return;
-    if (cache.step === 3) cache.packets.forEach(function (node) {
-      node.style.setProperty('--packet-alpha', String(clamp(p * 5 - Number(node.dataset.packet))));
-    });
+    if (cache.step === 3) cache.packets.forEach(function (node) { node.style.setProperty('--packet-alpha', String(clamp(p * 5 - Number(node.dataset.packet)))); });
     if (cache.step === 4) cache.lanes.forEach(function (node, i) { node.classList.toggle('lab-lane-on', i <= Math.floor(p * 31)); });
     if (cache.step === 5 || cache.step === 6) {
       var acc = accumulation(cache.step, p);
@@ -347,9 +413,9 @@
         cache.acc.textContent = String(acc.value);
         var t = TRACE[acc.count < K ? acc.count : K - 1];
         cache.expression.innerHTML = cache.step === 5 && acc.count === TILE_K
-          ? '<span class="lab-cv">2 + 3 + 6 + 8 = 19</span> · 第一块完成'
+          ? '<span class="lab-cv">2 + 3 + 6 + 8 = 19</span> · ' + escapeHTML(tr(L('第一块完成', 'tile 1 done')))
           : acc.count === K
-          ? '<span class="lab-cv">19 + 18 = 37</span> · 累加完成'
+          ? '<span class="lab-cv">19 + 18 = 37</span> · ' + escapeHTML(tr(L('累加完成', 'done')))
           : String(acc.value) + ' + <span class="lab-av">' + t.a + '</span> × <span class="lab-bv">' + t.b + '</span> → <span class="lab-cv">' + t.acc + '</span>';
         cache.products.forEach(function (node) { node.classList.toggle('lab-product-done', Number(node.dataset.labK) < acc.count); });
         if (cache.playing || cache.manualK === null) focusK(cache, acc.currentK);
@@ -359,34 +425,35 @@
   function render(container, state, step, progress) {
     if (!container || !container.ownerDocument) return;
     installStyle(container.ownerDocument);
-    var journey = state.journey || 'gemm', i = Math.max(0, Math.floor(state.stepIndex || 0));
-    var key = journey + ':' + i;
+    var journey = SPECS[state.journey] ? state.journey : 'gemm';
+    var max = journey === 'gemm' ? 7 : SPECS[journey].length - 1;
+    var i = Math.max(0, Math.min(max, Math.floor(state.stepIndex || 0)));
+    var key = journey + ':' + i + ':' + (state.model || 'h100') + ':' + lang();
     var cache = caches && caches.get(container);
     if (!cache || cache.key !== key) {
-      var builder = ({ gemm:gemm, pagetable:pagetable, pixel:pixel, stacking:stacking })[journey] || gemm;
-      var max = journey === 'pagetable' ? 6 : 7; i = Math.min(i,max);
-      container.innerHTML = '<div class="lab-root" data-journey="' + escapeHTML(journey) + '" data-step="' + i + '" data-animate="' + (state.playing ? 'true' : 'false') + '">' + builder(i) + '</div>';
-      cache = { key:key, container:container, root:container.firstElementChild, journey:journey, step:i, accCount:-1, playing:!!state.playing, manualK:null,
-        matrixCells:Array.from(container.querySelectorAll('[data-matrix-k]')),
-        phaseMarkers:Array.from(container.querySelectorAll('[data-phase-marker]')),phaseScans:Array.from(container.querySelectorAll('[data-phase-scan]')),
-        phaseStatus:container.querySelector('[data-phase-status]'),channels:Array.from(container.querySelectorAll('[data-channel]')),stackLayers:Array.from(container.querySelectorAll('[data-stack-layer]')),
-        packets:Array.from(container.querySelectorAll('[data-packet]')), lanes:Array.from(container.querySelectorAll('.lab-lane')),
-        products:Array.from(container.querySelectorAll('[data-lab-k]')), acc:container.querySelector('[data-lab-acc]'), expression:container.querySelector('[data-lab-expression]') };
-      if (caches) caches.set(container,cache);
-      cache.products.forEach(function(node){
+      var html = journey === 'gemm' ? gemm(i) : concept(journey, i, state.model);
+      container.innerHTML = '<div class="lab-root" data-journey="' + escapeHTML(journey) + '" data-step="' + i + '" data-lang="' + lang() + '">' + html + '</div>';
+      cache = { key: key, container: container, root: container.firstElementChild, journey: journey, step: i, accCount: -1, playing: !!state.playing, manualK: null,
+        lastVisualPhase: cache && cache.lastVisualPhase || 0,
+        matrixCells: Array.from(container.querySelectorAll('[data-matrix-k]')),
+        phaseMarkers: Array.from(container.querySelectorAll('[data-phase-marker]')), phaseScans: Array.from(container.querySelectorAll('[data-phase-scan]')),
+        phaseStatus: container.querySelector('[data-phase-status]'),
+        packets: Array.from(container.querySelectorAll('[data-packet]')), lanes: Array.from(container.querySelectorAll('.lab-lane')),
+        products: Array.from(container.querySelectorAll('[data-lab-k]')), acc: container.querySelector('[data-lab-acc]'), expression: container.querySelector('[data-lab-expression]') };
+      if (caches) caches.set(container, cache);
+      cache.products.forEach(function (node) {
         function selectPair() { cache.manualK = Number(node.dataset.labK); focusK(cache, cache.manualK); }
-        node.addEventListener('click',selectPair); node.addEventListener('focus',selectPair);
+        node.addEventListener('click', selectPair); node.addEventListener('focus', selectPair);
       });
     }
     if (state.playing && !cache.playing) cache.manualK = null;
     cache.playing = !!state.playing;
-    cache.root.dataset.animate = state.playing ? 'true' : 'false';
     setProgress(container, progress === undefined ? 0 : progress);
     if (journey !== 'gemm') setVisualPhase(container, cache.lastVisualPhase || 0, progress);
   }
-  return { render:render, setProgress:setProgress, setVisualPhase:setVisualPhase, visualState:visualState, PANEL_STEPS:PANEL_STEPS, STYLE:STYLE,
-    GEMM:{ A:A, B:B, C:C, row:ROW, col:COL, k:K, tileK:TILE_K, trace:TRACE, tileSums:[19,18], result:C[ROW][COL] },
-    multiply:multiply, dotTrace:dotTrace, accumulation:accumulation,
-    pageIndices:pageIndices, PAGE:{ va:VA, indices:pageIndices(VA), pageBase:0x12345000, physical:0x12345234 },
-    barycentricColor:barycentricColor };
+  return { render: render, setProgress: setProgress, setVisualPhase: setVisualPhase, visualState: visualState, SPECS: SPECS, STYLE: STYLE,
+    GEMM: { A: A, B: B, C: C, row: ROW, col: COL, k: K, tileK: TILE_K, trace: TRACE, tileSums: [19, 18], result: C[ROW][COL] },
+    multiply: multiply, dotTrace: dotTrace, accumulation: accumulation,
+    gpuAddressFields: gpuAddressFields, physicalAddress: physicalAddress, PAGE: PAGE,
+    barycentricColor: barycentricColor, perLineRate: perLineRate };
 });

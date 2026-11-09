@@ -34,73 +34,69 @@ test('scrubbing clamps at numerical boundaries', function () {
   assert.strictEqual(L.accumulation(6,100).value,37);
   assert.strictEqual(L.accumulation(5,NaN).value,0);
 });
-test('x86 page indices reconstruct all 48 bits without JS 32-bit shifts', function () {
-  var address = 0x123456789abc;
-  var i = L.pageIndices(address);
-  assert.strictEqual(i.pgd * Math.pow(2,39) + i.pud * Math.pow(2,30) + i.pmd * Math.pow(2,21) + i.pte * 4096 + i.offset, address);
-  assert.deepStrictEqual(L.PAGE.indices,{pgd:0,pud:1,pmd:504,pte:1,offset:0x234});
-  assert.strictEqual(L.PAGE.pageBase + L.PAGE.indices.offset,L.PAGE.physical);
-  assert.throws(function(){L.pageIndices(Math.pow(2,48));});
+test('GPU virtual address splits into the Hopper GMMU fields and recombines exactly', function () {
+  var f = L.gpuAddressFields(BigInt('0x7f3ac2d64a40'));
+  assert.deepStrictEqual(f, { pd4: 0, pd3: 0, pd2: 508, pd1: 470, pd0: 22, offset: 0x164a40 });
+  var rebuilt = (BigInt(f.pd4) << 56n) + (BigInt(f.pd3) << 47n) + (BigInt(f.pd2) << 38n) + (BigInt(f.pd1) << 29n) + (BigInt(f.pd0) << 21n) + BigInt(f.offset);
+  assert.strictEqual(rebuilt, BigInt('0x7f3ac2d64a40'));
+  var top = (1n << 57n) - 1n, all = L.gpuAddressFields(top);
+  assert.deepStrictEqual([all.pd4, all.pd3, all.pd2, all.pd1, all.pd0, all.offset], [1, 511, 511, 511, 255, (1 << 21) - 1], 'field widths 1/9/9/9/8/21 bits');
+  assert.throws(function () { L.gpuAddressFields(1n << 57n); });
+  assert.strictEqual(L.physicalAddress(L.PAGE.pageBase, L.PAGE.va, 21).toString(16), '24e164a40');
+  assert.strictEqual(BigInt(L.PAGE.pageBase) % (1n << 21n), 0n, '2 MiB pages are 2 MiB aligned');
+});
+test('lab numbers agree with the step text in state.js', function () {
+  var S = require('../state.js');
+  assert.strictEqual(S.ADDRESS.physical, L.PAGE.physical);
+  S.ADDRESS.fields.forEach(function (f) { assert.strictEqual(L.PAGE.fields[f.id], f.index, f.id); });
+  assert.ok(S.JOURNEYS.pagetable.steps[5].trace.indexOf(L.PAGE.physical) >= 0);
+  assert.ok(S.JOURNEYS.pagetable.steps[3].body.en.indexOf('PD2[508]') >= 0);
+  assert.ok(S.JOURNEYS.pagetable.steps[4].body.en.indexOf('PD1[470]') >= 0 && S.JOURNEYS.pagetable.steps[4].body.en.indexOf('PD0[22]') >= 0);
+  assert.ok(Math.abs(L.perLineRate(3.35e12, 5, 1024) / 1e9 - 5.2) < .05, 'H100 ≈ 5.2 Gb/s per line');
+  assert.ok(Math.abs(L.perLineRate(2.039e12, 5, 1024) / 1e9 - 3.2) < .05, 'A100 ≈ 3.2 Gb/s per line');
+  assert.ok(S.JOURNEYS.stacking.steps[3].hardware.en.indexOf('5.2 Gb/s') >= 0);
+  var rgb = L.barycentricColor([.2, .5, .3], [[1, 0, 0], [0, 1, 0], [0, 0, 1]]).map(function (x) { return Math.round(x * 255); });
+  assert.deepStrictEqual(rgb, [51, 128, 77]);
+  assert.ok(S.JOURNEYS.pixel.steps[6].body.en.indexOf('(51, 128, 77)') >= 0);
 });
 test('RGB interpolation preserves barycentric normalization and primary contributions', function () {
   assert.deepStrictEqual(L.barycentricColor([.2,.5,.3],[[1,0,0],[0,1,0],[0,0,1]]),[.2,.5,.3]);
   assert.deepStrictEqual(L.barycentricColor([0,1,0],[[1,0,0],[0,1,0],[0,0,1]]),[0,1,0]);
 });
-test('all non-GEMM steps have math and a distinct semantic activity', function () {
-  assert.deepStrictEqual(Object.keys(L.PANEL_STEPS), ['pagetable','pixel','stacking']);
-  assert.strictEqual(L.PANEL_STEPS.pagetable.length,7);
-  assert.strictEqual(L.PANEL_STEPS.pixel.length,8);
-  assert.strictEqual(L.PANEL_STEPS.stacking.length,8);
-  Object.keys(L.PANEL_STEPS).forEach(function(journey){
-    L.PANEL_STEPS[journey].forEach(function(spec){
-      assert.ok(spec.formula.length>10,journey+' needs explanatory math');
-      assert.ok(spec.detail.length>20,journey+' needs an annotation');
-      assert.strictEqual(spec.stages.length,3);
-    });
-  });
-});
-Object.keys(L.PANEL_STEPS).forEach(function(journey){
-  L.PANEL_STEPS[journey].forEach(function(spec,step){
-    test(journey+' step '+step+': signal moves at fixed completed progress, freezes at equal phase',function(){
-      var first=L.visualState(journey,step,.17,1),later=L.visualState(journey,step,.67,1);
-      assert.strictEqual(first.active,spec.active);
-      assert.ok(first.particles.length>0,'each step must draw a signal');
-      assert.notDeepStrictEqual({particles:first.particles,scan:first.scan,gap:first.gap,channel:first.channel},{particles:later.particles,scan:later.scan,gap:later.gap,channel:later.channel},'signals or scans must keep moving after step progress reaches1');
-      assert.deepStrictEqual(L.visualState(journey,step,.17,1),first,'same phase must be an exact freeze');
-      first.particles.concat(later.particles).forEach(function(p){
-        assert.ok(Number.isFinite(p.x)&&Number.isFinite(p.y),'finite SVG positions');
-        assert.ok(p.x>=0&&p.x<=340&&p.y>=0&&p.y<=185,'signal stays inside figure');
+test('every non-GEMM step has three stages in both languages', function () {
+  assert.deepStrictEqual(Object.keys(L.SPECS), ['pagetable','pixel','stacking']);
+  Object.keys(L.SPECS).forEach(function (journey) {
+    assert.strictEqual(L.SPECS[journey].length, 8);
+    L.SPECS[journey].forEach(function (spec, i) {
+      ['zh', 'en'].forEach(function (lang) {
+        var stages = Array.isArray(spec.stages) ? spec.stages.map(function (s) { return typeof s === 'string' ? s : s[lang]; }) : spec.stages[lang].split(' · ');
+        assert.strictEqual(stages.length, 3, journey + ' ' + i + ' ' + lang);
+        if (lang === 'en') stages.forEach(function (s) { assert.ok(!/[㐀-鿿]/.test(s), 'English stage has no Chinese: ' + s); });
       });
-      assert.notStrictEqual(first.signal,later.signal,'step annotations follow the animated signal');
     });
   });
 });
-test('page traversal follows the actual CPU→TLB→PGD→PUD→PMD→PTE path',function(){
-  var ids=['cpu','tlb','pgd','pud','pmd','pte>tlb','ram>cache>cpu'];
-  ids.forEach(function(id,i){assert.strictEqual(L.visualState('pagetable',i,0,1).active,id);});
-  assert.deepStrictEqual(L.visualState('pagetable',2,0,1).particles[0],{x:110,y:25});
-  assert.deepStrictEqual(L.visualState('pagetable',5,0,1).particles[0],{x:264,y:99});
-  assert.strictEqual(L.visualState('pagetable',6,.99,1).particles[0].x,33);
-});
-test('stacking geometry comparison uses the same displayed signal speed',function(){
-  var p=L.visualState('stacking',6,.1,1).particles;
-  assert.ok(Math.abs((p[0].y-38)-(p[1].x-175))<1e-9);
-  p=L.visualState('stacking',6,.5,1).particles;
-  assert.deepStrictEqual(p[0],{x:89,y:112},'short path has finished');
-  assert.notDeepStrictEqual(p[1],{x:175,y:112},'long path is still travelling');
-});
-test('expanded stack layers remain inside their SVG without overlapping the caption',function(){
-  [0,.25,.5,.75,.99].forEach(function(phase){
-    var gap=L.visualState('stacking',2,phase,1).gap;
-    assert.ok(10+8-2.5*gap>=0,'top layer stays in the viewport');
-    assert.ok(137+16+8+2.5*gap<=185,'bottom layer stays in the viewport');
+Object.keys(L.SPECS).forEach(function (journey) {
+  L.SPECS[journey].forEach(function (spec, step) {
+    test(journey + ' step ' + (step + 1) + ': illustration loops on its own clock and freezes at equal phase', function () {
+      var first = L.visualState(journey, step, .17, 1), later = L.visualState(journey, step, .67, 1);
+      assert.ok(first.particles.length > 0, 'each step draws a moving signal');
+      assert.notDeepStrictEqual(first.particles, later.particles, 'signals keep moving after the result is complete');
+      assert.deepStrictEqual(L.visualState(journey, step, .17, 1), first, 'same phase is an exact freeze');
+      assert.deepStrictEqual(L.visualState(journey, step, 3.17, 1).particles, first.particles, 'the loop repeats every cycle');
+      first.particles.concat(later.particles).forEach(function (p) {
+        assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
+        assert.ok(p.x >= 0 && p.x <= 340 && p.y >= 0 && p.y <= 160, 'signal stays inside the figure');
+      });
+      assert.notStrictEqual(first.signal, later.signal, 'the status line follows the signal');
+    });
   });
 });
-test('pixel shader cycles actual RGB channel emphasis while final color stays fixed',function(){
-  assert.strictEqual(L.visualState('pixel',3,.1,1).channel,0);
-  assert.strictEqual(L.visualState('pixel',3,.5,1).channel,1);
-  assert.strictEqual(L.visualState('pixel',3,.9,1).channel,2);
-  assert.deepStrictEqual(L.barycentricColor([.2,.5,.3],[[1,0,0],[0,1,0],[0,0,1]]).map(function(x){return Math.round(x*255);}),[51,128,77]);
-  assert.strictEqual(L.GEMM.result,37);
+test('translation walk visits L1 TLB, shared TLB, then the directories in order', function () {
+  var at = function (step, phase) { return L.visualState('pagetable', step, phase, 1).particles[0]; };
+  assert.deepStrictEqual(at(1, 0), { x: 34, y: 26 });
+  assert.deepStrictEqual(at(1, .999).x > 100, true);
+  assert.deepStrictEqual(at(2, .999).x > 230, true);
+  assert.ok(at(4, .999).x > 300, 'lower walk ends at the 2 MiB page');
 });
 console.log('Journey lab: ' + passed + ' tests passed');

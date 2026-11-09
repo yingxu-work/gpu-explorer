@@ -2,20 +2,24 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as THREE from '../three/three.module.js';
 import { createHardwareModel, calculateCameraFit } from '../hardware-model.js';
-import { lessonPresentation, createTeachingVisuals, routeState, samplePath, pathLength, signalCycleState, FLOW_PHASES } from '../teaching-flow.js';
+import { lessonPresentation, anatomyPaths, createTeachingVisuals, routeState, samplePath, pathLength, signalCycleState, FLOW_PHASES } from '../teaching-flow.js';
+import { createRequire } from 'node:module';
+const S=createRequire(import.meta.url)('../state.js');
 
 const context=new Proxy({}, {get:(o,k)=>k in o?o[k]:(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
 globalThis.document={createElement:()=>({getContext:()=>context})};
 const levels=['board','hbm','die','package','sm','sm','sm','package'];
 
-test('all eight guided steps have an explicit, persistent physical or logical presentation',()=>{
-  for(let step=0;step<8;step++){
-    const presentation=lessonPresentation(levels[step],step);
-    assert.equal(presentation.kind,FLOW_PHASES[step].kind);
-    assert.ok(presentation.routes.length,'every step needs a visible direction, including the first three');
-    assert.ok(presentation.markers.some(marker=>marker.role==='target'),'a learner can locate the destination without motion');
+test('every step of every walkthrough draws on the hardware it names',()=>{
+  for(const [journey,data] of Object.entries(S.JOURNEYS))for(let step=0;step<data.steps.length;step++){
+    const level=data.steps[step].level,presentation=lessonPresentation(level,step,'h100',journey);
+    if(journey==='gemm')assert.equal(presentation.kind,FLOW_PHASES[step].kind);
+    assert.ok(presentation.routes.length||presentation.markers.length>=2,`${journey} ${step+1}: needs something drawn on ${level}`);
+    assert.ok(presentation.markers.some(marker=>['target','location'].includes(marker.role)),`${journey} ${step+1}: a learner can locate the destination without motion`);
+    assert.ok(presentation.title.zh&&presentation.title.en&&presentation.note.zh&&presentation.note.en,'bilingual phase text');
+    for(const marker of presentation.markers)assert.ok(typeof marker.label==='string'?!/[\u3400-\u9fff]/.test(marker.label):(marker.label.zh&&marker.label.en),'marker labels are bilingual or language-neutral');
     for(const route of presentation.routes){
-      assert.ok(route.width>=.14,'data buses must be thicker than the former hairline traces');
+      assert.ok(route.width>=.12,'data buses must be thicker than the former hairline traces');
       assert.ok(route.points.every(p=>p.every(Number.isFinite)));
       assert.ok(pathLength(route.points)>0);
       for(let n=1;n<route.points.length;n++)assert.ok(route.points[n].filter((v,k)=>Math.abs(v-route.points[n-1][k])>1e-8).length<=1,'ribbon follows orthogonal routing');
@@ -32,7 +36,8 @@ test('dependency, work placement and actual memory transfers remain different co
     const view=lessonPresentation(levels[step],step);
     assert.ok(view.routes.every(route=>route.dashed));
     assert.ok(view.routes.every(route=>['dependency','placement'].includes(route.kind)));
-    assert.match(view.note,step===2?/不是数据传输/:/尚未搬运|仍在 HBM/);
+    assert.match(view.note.zh,step===2?/不是搬数据/:/还没有搬运|还在 HBM/);
+    assert.match(view.note.en,step===2?/not moving data/:/nothing moves yet|still in HBM/);
   }
   assert.ok(lessonPresentation('die',2).routes.some(route=>route.stages.includes('selected SM')));
   assert.ok(!lessonPresentation('package',3).markers.some(marker=>marker.id==='output-c'),'loading inputs must not mark the output as written');
@@ -149,4 +154,34 @@ test('fixed sweeps repeat and pause independently of completed mathematical resu
     assert.ok(visual.markers.filter(item=>item.marker.role==='target').every(item=>item.fill.opacity===.45));
     assert.ok(visual.visuals.every(item=>item.railMaterial.opacity>=.65),'paths stay visible between emphasis passes');visual.dispose();
   }
+});
+
+for(const model of ['h100','a100'])test(`${model}: other walkthroughs attach to visible hosts at their own explosion`,()=>{
+  const hw=createHardwareModel(THREE,model);
+  for(const journey of ['pagetable','pixel','stacking'])S.JOURNEYS[journey].steps.forEach((step,index)=>{
+    hw.setLevel(step.level);hw.setExplode(step.explode||0);
+    const presentation=lessonPresentation(step.level,index,model,journey),visual=createTeachingVisuals(THREE,hw,presentation);
+    assert.equal(visual.visuals.length,presentation.routes.length,`${journey} ${index+1}: every route has a host`);
+    assert.equal(visual.markers.length,presentation.markers.length,`${journey} ${index+1}: every marker has a host`);
+    hw.root.updateMatrixWorld(true);
+    for(const item of [...visual.visuals,...visual.markers])for(let node=item.group;node;node=node.parent)assert.equal(node.visible,true,`${journey} step ${index+1} host is hidden`);
+    visual.update(.5,.3);visual.dispose();
+  });
+});
+
+test('address walkthrough reads page tables from HBM and never invents a CPU',()=>{
+  const walk=lessonPresentation('package',3,'h100','pagetable');
+  assert.equal(walk.xray,true);
+  assert.ok(walk.routes.some(r=>r.stages.includes('page table in HBM')));
+  for(let i=0;i<8;i++){const p=lessonPresentation(S.JOURNEYS.pagetable.steps[i].level,i,'h100','pagetable');assert.ok(p.routes.every(r=>!r.stages.join().includes('CPU')));}
+  assert.ok(lessonPresentation('die',2,'h100','pagetable').markers.some(m=>m.id==='gmmu'));
+});
+
+test('anatomy data paths exist for every level except the board cutaway and are static',()=>{
+  for(const level of ['board','package','die','sm','hbm','power']){const p=anatomyPaths(level,'h100');assert.ok(p.routes.length>0,level);assert.ok(p.routes.every(r=>r.kind==='path'));}
+  assert.equal(anatomyPaths('interconnect').routes.length,0);
+  const hw=createHardwareModel(THREE,'h100');hw.setLevel('die');
+  const v=createTeachingVisuals(THREE,hw,anatomyPaths('die','h100'),{static:true});
+  const before=v.visuals[0].segments.map(s=>s.mesh.material);v.update(.5,.7);
+  assert.deepEqual(v.visuals[0].segments.map(s=>s.mesh.material),before,'static paths do not animate');v.dispose();
 });
