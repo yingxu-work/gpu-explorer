@@ -1,318 +1,119 @@
-// Unit tests for state.js. Plain Node (no node:test) so they also run on
-// gpuserver's older Node. Run: node tests/state.test.js
-var assert = require('assert');
-var S = require('../state.js');
-var passed = 0, failed = 0;
-function test(name, fn) {
-  try { fn(); passed++; console.log('PASS ' + name); }
-  catch (e) { failed++; console.log('FAIL ' + name + ': ' + e.message); }
-}
-function eq(a, b, msg) { assert.strictEqual(a, b, msg || (a + ' !== ' + b)); }
+// Walkthrough content and the pure domain state machine.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const S = require('../state.js');
+const I = require('../interaction-state.js');
+const CJK = /[㐀-鿿]/;
 
-test('starts at step 0, not playing', function () {
-  var s = S.createState({});
-  eq(s.stepIndex, 0); eq(s.playing, false); eq(S.isAtStart(s), true);
+test('starts at step 0 of GEMM on H100, not playing', () => {
+  const s = S.createState();
+  assert.equal(s.journey, 'gemm'); assert.equal(s.model, 'h100'); assert.equal(s.stepIndex, 0); assert.equal(s.playing, false);
 });
-test('next/prev clamp at both ends', function () {
-  var s = S.createState({});
-  S.prev(s); eq(s.stepIndex, 0);
-  for (var i = 0; i < 50; i++) S.next(s);
-  eq(S.isAtEnd(s), true); eq(s.stepIndex, S.currentJourney(s).steps.length - 1);
-  S.next(s); eq(s.stepIndex, S.currentJourney(s).steps.length - 1);
+test('next/prev/goto clamp at both ends; goto ignores junk', () => {
+  const s = S.createState();
+  S.prev(s); assert.equal(s.stepIndex, 0);
+  for (let i = 0; i < 20; i++) S.next(s);
+  assert.equal(s.stepIndex, 7); assert.ok(S.isAtEnd(s));
+  S.goto(s, -5); assert.equal(s.stepIndex, 0);
+  S.goto(s, 99); assert.equal(s.stepIndex, 7);
+  S.goto(s, 'x'); assert.equal(s.stepIndex, 0);
+  S.goto(s, 2.9); assert.equal(s.stepIndex, 2);
 });
-test('view switch preserves journey, model, step and selection', function () {
-  var s = S.createState({ model: 'a100' });
-  S.next(s); S.next(s); S.select(s, 'smem'); S.setView(s, 'data');
-  eq(s.journey, 'gemm'); eq(s.model, 'a100'); eq(s.stepIndex, 2); eq(s.selected, 'smem'); eq(s.view, 'data');
+test('journey switch resets step and selection; model switch keeps step', () => {
+  const s = S.createState(); S.goto(s, 4); S.select(s, 'smem');
+  S.setModel(s, 'a100'); assert.equal(s.stepIndex, 4); assert.equal(s.selected, 'smem');
+  S.setJourney(s, 'pixel'); assert.equal(s.stepIndex, 0); assert.equal(s.selected, null);
+  S.setJourney(s, 'nonsense'); assert.equal(s.journey, 'pixel');
+  S.setModel(s, 'rtx5090'); assert.equal(s.model, 'a100', 'only the two modelled products are accepted');
 });
-test('model switch preserves journey, step and view', function () {
-  var s = S.createState({});
-  S.next(s); S.setView(s, 'timeline'); S.setModel(s, 'mi300x');
-  eq(s.journey, 'gemm'); eq(s.stepIndex, 1); eq(s.view, 'timeline'); eq(s.model, 'mi300x');
+test('select only accepts GEMM data aliases; selectNext wraps', () => {
+  const s = S.createState();
+  S.select(s, 'not-a-node'); assert.equal(s.selected, null);
+  S.selectNext(s, 1); assert.equal(s.selected, 'a-tile');
+  S.selectNext(s, -1); assert.equal(s.selected, 'c-out');
+  S.setJourney(s, 'pagetable'); S.selectNext(s, 1); assert.equal(s.selected, null);
 });
-test('journey switch resets step and selection (steps differ)', function () {
-  var s = S.createState({});
-  S.next(s); S.select(s, 'smem'); S.setJourney(s, 'pagetable');
-  eq(s.journey, 'pagetable'); eq(s.stepIndex, 0); eq(s.selected, null);
+test('playStep advances while playing and stops at the end', () => {
+  const s = S.createState(); s.playing = true;
+  for (let i = 0; i < 10; i++) S.playStep(s);
+  assert.equal(s.stepIndex, 7); assert.equal(s.playing, false);
 });
-test('select rejects nodes not in the current journey', function () {
-  var s = S.createState({});
-  S.select(s, 'pte'); eq(s.selected, null);
-  S.select(s, 'smem'); eq(s.selected, 'smem');
+test('encode/decode round-trips and rejects bad values', () => {
+  const s = S.createState({ journey: 'stacking', model: 'a100', compareModel: 'h100' }); S.goto(s, 5);
+  const back = S.decodeState('#' + S.encodeState(s));
+  assert.equal(back.journey, 'stacking'); assert.equal(back.model, 'a100'); assert.equal(back.stepIndex, 5); assert.equal(back.compareModel, 'h100');
+  const bad = S.decodeState('#j=evil&m=rtx&s=999&sel=<script>&cmp=h100');
+  assert.equal(bad.journey, 'gemm'); assert.equal(bad.model, 'h100'); assert.equal(bad.stepIndex, 7); assert.equal(bad.selected, null); assert.equal(bad.compareModel, null);
+  assert.equal(S.decodeState('').journey, 'gemm');
+  assert.equal(S.decodeState('#j=pixel&s=-3').stepIndex, 0);
 });
-test('Piece 4: selectNext moves selection in node order, wraps, keeps step/playing', function () {
-  var s = S.createState({});
-  var nodes = S.currentJourney(s).nodes;
-  S.selectNext(s, 1); eq(s.selected, nodes[0].id);
-  S.selectNext(s, 1); eq(s.selected, nodes[1].id);
-  S.selectNext(s, -1); eq(s.selected, nodes[0].id);
-  S.selectNext(s, -1); eq(s.selected, nodes[nodes.length - 1].id);
-  S.selectNext(s, 1); eq(s.selected, nodes[0].id);
-  eq(s.stepIndex, 0); eq(s.playing, false);
-  var t = S.createState({});
-  S.next(t); S.next(t); t.playing = true;
-  S.selectNext(t, 1); eq(t.stepIndex, 2); eq(t.playing, true);
-  S.setJourney(t, 'pagetable');
-  S.selectNext(t, -1); eq(t.selected, S.currentJourney(t).nodes[S.currentJourney(t).nodes.length - 1].id);
+test('compare rejects the same or unknown model; setModel to the compare model clears it', () => {
+  const s = S.createState();
+  S.setCompare(s, 'h100'); assert.equal(s.compareModel, null);
+  S.setCompare(s, 'mi300'); assert.equal(s.compareModel, null);
+  S.setCompare(s, 'a100'); assert.equal(s.compareModel, 'a100');
+  S.setModel(s, 'a100'); assert.equal(s.compareModel, null);
 });
-test('playStep advances while playing and stops at the end', function () {
-  var s = S.createState({}); s.playing = true;
-  S.playStep(s); eq(s.stepIndex, 1); eq(s.playing, true);
-  while (!S.isAtEnd(s)) S.playStep(s);
-  S.playStep(s); eq(s.playing, false);
-});
-test('reset returns to start and clears play/selection', function () {
-  var s = S.createState({}); S.next(s); S.select(s, 'smem'); s.playing = true;
-  S.reset(s); eq(s.stepIndex, 0); eq(s.playing, false); eq(s.selected, null);
-});
-test('encode/decode round-trips state and rejects bad values', function () {
-  var s = S.createState({ model: 'a20pro' });
-  S.next(s); S.next(s); S.setView(s, 'data'); S.select(s, 'warp');
-  var d = S.decodeState('#' + S.encodeState(s));
-  eq(d.journey, 'gemm'); eq(d.model, 'a20pro'); eq(d.stepIndex, 2); eq(d.view, 'data'); eq(d.selected, 'warp');
-  var bad = S.decodeState('#j=nope&m=nope&v=nope&s=999');
-  eq(bad.journey, 'gemm'); eq(bad.model, 'h100'); eq(bad.view, 'structure');
-});
-test('pixel journey walks from a pixel to the framebuffer', function () {
-  var s = S.createState({});
-  S.setJourney(s, 'pixel');
-  eq(S.currentJourney(s).title, '像素着色：单个像素的计算路径');
-  while (!S.isAtEnd(s)) S.next(s);
-  eq(S.currentStep(s).title, '显示与反向追溯');
-  eq(S.currentJourney(s).steps.length, 8);
-});
-test('goto jumps and clamps', function () {
-  var s = S.createState({});
-  S.goto(s, 5); eq(s.stepIndex, 5); eq(s.playing, false);
-  S.goto(s, 999); eq(s.stepIndex, S.currentJourney(s).steps.length - 1);
-  S.goto(s, -3); eq(s.stepIndex, 0);
-});
-test('diagram geometry, flows, verdict and trace are consistent', function () {
-  Object.keys(S.JOURNEYS).forEach(function (key) {
-    var j = S.JOURNEYS[key];
-    assert.ok(j.gloss && j.gloss.length > 5, key + ' needs a journey gloss');
-    var ids = {};
-    j.nodes.forEach(function (n) {
-      ids[n.id] = true;
-      assert.ok(n.x >= 0 && n.y >= 0 && n.x + n.w <= 1100 && n.y + n.h <= 520, 'node out of canvas: ' + n.id);
-      assert.ok(n.detail && n.detail.length > 5, 'node needs detail: ' + n.id);
-      assert.ok(['data', 'compute', 'memory', 'control'].indexOf(n.kind) >= 0, 'bad kind: ' + n.id);
-    });
-    (j.flows || []).forEach(function (f) {
-      assert.ok(ids[f.from] && ids[f.to], 'flow endpoint missing: ' + f.from + '>' + f.to);
-    });
-    j.steps.forEach(function (step) {
-      assert.ok(step.trace && step.trace.length > 3, 'step needs trace: ' + step.title);
-      (step.flows || []).forEach(function (f) {
-        var parts = f.split('>');
-        assert.ok(ids[parts[0]] && ids[parts[1]], 'step flow endpoint missing: ' + f);
-      });
-    });
-  });
-});
-test('predict-then-play: valid options, correct/wrong, reset clears', function () {
-  var counts = {};
-  Object.keys(S.PREDICTS).forEach(function (k) {
-    var p = S.PREDICTS[k];
-    counts[k.split(':')[0]] = (counts[k.split(':')[0]] || 0) + 1;
-    assert.ok(p.q && p.options.length >= 3 && p.answer >= 0 && p.answer < p.options.length && p.explain);
-  });
-  Object.keys(counts).forEach(function (j) { assert.ok(counts[j] >= 2, j + ' needs >=2 predictions'); });
-  var s = S.createState({});
-  S.goto(s, 1);
-  assert.ok(S.getPredict('gemm', 1));
-  var wrong = (S.getPredict('gemm', 1).answer + 1) % 3;
-  var r1 = S.predict(s, wrong); assert.strictEqual(r1.correct, false);
-  var r2 = S.predict(s, S.getPredict('gemm', 1).answer); assert.strictEqual(r2.correct, true);
-  assert.strictEqual(S.predict(s, 99), null);
-  S.reset(s); assert.deepStrictEqual(s.predictions, {});
-});
-test('stacking journey shows layers top-to-bottom and a disabled tier block', function () {
-  var s = S.createState({});
-  S.setJourney(s, 'stacking');
-  var j = S.currentJourney(s);
-  eq(j.steps.length, 8);
-  var disabled = j.nodes.filter(function (n) { return n.disabled; });
-  assert.ok(disabled.length >= 1, 'stacking needs a disabled tier block');
-  var ys = j.nodes.filter(function (n) { return !n.disabled && n.x < 850; }).map(function (n) { return n.y; });
-  assert.ok(ys.length >= 6, 'stacking needs >=6 layers');
-  while (!S.isAtEnd(s)) S.next(s);
-  eq(S.currentStep(s).title, '热与代价：堆叠的约束条件');
-});
-test('all journeys have steps, nodes, code and view text', function () {
-  Object.keys(S.JOURNEYS).forEach(function (key) {
-    var j = S.JOURNEYS[key];
-    assert.ok(j.steps.length >= 7, 'journey needs >=7 steps');
-    assert.ok(j.nodes.length >= 6);
-    j.steps.forEach(function (step) {
-      assert.ok(step.title && step.body && step.code.length >= 1);
-      assert.ok(step.active.length >= 1);
-      step.active.forEach(function (id) {
-        assert.ok(j.nodes.some(function (n) { return n.id === id; }), 'active node must exist: ' + id);
-      });
-    });
-    S.VIEWS.forEach(function (v) { assert.ok(j.views[v]); });
-  });
-  assert.ok(Object.keys(S.MODELS).length >= 6);
-});
-
-test('compare mode preserves step/journey/view/selection and rejects same/invalid', function () {
-  var s = S.createState({});
-  S.goto(s, 3); S.setView(s, 'data'); S.select(s, 'smem');
-  S.setCompare(s, 'a100');
-  eq(s.compareModel, 'a100'); eq(s.stepIndex, 3); eq(s.journey, 'gemm'); eq(s.view, 'data'); eq(s.selected, 'smem');
-  S.setCompare(s, 'h100'); eq(s.compareModel, 'a100'); // same as primary: rejected
-  S.setCompare(s, 'nope'); eq(s.compareModel, 'a100');
-  S.setCompare(s, null); eq(s.compareModel, null);
-});
-test('setModel to the compare model clears compare', function () {
-  var s = S.createState({});
-  S.setCompare(s, 'a100'); eq(s.compareModel, 'a100');
-  S.setModel(s, 'a100'); eq(s.compareModel, null); eq(s.model, 'a100');
-});
-test('per-model GEMM notes exist for H100 and A100, default to shared body', function () {
-  var j = S.JOURNEYS.gemm;
-  j.steps.forEach(function (step, i) {
-    assert.ok(step.modelNotes && step.modelNotes.h100 && step.modelNotes.a100, 'GEMM step ' + i + ' needs h100+a100 notes');
-    assert.notStrictEqual(step.modelNotes.h100, step.modelNotes.a100, 'notes must differ: step ' + i);
-    eq(S.getStepNote(step, 'h100'), step.modelNotes.h100);
-    eq(S.getStepNote(step, 'a100'), step.modelNotes.a100);
-  });
-  var pt = S.JOURNEYS.pagetable.steps[0];
-  eq(S.getStepNote(pt, 'a20pro'), pt.body); // no per-model note: shared body
-});
-test('page-table return path uses a return lane, not a diagonal flow', function () {
-  var j = S.JOURNEYS.pagetable;
-  var ret = j.flows.filter(function (f) { return f.from === 'cache' && f.to === 'cpu'; });
-  eq(ret.length, 1); eq(ret[0].route, 'return');
-  // No other journey uses a return lane.
-  Object.keys(S.JOURNEYS).forEach(function (k) {
-    if (k === 'pagetable') return;
-    S.JOURNEYS[k].flows.forEach(function (f) { assert.ok(!f.route, k + ' should not use a return lane'); });
-  });
-  // The step that lights the return path is still the last step.
-  eq(j.steps[j.steps.length - 1].flows.indexOf('cache>cpu') >= 0, true);
-});
-test('compare mode round-trips in URL hash', function () {
-  var s = S.createState({});
-  S.goto(s, 4); S.setCompare(s, 'a100');
-  var d = S.decodeState('#' + S.encodeState(s));
-  eq(d.compareModel, 'a100'); eq(d.stepIndex, 4); eq(d.model, 'h100');
-  var bad = S.decodeState('#j=gemm&m=a100&cmp=a100');
-  eq(bad.compareModel, null); // compare equal to primary is dropped
-  var plain = S.decodeState('#j=gemm&m=h100&s=2');
-  eq(plain.compareModel, null);
-});
-
-
-test('text economy: timeline phases <=6, labels 1-2 words, gloss <=6 words', function () {
-  Object.keys(S.PHASES).forEach(function (key) {
-    var ph = S.PHASES[key];
-    assert.ok(ph.length >= 1 && ph.length <= 6, key + ' phases must be <=6, got ' + ph.length);
-    ph.forEach(function (p, i) {
-      assert.ok(p.label.length <= 4, key + ' phase label too long: ' + p.label);
-      assert.ok(p.gloss.length <= 14, key + ' phase gloss too long: ' + p.gloss);
-      if (i) assert.ok(p.step > ph[i - 1].step, key + ' phases must advance');
-    });
-  });
-  var s = S.createState({}); S.goto(s, 4);
-  assert.strictEqual(S.currentPhase(s).label, '计算');
-});
-test('text economy: step definitions fit 2 lines, traces are formulas only', function () {
-  function width(t) {
-    var w = 0;
-    for (var i = 0; i < t.length; i++) {
-      var c = t.charCodeAt(i);
-      w += (c >= 0x4e00 && c <= 0x9fff) ? 14 : 7;
-    }
-    return w;
+test('predictions: valid options, right and wrong answers, reset clears', () => {
+  for (const [key, p] of Object.entries(S.PREDICTS)) {
+    const [journey, step] = key.split(':');
+    assert.ok(S.JOURNEYS[journey] && S.JOURNEYS[journey].steps[Number(step)], key + ' points at a real step');
+    assert.ok(p.options.length >= 3 && p.answer >= 0 && p.answer < p.options.length, key);
   }
-  Object.keys(S.JOURNEYS).forEach(function (key) {
-    var j = S.JOURNEYS[key];
-    j.steps.forEach(function (step) {
-      assert.ok(width(step.body) <= 648, key + ' body exceeds 2 lines: ' + step.body);
-      assert.ok(step.trace.length <= 40 && step.trace.indexOf('。') < 0, key + ' trace must be a short formula: ' + step.trace);
-      assert.ok(step.code.length <= 10, key + ' code must be <=10 lines');
-      if (step.modelNotes) Object.keys(step.modelNotes).forEach(function (m) {
-        assert.ok(width(step.modelNotes[m]) <= 648, key + ' model note exceeds 2 lines');
-      });
+  for (const journey of Object.keys(S.JOURNEYS)) assert.ok(Object.keys(S.PREDICTS).filter(k => k.startsWith(journey + ':')).length >= 2, journey + ' needs two quick checks');
+  const s = S.createState(); S.goto(s, 1);
+  assert.equal(S.predict(s, 0).correct, false); assert.equal(S.predict(s, 1).correct, true); assert.equal(S.predict(s, 99), null);
+  S.reset(s); assert.deepEqual(s.predictions, {});
+});
+test('every step names where it happens on the 3D model', () => {
+  for (const [key, journey] of Object.entries(S.JOURNEYS)) {
+    assert.equal(journey.steps.length, 8, key);
+    journey.steps.forEach((step, i) => {
+      assert.ok(I.LEVELS.includes(step.level), `${key} ${i + 1}: level`);
+      const guide = S.guideFor(key, i);
+      assert.equal(guide.level, step.level); assert.ok(guide.explode >= 0 && guide.explode <= 1);
+      assert.ok(['three-quarter', 'top', 'side'].includes(guide.camera));
     });
+    assert.ok(new Set(journey.steps.map(s => s.level)).size >= 3, key + ' moves across at least three hardware levels');
+  }
+  assert.deepEqual(S.JOURNEYS.gemm.steps.map(s => s.level), I.GEMM_LEVELS, 'GEMM keeps its established camera path');
+  assert.ok(S.JOURNEYS.stacking.steps.some(s => s.explode > .5), 'stacking takes the package apart');
+});
+test('step text: bilingual, sentence-length bodies, no shouting', () => {
+  for (const [key, journey] of Object.entries(S.JOURNEYS)) journey.steps.forEach((step, i) => {
+    for (const field of ['title', 'body', 'hardware']) {
+      assert.ok(step[field].zh && step[field].en, `${key} ${i + 1} ${field}`);
+      assert.ok(!CJK.test(step[field].en), `${key} ${i + 1} ${field}: English has no Chinese`);
+      assert.ok(!/[!！]/.test(step[field].zh + step[field].en), 'no exclamation marks');
+    }
+    assert.ok(!/[.。]$/.test(step.title.zh) && !/\.$/.test(step.title.en), `${key} ${i + 1}: headings have no trailing period`);
+    assert.ok(step.title.en.length <= 60 && step.title.zh.length <= 24, `${key} ${i + 1}: short heading`);
+    assert.ok(step.body.zh.length <= 120 && step.body.en.length <= 300, `${key} ${i + 1}: body fits a few lines`);
+    assert.ok(step.code.zh.length >= 1 && step.code.zh.length === step.code.en.length && step.code.zh.length <= 8, `${key} ${i + 1}: code`);
+    assert.ok(step.code.en.every(line => !CJK.test(line)));
+    assert.ok(step.route.length >= 2 && step.route.length <= 4);
+    assert.ok(step.chip.label.zh.length <= 6 && step.chip.label.en.length <= 10, `${key} ${i + 1}: chip label`);
+    assert.ok(step.trace && step.trace.length <= 60 && !CJK.test(step.trace), 'trace is a short formula');
   });
 });
-
-test('Piece 3: one timeline chip per step, labels 1-2 words, gloss only on selected', function () {
-  Object.keys(S.JOURNEYS).forEach(function (key) {
-    var chips = S.STEP_CHIPS[key];
-    var steps = S.JOURNEYS[key].steps;
-    assert.ok(chips, key + ' needs STEP_CHIPS');
-    eq(chips.length, steps.length, key + ' chips must cover every step, got ' + chips.length + ' for ' + steps.length);
-    var seen = {};
-    chips.forEach(function (c, i) {
-      assert.ok(c.label && c.label.length <= 4, key + ' chip ' + i + ' label too long: ' + c.label);
-      assert.ok(c.label.indexOf(' ') < 0, key + ' chip ' + i + ' label must be one token');
-      assert.ok(!seen[c.label], key + ' chip labels must be distinct: ' + c.label);
-      seen[c.label] = true;
-      assert.ok(c.gloss && c.gloss.length <= 14, key + ' chip ' + i + ' gloss too long: ' + c.gloss);
-    });
-  });
-  // Spot checks: chip order maps 1:1 to step order.
-  eq(S.STEP_CHIPS.gemm[4].label, '分工');
-  eq(S.STEP_CHIPS.pagetable[2].label, 'PGD');
-  eq(S.STEP_CHIPS.pixel[4].label, '采样');
-  eq(S.STEP_CHIPS.stacking[6].label, '距离');
-  // currentStepChip follows goto, including a mid-journey jump.
-  var s = S.createState({});
-  eq(S.currentStepChip(s).label, '选定');
-  S.goto(s, 4);
-  eq(S.currentStepChip(s).label, '分工');
-  eq(S.currentStep(s).title, 'Warp 分工');
-  S.setJourney(s, 'pagetable'); S.goto(s, 5);
-  eq(S.currentStepChip(s).label, 'PTE');
-  // Phases are retained (backward compat) but are no longer the timeline.
-  assert.ok(S.PHASES.gemm.length <= 6);
+test('GEMM keeps its worked numbers and separates scalar checking from MMA', () => {
+  const steps = S.JOURNEYS.gemm.steps;
+  assert.ok(steps[4].code.en.join('\n').includes('mma('));
+  assert.ok(steps[5].code.en.join('\n').includes('for k in range(0, 4):'));
+  assert.ok(steps[5].code.en.join('\n').includes('acc += A[3][k] * B[k][7]'));
+  assert.ok(steps[5].trace.includes('19')); assert.ok(steps[7].trace.includes('37'));
 });
-test('stable step identities and prediction answers preserve existing deep links', function () {
-  var titles = {
-    gemm: ['选定输出 C[3,7]', 'A 行与 B 列的依赖关系', 'Tile 与 Block 的划分', '数据载入 Shared Memory', 'Warp 分工', 'SM 上的乘加运算', '同步与下一块', '写回 C[3,7]'],
-    pagetable: ['CPU 发出虚拟地址', 'TLB 查询', 'PGD 查询', 'PUD 查询', 'PMD 查询', 'PTE 查询与物理页', '内存访问与缓存装入'],
-    pixel: ['选定目标像素', '覆盖该像素的三角形', '光栅化：插值计算', '片元着色：颜色计算', '纹理采样', '深度测试：遮挡丢弃', '写入帧缓冲', '显示与反向追溯'],
-    stacking: ['堆叠芯片的剖面结构', '同一芯片的分档', '剖面分层', '上层逻辑：超大核的位置', '混合键合：上下层的连接', '下层逻辑与内存', '信号距离：垂直路径与横向路径', '热与代价：堆叠的约束条件'],
-  };
-  Object.keys(titles).forEach(function (key) {
-    var got = S.JOURNEYS[key].steps.map(function (st) { return st.title; });
-    assert.deepStrictEqual(got, titles[key], key + ' step titles must be unchanged');
-  });
-  // Prediction keys/answers unchanged (spot checks from the pre-Piece-3 set).
-  eq(S.getPredict('gemm', 1).answer, 1);
-  eq(S.getPredict('pagetable', 5).answer, 1);
-  eq(S.getPredict('pixel', 5).answer, 1);
-  eq(S.getPredict('stacking', 4).answer, 1);
+test('product metadata uses shipping numbers, not the full-die maximums', () => {
+  assert.match(S.MODELS.h100.note.en, /132 SMs/); assert.match(S.MODELS.h100.note.en, /50MB/); assert.match(S.MODELS.h100.note.en, /80GB HBM3/);
+  assert.ok(!/144|60MB/.test(S.MODELS.h100.note.en));
+  assert.match(S.MODELS.a100.note.en, /108 SMs/); assert.match(S.MODELS.a100.note.en, /HBM2e/);
+  const yieldStep = S.JOURNEYS.stacking.steps[7];
+  assert.match(yieldStep.body.en, /144 SMs/); assert.match(yieldStep.body.en, /132 SMs/);
 });
-
-test('shipping SXM metadata distinguishes real specifications from teaching layout', function () {
-  assert.ok(/132 SM/.test(S.MODELS.h100.note));
-  assert.ok(/50MB/.test(S.MODELS.h100.note));
-  assert.ok(/80GB HBM3/.test(S.MODELS.h100.note));
-  assert.ok(!/144 SM|60MB|6 叠/.test(S.MODELS.h100.note));
-  assert.ok(/108 SM/.test(S.MODELS.a100.note));
-  assert.ok(/80GB HBM2e/.test(S.MODELS.a100.note));
+test('address translation uses the GPU page-table layout, not a CPU one', () => {
+  const text = S.JOURNEYS.pagetable.steps.map(s => s.body.en + s.hardware.en).join(' ');
+  assert.ok(!/x86|CPU core|PGD|PUD|PMD/.test(text));
+  assert.match(text, /GMMU/); assert.match(text, /2 MiB/);
+  assert.deepEqual(S.ADDRESS.fields.map(f => f.width), [1, 9, 9, 9, 8, 21], 'Hopper GMMU field widths (57-bit VA)');
+  assert.equal(S.ADDRESS.fields.reduce((n, f) => n + f.width, 0), 57);
 });
-test('GEMM separates scalar reference arithmetic from cooperative matrix instructions', function () {
-  var warp = S.JOURNEYS.gemm.steps[4];
-  var accumulate = S.JOURNEYS.gemm.steps[5];
-  assert.ok(warp.code.join('\n').indexOf('mma(') >= 0);
-  assert.ok(warp.body.indexOf('32') >= 0);
-  assert.ok(accumulate.code.join('\n').indexOf('for k in range(0, 4):') >= 0);
-  assert.ok(accumulate.code.join('\n').indexOf('acc += A[3][k] * B[k][7]') >= 0);
-  assert.ok(accumulate.trace.indexOf('19') >= 0);
-  assert.ok(S.JOURNEYS.gemm.steps[7].trace.indexOf('37') >= 0);
-});
-test('four-level page table pseudocode masks each 9-bit index and 12-bit offset', function () {
-  var steps = S.JOURNEYS.pagetable.steps;
-  [2,3,4,5].forEach(function (i) { assert.ok(steps[i].code.join('\n').indexOf('& 0x1ff') >= 0); });
-  assert.ok(steps[5].code.join('\n').indexOf('va & 0xfff') >= 0);
-  assert.ok(steps[5].code.join('\n').indexOf('page_base + offset') >= 0);
-});
-
-console.log('UNIT ' + passed + ' passed, ' + failed + ' failed');
-if (failed) process.exit(1);

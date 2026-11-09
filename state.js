@@ -1,307 +1,339 @@
-// GPU Explorer — pure teaching-model state machine.
-// No DOM, no network, no GPU. Shared by the browser app and the Node tests.
-// All hardware numbers below are teaching simplifications, not datasheets
-// and not measured performance.
-//
-// Diagram geometry: each node has x/y/w/h in a 1100x520 SVG canvas.
-// kind: 'data' (sand), 'compute' (blue), 'memory' (teal), 'control' (grey).
-// flows: static arrows for a journey; a step's `flows` lists the flow keys
-// (from + '>' + to) that are live in that step.
+// GPU Explorer: walkthrough content and the pure domain state machine.
+// No DOM, no WebGL. Shared by the browser app and the Node tests.
+// Every user-facing string is {zh, en}. Numbers and formulas are shared.
+// Each step names the hardware level it happens on (`level`) and how far the
+// package is taken apart (`explode`), so every walkthrough plays on the same
+// 3D model as the anatomy view.
 (function (root) {
+  const L = (zh, en) => ({ zh, en });
+  const code = (zh, en) => ({ zh, en });
+
   const MODELS = {
-    h100: { name: 'H100 SXM 80GB (Hopper)', kind: 'GPU · 计算', note: 'H100 SXM 80GB（GH100/Hopper，规格来源：NVIDIA 官方文章）：8 GPC、132 SM、L2 50MB、80GB HBM3，五组有源堆栈。' },
-    a100: { name: 'A100 SXM 80GB (Ampere)', kind: 'GPU · 计算', note: 'A100 SXM 80GB（GA100/Ampere，规格来源：NVIDIA 官方文章）：7 GPC、108 SM、L2 40MB 分 2 区、80GB HBM2e，五组有源堆栈。' },
-    rtx5090: { name: 'RTX 5090', kind: 'GPU · 消费级', note: '消费级示例：图形与计算共享同一组结构、工作与数据视角（教学示意，与 Ampere/Hopper 模型区分）。' },
-    mi300x: { name: 'AMD MI300X', kind: 'GPU · 芯粒/堆叠', note: '比较示例：多芯粒与堆叠组织下同一问题的另一种分工。' },
-    a20pro: { name: 'Apple A20 Pro（示意）', kind: 'SoC · CPU/内存', note: 'CPU/SoC 示例：重点为 CPU、页表与内存层级，具体规格为教学示意，非官方数据。' },
-    snapdragon: { name: 'Snapdragon 移动 SoC（示意）', kind: 'SoC · CPU/内存', note: '移动 SoC 示例：与 A20 Pro 对照的 CPU 与内存组织，具体规格为教学示意。' },
+    h100: { name: 'H100 SXM 80GB', arch: 'Hopper', note: L('H100 SXM 80GB（GH100）：8 个 GPC、132 SM、50MB L2、80GB HBM3，5 组 HBM 启用。', 'H100 SXM 80GB (GH100): 8 GPCs, 132 SMs, 50MB L2, 80GB HBM3 across five active stacks.') },
+    a100: { name: 'A100 SXM 80GB', arch: 'Ampere', note: L('A100 SXM 80GB（GA100）：7 个 GPC、108 SM、40MB L2、80GB HBM2e，5 组 HBM 启用。', 'A100 SXM 80GB (GA100): 7 GPCs, 108 SMs, 40MB L2, 80GB HBM2e across five active stacks.') }
   };
+
+  // The GPU virtual address used by the address-translation walkthrough.
+  // Index widths follow the Hopper GMMU format (57-bit VA) published in
+  // NVIDIA's open-gpu-kernel-modules, kern_gmmu_fmt_gh10x.c.
+  const ADDRESS = { va: '0x7f3ac2d64a40', fields: [
+    { id: 'pd4', bits: '56', width: 1, index: 0 },
+    { id: 'pd3', bits: '55:47', width: 9, index: 0 },
+    { id: 'pd2', bits: '46:38', width: 9, index: 508 },
+    { id: 'pd1', bits: '37:29', width: 9, index: 470 },
+    { id: 'pd0', bits: '28:21', width: 8, index: 22 },
+    { id: 'offset', bits: '20:0', width: 21, index: 0x164a40 }
+  ], pageBase: '0x24e000000', physical: '0x24e164a40', pageSize: '2 MiB' };
 
   const JOURNEYS = {
     gemm: {
-      title: '矩阵乘法：C[3,7] 的计算路径',
-      gloss: 'C[3,7] 为 A 行与 B 列的内积。',
+      title: L('一次矩阵乘法', 'One matrix multiply'),
+      subtitle: L('从 A、B 算出 C[3,7]', 'From A and B to C[3,7]'),
+      scope: L('数值例子用 8×8 的小矩阵，好让每一步都能数清楚。', 'The worked example uses small 8×8 matrices so every step can be counted.'),
       nodes: [
-        { id: 'a-tile', label: 'A 的一行', kind: 'data', x: 20, y: 70, w: 220, h: 80, detail: '输入：A[3][:]。本步骤仅使用第 3 行，其余行与 C[3,7] 无关。' },
-        { id: 'b-tile', label: 'B 的一列', kind: 'data', x: 20, y: 330, w: 220, h: 80, detail: '输入：B[:][7]。本步骤仅使用第 7 列，其余列与 C[3,7] 无关。' },
-        { id: 'smem', label: 'Shared Memory', kind: 'memory', x: 320, y: 200, w: 220, h: 120, detail: '片上共享存储：A、B 小块载入后可被多次复用，无需每次访问片外显存。' },
-        { id: 'warp', label: 'Warp / 线程', kind: 'compute', x: 620, y: 70, w: 200, h: 80, detail: '分工：一个 warp 内的线程各承担一部分计算，执行同一条指令，处理不同数据。' },
-        { id: 'sm', label: 'SM / 计算单元', kind: 'compute', x: 620, y: 330, w: 200, h: 120, detail: '执行：乘加与累加。SM 由 4 个子分区组成，每子分区含 warp 调度条、张量单元与寄存器条，底部为 L1/共享存储条；矩阵单元在此位置承担规整的乘加运算。' },
-        { id: 'c-out', label: '输出 C[3,7]', kind: 'data', x: 900, y: 200, w: 180, h: 80, detail: '结果：累加完成后的唯一输出。反向追溯自此开始。' },
+        { id: 'a-tile', label: L('A 的一行', 'Row of A'), detail: L('A[3][:]，C[3,7] 只用到这一行。', 'A[3][:], the only row C[3,7] needs.') },
+        { id: 'b-tile', label: L('B 的一列', 'Column of B'), detail: L('B[:][7]，C[3,7] 只用到这一列。', 'B[:][7], the only column C[3,7] needs.') },
+        { id: 'smem', label: L('共享内存', 'Shared memory'), detail: L('SM 里的片上存储。A、B 小块搬进来后可以反复读取。', 'On-chip storage in the SM. Tiles of A and B are read from here many times.') },
+        { id: 'warp', label: L('Warp', 'Warp'), detail: L('32 个线程一组，执行同一条指令，处理不同数据。', 'A group of 32 threads that run the same instruction on different data.') },
+        { id: 'sm', label: L('SM', 'SM'), detail: L('执行乘加的地方，有 4 个子分区。', 'Where the multiply-adds run. It has four partitions.') },
+        { id: 'c-out', label: L('C[3,7]', 'C[3,7]'), detail: L('要算的那个输出。', 'The one output being computed.') }
       ],
-      flows: [
-        { from: 'a-tile', to: 'smem' }, { from: 'b-tile', to: 'smem' },
-        { from: 'smem', to: 'warp' }, { from: 'warp', to: 'sm' },
-        { from: 'sm', to: 'c-out' }, { from: 'smem', to: 'sm' },
-      ],
-      views: {
-        structure: '结构视角：部件、归属与连接。当前高亮部件为本步骤的活动部件。',
-        work: '工作视角：工作的分组、执行部件与等待关系。',
-        data: '数据视角：数据的位置、搬运路径与复用关系。',
-        timeline: '时间视角：本步骤在完整过程中的位置及其前后步骤。',
-      },
       steps: [
-        { title: '选定输出 C[3,7]', body: '计算范围限定为单个输出，确定其输入依赖。', active: ['c-out'], flows: [], trace: 'C[3,7] = Σ A[3][k] · B[k][7]', modelNotes: { h100: 'H100 视角：输出限定后，阵列规模仅决定分工。', a100: 'A100 视角：起点相同，组织方式存在差异。' }, code: ['// 目标：只算一个输出', 'C[3][7] = sum_k A[3][k] * B[k][7]'] },
-        { title: 'A 行与 B 列的依赖关系', body: 'C[3,7] 仅依赖 A 第 3 行与 B 第 7 列。', active: ['a-tile', 'b-tile'], flows: [], trace: 'C[3,7] ← A[3][:] · B[:][7]', modelNotes: { h100: 'H100 视角：依赖关系不变，与型号无关。', a100: 'A100 视角：依赖关系相同，差异在后续步骤。' }, code: ['// 依赖', 'row = A[3][:]', 'col = B[:][7]'] },
-        { title: 'Tile 与 Block 的划分', body: '输出 tile 分给 block；数值例子把 K=8 分两轮，每轮四项。', active: ['sm'], flows: [], trace: '输出 tile ← 一个 block', modelNotes: { h100: 'H100 视角：块尺寸影响复用率与同步代价。', a100: 'A100 视角：划分思路相同，分工粒度有差异。' }, code: ['// 输出 tile 由一个 block 负责（示例策略）', 'block -> C_tile', '// 数值内积的 K 维：8 项，每轮取 4 项', 'tile_k = 4'] },
-        { title: '数据载入 Shared Memory', body: '待复用的 A、B 小块载入片上共享存储。', active: ['smem', 'a-tile', 'b-tile'], flows: ['a-tile>smem', 'b-tile>smem'], trace: 'smem ← A tile + B tile', modelNotes: { h100: 'H100 可用 TMA 异步搬运；消费者须等待搬运完成。', a100: 'A100 可用 cp.async；完成与同步需按实际内核实现。' }, code: ['// 将 A、B tile 同步加载到 Shared Memory', 'smem_A = load(A tile)', 'smem_B = load(B tile)', '__syncthreads() // 等待 block 内同步加载', '// 异步 TMA/cp.async 还需对应的完成等待'] },
-        { title: 'Warp 分工', body: 'warp 包含 32 个线程，协作加载与处理矩阵片段。', active: ['warp'], flows: ['smem>warp'], trace: 'warp = 32 threads; Cfrag += Afrag·Bfrag', modelNotes: { h100: 'H100：线程协作执行矩阵指令。', a100: 'A100：线程协作处理矩阵片段。' }, code: ['// warp 是 32 线程的执行组织', 'lane = threadIdx.x % 32', '// 将操作数与累加器组织为矩阵片段', 'C_fragment = mma(A_fragment, B_fragment, C_fragment)', '// 线程协作处理矩阵片段'] },
-        { title: 'SM 上的乘加运算', body: 'Tensor Core 对矩阵片段执行乘加，更新累加结果。', active: ['sm', 'warp'], flows: ['warp>sm'], trace: 'acc = 2 + 3 + 6 + 8 = 19', modelNotes: { h100: 'H100 第四代 Tensor Core 执行矩阵乘加。', a100: 'A100 第三代 Tensor Core 执行矩阵乘加；内积定义相同。' }, code: ['// 展开目标输出的乘加计算', 'acc = 0', 'for k in range(0, 4):', '    acc += A[3][k] * B[k][7]', '// 第一轮 acc = 19'] },
-        { title: '同步与下一块', body: '当前块完成后同步，随后载入下一块。', active: ['smem', 'sm'], flows: ['smem>sm'], trace: 'acc = 19 + (4 + 2 + 6 + 6) = 37', modelNotes: { h100: 'H100 视角：等待源于下一块未载入完成。', a100: 'A100 视角：等待为过程的组成部分。' }, code: ['// 真实 block 在复用共享存储前同步', '__syncthreads()', '// 第二轮乘加计算', 'for k in range(4, 8):', '    acc += A[3][k] * B[k][7]', '// 最终 acc = 37'] },
-        { title: '写回 C[3,7]', body: '累加完成，结果写回输出。', active: ['c-out'], flows: ['sm>c-out'], trace: 'C[3,7] ← acc = 37', modelNotes: { h100: 'H100 视角：仅写入一个数值。', a100: 'A100 视角：结果相同，代价与分工可不同。' }, code: ['// 写回', 'C[3][7] = acc'] },
-      ],
+        { id: 'target', level: 'board', kind: 'target', chip: { label: L('选定', 'Target'), gloss: L('只看一个输出', 'Follow one output') },
+          title: L('先盯住一个结果：C[3,7]', 'Pick one result: C[3,7]'),
+          body: L('整个矩阵乘法太大，先只看一个输出。C[3,7] 等于 A 的第 3 行和 B 的第 7 列逐项相乘再相加，下标从 0 开始。', 'The whole multiply is too big to follow, so watch one output. C[3,7] is row 3 of A times column 7 of B, multiplied term by term and summed. Indices start at 0.'),
+          hardware: L('A、B、C 都放在 HBM 显存里，模组上标出的三处就是它们。', 'A, B and C all live in HBM. The three marked spots on the module are where they sit.'),
+          route: [L('A 在 HBM', 'A in HBM'), L('B 在 HBM', 'B in HBM'), L('C[3,7]', 'C[3,7]')],
+          trace: 'C[3,7] = Σ A[3][k] · B[k][7]',
+          code: code(['// 目标：只算一个输出', 'C[3][7] = sum_k A[3][k] * B[k][7]'], ['// Goal: compute one output', 'C[3][7] = sum_k A[3][k] * B[k][7]']) },
+        { id: 'dependency', level: 'hbm', kind: 'dependency', chip: { label: L('依赖', 'Inputs'), gloss: L('一行和一列', 'One row, one column') },
+          title: L('一行乘一列', 'One row times one column'),
+          body: L('取 A[3,:] 和 B[:,7]，沿 k 两两相乘，8 个乘积加起来就是答案。点任意一项，看它来自哪两个数。', 'Take A[3,:] and B[:,7], multiply them pair by pair along k, and add the eight products. Click any term to see which two numbers it came from.'),
+          hardware: L('这一步还没有搬任何数据，两个输入都在 HBM 里。虚线只表示依赖。', 'No data has moved yet; both inputs are still in HBM. Dashed lines only show the dependency.'),
+          route: [L('A[3,:]', 'A[3,:]'), L('B[:,7]', 'B[:,7]'), L('C[3,7]', 'C[3,7]')],
+          trace: 'C[3,7] ← A[3][:] · B[:][7]',
+          code: code(['// 只依赖一行和一列', 'row = A[3][:]', 'col = B[:][7]'], ['// Depends on one row and one column', 'row = A[3][:]', 'col = B[:][7]']) },
+        { id: 'tiles', level: 'die', kind: 'placement', chip: { label: L('分块', 'Tiles'), gloss: L('输出块交给 SM', 'Tiles go to SMs') },
+          title: L('把输出切成块，分给 SM', 'Cut the output into tiles for the SMs'),
+          body: L('输出按 2×4 切块，每块交给一个线程块（CTA）。K=8 也分成两轮，每轮 4 项。C[3,7] 落在 CTA 3。', 'The output is cut into 2×4 tiles, one per thread block (CTA). K=8 is split into two rounds of four. C[3,7] lands in CTA 3.'),
+          hardware: L('一个线程块只在一个 SM 上运行。真实内核的块大得多，这里缩小是为了数得清。', 'A thread block runs on exactly one SM. Real kernels use much larger tiles; these are shrunk so you can count them.'),
+          route: [L('输出块', 'Output tile'), L('CTA 3', 'CTA 3'), L('一个 SM', 'One SM')],
+          trace: 'tile C[2:4, 4:8] → CTA 3 → SM',
+          code: code(['// 一个 CTA 负责一个输出块', 'cta = (row / 2, col / 4)   // C[3,7] → CTA 3', 'for k0 in (0, 4):          // K 分两轮'], ['// One CTA owns one output tile', 'cta = (row / 2, col / 4)   // C[3,7] → CTA 3', 'for k0 in (0, 4):          // two K rounds']) },
+        { id: 'load', level: 'package', kind: 'transfer', chip: { label: L('载入', 'Load'), gloss: L('搬进共享内存', 'Into shared memory') },
+          title: L('先搬近，再反复用', 'Bring the data close, then reuse it'),
+          body: L('第一轮的 A、B 小块从 HBM 出发，经中介层进入 GPU，穿过 L2，落到 SM 的共享内存。', 'The first-round tiles of A and B leave HBM, cross the interposer into the GPU, pass through L2 and land in the SM’s shared memory.'),
+          hardware: L('HBM 在裸片外，L2 在裸片上由所有 SM 共用，共享内存在每个 SM 里。H100 用 TMA 做这次搬运，A100 用异步拷贝。', 'HBM is off the die, L2 is on the die and shared by every SM, and shared memory sits inside each SM. H100 uses its TMA for this copy; A100 uses asynchronous copy.'),
+          route: [L('HBM', 'HBM'), L('中介层', 'Interposer'), L('L2', 'L2'), L('共享内存', 'Shared memory')],
+          trace: 'smem ← A[2:4, 0:4], B[0:4, 4:8]',
+          code: code(['// 第一轮：k = 0..3', 'smem_A = A[2:4, 0:4]', 'smem_B = B[0:4, 4:8]', '__syncthreads()   // 等搬运完成'], ['// Round 1: k = 0..3', 'smem_A = A[2:4, 0:4]', 'smem_B = B[0:4, 4:8]', '__syncthreads()   // wait for the copy']) },
+        { id: 'warp', level: 'sm', kind: 'control', chip: { label: L('分工', 'Warp'), gloss: L('32 个线程一起', '32 threads together') },
+          title: L('32 个线程一起干活', '32 threads work as one warp'),
+          body: L('一个 warp 有 32 个线程。调度器挑出就绪的 warp 发出指令，线程把共享内存里的数据读进寄存器。', 'A warp is 32 threads. The scheduler picks a ready warp and issues its instruction; the threads read data from shared memory into registers.'),
+          hardware: L('蓝色是指令从调度器到派发单元的控制路径，青色是数据从共享内存经 LD/ST 进寄存器的路径，两条路不重合。', 'Blue is the control path from scheduler to dispatch; teal is data moving from shared memory through LD/ST into registers. They are separate paths.'),
+          route: [L('调度器', 'Scheduler'), L('派发', 'Dispatch'), L('32 个线程', '32 threads')],
+          trace: 'warp = 32 threads; Cfrag += Afrag · Bfrag',
+          code: code(['// 一个 warp 一起执行矩阵指令', 'lane = threadIdx.x % 32', 'a_frag, b_frag = load(smem)', 'c_frag = mma(a_frag, b_frag, c_frag)'], ['// The warp runs the matrix instruction together', 'lane = threadIdx.x % 32', 'a_frag, b_frag = load(smem)', 'c_frag = mma(a_frag, b_frag, c_frag)']) },
+        { id: 'mma', level: 'sm', kind: 'compute', chip: { label: L('乘加', 'Multiply'), gloss: L('0 变成 19', '0 becomes 19') },
+          title: L('乘起来，加进累加器', 'Multiply and accumulate'),
+          body: L('第一轮的 4 个乘积是 2、3、6、8，累加器从 0 变成 19。', 'The first round’s four products are 2, 3, 6 and 8. The accumulator goes from 0 to 19.'),
+          hardware: L('Tensor Core 对矩阵片段做乘加，结果留在寄存器里。这里把它展开成逐项相加，方便核对。', 'The Tensor Core multiplies and adds matrix fragments and keeps the result in registers. Here it is unrolled into scalar additions so you can check it.'),
+          route: [L('共享内存', 'Shared memory'), L('寄存器', 'Registers'), L('Tensor Core', 'Tensor Core'), L('acc = 19', 'acc = 19')],
+          trace: 'acc = 2 + 3 + 6 + 8 = 19',
+          code: code(['// 逐项核对（真实硬件一次算一个矩阵片段）', 'acc = 0', 'for k in range(0, 4):', '    acc += A[3][k] * B[k][7]', '# acc = 19'], ['// Scalar check (hardware does a whole fragment)', 'acc = 0', 'for k in range(0, 4):', '    acc += A[3][k] * B[k][7]', '# acc = 19']) },
+        { id: 'next-tile', level: 'sm', kind: 'reuse', chip: { label: L('下一块', 'Next tile'), gloss: L('19 加到 37', '19 grows to 37') },
+          title: L('换下一块，接着加', 'Load the next tile and keep adding'),
+          body: L('19 留在累加器里，再加上 4、2、6、6。两轮做完，结果是 37。', '19 stays in the accumulator; add 4, 2, 6 and 6. After both rounds the result is 37.'),
+          hardware: L('所有线程同步之后才能覆盖共享内存。调优过的内核用双缓冲，让搬运和计算重叠。', 'Threads must synchronize before shared memory is overwritten. Tuned kernels double-buffer so loading overlaps with compute.'),
+          route: [L('下一块', 'Next tile'), L('共享内存', 'Shared memory'), L('Tensor Core', 'Tensor Core'), L('acc = 37', 'acc = 37')],
+          trace: 'acc = 19 + (4 + 2 + 6 + 6) = 37',
+          code: code(['__syncthreads()      // 用完第一块', 'smem_A = A[2:4, 4:8]', 'smem_B = B[4:8, 4:8]', 'for k in range(4, 8):', '    acc += A[3][k] * B[k][7]', '# acc = 37'], ['__syncthreads()      // done with tile 1', 'smem_A = A[2:4, 4:8]', 'smem_B = B[4:8, 4:8]', 'for k in range(4, 8):', '    acc += A[3][k] * B[k][7]', '# acc = 37']) },
+        { id: 'store', level: 'package', kind: 'writeback', chip: { label: L('写回', 'Store'), gloss: L('37 回到 HBM', '37 goes to HBM') },
+          title: L('37 写回显存', 'Write 37 back to memory'),
+          body: L('所有 K 轮做完后，37 经 L2 写回 HBM 里 C[3,7] 的位置。', 'Once every K round is done, 37 goes back through L2 to C[3,7] in HBM.'),
+          hardware: L('其余输出用同样的方法，在各自的 SM 上同时算出来。', 'Every other output is computed the same way, at the same time, on its own SM.'),
+          route: [L('acc = 37', 'acc = 37'), L('L2', 'L2'), L('HBM · C[3,7]', 'HBM · C[3,7]')],
+          trace: 'C[3,7] ← acc = 37',
+          code: code(['// 写回', 'C[3][7] = acc   // 37'], ['// Store', 'C[3][7] = acc   // 37']) }
+      ]
     },
+
     pagetable: {
-      title: '页表遍历：虚拟地址到物理地址',
-      gloss: '虚拟地址逐级翻译为物理地址。',
-      nodes: [
-        { id: 'cpu', label: 'CPU 核', kind: 'compute', x: 20, y: 80, w: 170, h: 80, detail: '发出虚拟地址 va，并等待翻译结果。程序仅可见虚拟地址。' },
-        { id: 'tlb', label: 'TLB（快表）', kind: 'memory', x: 230, y: 80, w: 170, h: 80, detail: '翻译结果的缓存。命中：直接获得物理地址；未命中：进入完整页表遍历。' },
-        { id: 'pgd', label: 'PGD', kind: 'control', x: 440, y: 80, w: 170, h: 80, detail: '第 1 级页表：以虚拟地址高位索引，获得下一级地址。' },
-        { id: 'pud', label: 'PUD', kind: 'control', x: 650, y: 80, w: 170, h: 80, detail: '第 2 级页表：上一级给出基址，再以下一段地址索引。' },
-        { id: 'pmd', label: 'PMD', kind: 'control', x: 860, y: 80, w: 170, h: 80, detail: '第 3 级页表：继续缩小范围，非一次到达结果。' },
-        { id: 'pte', label: 'PTE → 物理页', kind: 'control', x: 860, y: 260, w: 170, h: 80, detail: '第 4 级页表：给出物理页号，与页内偏移组合为物理地址，并可回填 TLB。' },
-        { id: 'ram', label: '内存', kind: 'data', x: 650, y: 260, w: 170, h: 80, detail: '物理地址指向的存储，保存程序需要访问的数据。' },
-        { id: 'cache', label: '缓存', kind: 'memory', x: 440, y: 260, w: 170, h: 80, detail: '数据经过的缓存层级：命中时无需每次访问内存。' },
-      ],
-      flows: [
-        { from: 'cpu', to: 'tlb' }, { from: 'tlb', to: 'pgd' },
-        { from: 'pgd', to: 'pud' }, { from: 'pud', to: 'pmd' },
-        { from: 'pmd', to: 'pte' }, { from: 'pte', to: 'ram' },
-        { from: 'ram', to: 'cache' }, { from: 'cache', to: 'cpu', route: 'return' },
-      ],
-      views: {
-        structure: '结构视角：CPU、TLB、页表各级、内存与缓存的位置关系。',
-        work: '工作视角：一次地址翻译的步骤序列，以及各步骤的命中与未命中分支。',
-        data: '数据视角：虚拟地址逐级翻译为物理地址的过程。',
-        timeline: '时间视角：这一步在翻译全过程中的位置。',
-      },
+      title: L('一次地址翻译', 'One address translation'),
+      subtitle: L('线程给出的地址怎么找到 HBM', 'How a thread’s address reaches HBM'),
+      scope: L('页表格式取自 NVIDIA 开源驱动里的 Hopper GMMU（57 位虚拟地址）。A100 用更早的格式，翻译过程相同。TLB 的大小和位置 NVIDIA 没有公开，图里按功能标出。', 'The page-table format is Hopper’s GMMU layout (57-bit virtual addresses) from NVIDIA’s open-source driver. A100 uses an older format; the walk works the same way. NVIDIA doesn’t publish TLB sizes or locations, so they are marked by function.'),
+      nodes: [],
       steps: [
-        { title: 'CPU 发出虚拟地址', body: '程序可见虚拟地址，翻译自此开始。', active: ['cpu'], flows: [], trace: 'va = 0x0000_7f00_1234', code: ['// 虚拟地址', 'va = 0x0000_7f00_1234'] },
-        { title: 'TLB 查询', body: 'TLB 为翻译缓存；本例采用未命中路径。', active: ['tlb'], flows: ['cpu>tlb'], trace: 'TLB(va) → MISS', code: ['// TLB', 'lookup(va) -> MISS  // 本例采用未命中路径'] },
-        { title: 'PGD 查询', body: '以虚拟地址高位索引第一级页表。', active: ['pgd'], flows: ['tlb>pgd'], trace: 'PGD[(va >> 39) & 0x1ff]', code: ['// 第 1 级', 'pgd_entry = PGD[(va >> 39) & 0x1ff]'] },
-        { title: 'PUD 查询', body: '上一级给出基址，再以下一段索引。', active: ['pud'], flows: ['pgd>pud'], trace: 'PUD[(va >> 30) & 0x1ff]', code: ['// 第 2 级', 'pud_entry = PUD[(va >> 30) & 0x1ff]'] },
-        { title: 'PMD 查询', body: '逐级向下遍历，每级缩小范围。', active: ['pmd'], flows: ['pud>pmd'], trace: 'PMD[(va >> 21) & 0x1ff]', code: ['// 第 3 级', 'pmd_entry = PMD[(va >> 21) & 0x1ff]'] },
-        { title: 'PTE 查询与物理页', body: '末级给出物理页号，与页内偏移组合。', active: ['pte', 'tlb'], flows: ['pmd>pte'], trace: 'PA = page_base + (va & 0xfff)', code: ['// x86-64 四级页表，4KB 页，无大页/缺页', 'pte = PTE[(va >> 12) & 0x1ff]', 'page_base = pte & physical_page_mask', 'offset = va & 0xfff', 'phys_addr = page_base + offset', '// 使用物理页基址与页内偏移组合地址'] },
-        { title: '内存访问与缓存装入', body: '经缓存层级，数据返回 CPU。', active: ['ram', 'cache', 'cpu'], flows: ['pte>ram', 'ram>cache', 'cache>cpu'], trace: 'data = memory[phys_addr]', code: ['// 访问', 'data = memory[phys_addr]', '// 并经过缓存'] },
-      ],
+        { id: 'issue', level: 'sm', kind: 'issue', chip: { label: L('发出', 'Issue'), gloss: L('LD/ST 算出地址', 'LD/ST makes an address') },
+          title: L('线程要读 A[3][0]', 'A thread wants A[3][0]'),
+          body: L('GEMM 第 4 步里搬数据的那条读指令，先在 LD/ST 单元算出一个虚拟地址。程序只认识虚拟地址，不知道数据在哪颗 HBM 上。', 'The load from step 4 of the matrix multiply starts in the LD/ST unit, which works out a virtual address. Programs only see virtual addresses; they don’t know which HBM stack holds the data.'),
+          hardware: L('地址来自 SM 里的 LD/ST 单元。H100 的 TMA 发出的批量搬运也要走同样的翻译。', 'The address comes from the SM’s LD/ST unit. Bulk copies from H100’s TMA go through the same translation.'),
+          route: [L('线程', 'Thread'), L('LD/ST', 'LD/ST'), L('虚拟地址', 'Virtual address')],
+          trace: 'VA = 0x7f3ac2d64a40',
+          code: code(['// 线程算出 A[3][0] 的地址', 'va = A_base + (3 * lda + 0) * sizeof(float)', '// va = 0x7f3ac2d64a40'], ['// The thread computes the address of A[3][0]', 'va = A_base + (3 * lda + 0) * sizeof(float)', '// va = 0x7f3ac2d64a40']) },
+        { id: 'l1-tlb', level: 'sm', kind: 'lookup', chip: { label: L('L1 TLB', 'L1 TLB'), gloss: L('近处的缓存没命中', 'Nearby cache misses') },
+          title: L('先查 SM 旁边的 TLB', 'Check the TLB next to the SM'),
+          body: L('TLB 缓存最近用过的翻译结果。这个页第一次被访问，L1 TLB 里没有，未命中。', 'A TLB caches recent translations. This page hasn’t been touched before, so the L1 TLB misses.'),
+          hardware: L('GPU 有多级 TLB，NVIDIA 没有公开它们的大小和位置。这里把 L1 TLB 画在 SM 的访存通路上。', 'GPUs have several levels of TLB. NVIDIA doesn’t publish their sizes or locations, so the L1 TLB is drawn on the SM’s memory path.'),
+          route: [L('虚拟页号', 'Virtual page'), L('L1 TLB', 'L1 TLB'), L('未命中', 'Miss')],
+          trace: 'L1 TLB[VPN] → miss',
+          code: code(['vpn = va >> 21        // 2 MiB 页的页号', 'hit = l1_tlb.lookup(vpn)   // miss'], ['vpn = va >> 21        // 2 MiB page number', 'hit = l1_tlb.lookup(vpn)   // miss']) },
+        { id: 'l2-tlb', level: 'die', kind: 'lookup', chip: { label: L('L2 TLB', 'L2 TLB'), gloss: L('共享的也没有', 'Shared TLB misses') },
+          title: L('共享 TLB 也没有，交给 GMMU', 'The shared TLB misses too; the GMMU takes over'),
+          body: L('请求离开 SM，查更大的共享 TLB，仍然未命中。GPU 的内存管理单元（GMMU）开始逐级查页表。', 'The request leaves the SM and checks a larger shared TLB. It misses again, so the GPU memory management unit (GMMU) starts walking the page table.'),
+          hardware: L('GMMU 是裸片上的硬件，不需要 CPU 参与。它的具体位置没有公开，图里标在 L2 旁边。', 'The GMMU is hardware on the die; the CPU isn’t involved. Its exact location isn’t published, so it is marked next to L2.'),
+          route: [L('SM', 'SM'), L('共享 TLB', 'Shared TLB'), L('GMMU', 'GMMU')],
+          trace: 'L2 TLB[VPN] → miss → page walk',
+          code: code(['hit = l2_tlb.lookup(vpn)   // miss', 'pte = gmmu.walk(page_table_root, va)'], ['hit = l2_tlb.lookup(vpn)   // miss', 'pte = gmmu.walk(page_table_root, va)']) },
+        { id: 'walk-upper', level: 'package', kind: 'walk', chip: { label: L('上层', 'Upper'), gloss: L('PD4、PD3、PD2', 'PD4, PD3, PD2') },
+          title: L('页表也在 HBM 里', 'The page table lives in HBM too'),
+          body: L('虚拟地址按位切成几段，每段是一层目录的下标：PD4[0]、PD3[0]、PD2[508]。每读一层，都要经 L2 去一趟显存。', 'The virtual address is cut into bit fields, each one an index into a level of the table: PD4[0], PD3[0], PD2[508]. Every level is a read that goes through L2 to memory.'),
+          hardware: L('页表放在显存里，所以一次完整遍历是好几次串行的读。L2 能缓存页表项，命中时快很多。', 'Page tables sit in GPU memory, so a full walk is several reads in a row. L2 can cache page-table entries, which helps a lot when they hit.'),
+          route: [L('GMMU', 'GMMU'), L('L2', 'L2'), L('HBM 页表', 'Page table in HBM'), L('PD2[508]', 'PD2[508]')],
+          trace: 'PD4[0] → PD3[0] → PD2[508]',
+          code: code(['pd3 = read(pd4_base + 0 * 8)', 'pd2 = read(pd3      + 0 * 8)', 'pd1 = read(pd2      + 508 * 8)   // 每次读都可能去 HBM'], ['pd3 = read(pd4_base + 0 * 8)', 'pd2 = read(pd3      + 0 * 8)', 'pd1 = read(pd2      + 508 * 8)   // each read may go to HBM']) },
+        { id: 'walk-lower', level: 'package', kind: 'walk', chip: { label: L('下层', 'Lower'), gloss: L('PD1、PD0 到页', 'PD1, PD0 to the page') },
+          title: L('PD0 直接指向一个 2 MiB 大页', 'PD0 points straight at a 2 MiB page'),
+          body: L('再读 PD1[470] 和 PD0[22]。cudaMalloc 分配的大块显存常用 2 MiB 大页，所以 PD0 这一项就是页表项，遍历到此结束。', 'Next come PD1[470] and PD0[22]. Large cudaMalloc allocations usually use 2 MiB pages, so the PD0 entry is the page entry itself and the walk stops here.'),
+          hardware: L('换成 64 KiB 或 4 KiB 小页，还要再多查一层页表。页越大，同样多的 TLB 项能覆盖的显存越多。', 'With 64 KiB or 4 KiB pages there is one more table to read. Bigger pages let the same number of TLB entries cover more memory.'),
+          route: [L('PD1[470]', 'PD1[470]'), L('PD0[22]', 'PD0[22]'), L('页基址', 'Page base')],
+          trace: 'PD1[470] → PD0[22] = 2 MiB page',
+          code: code(['pd0 = read(pd1 + 470 * 8)', 'pte = read(pd0 + 22 * 16)   // 大页：这一项就是 PTE', 'page_base = pte.address   // 0x24e000000'], ['pd0 = read(pd1 + 470 * 8)', 'pte = read(pd0 + 22 * 16)   // big page: this entry is the PTE', 'page_base = pte.address   // 0x24e000000']) },
+        { id: 'physical', level: 'die', kind: 'compose', chip: { label: L('拼地址', 'Combine'), gloss: L('页基址加偏移', 'Base plus offset') },
+          title: L('页基址加页内偏移', 'Page base plus offset'),
+          body: L('低 21 位是页内偏移，原样保留。0x24e000000 + 0x164a40 = 0x24e164a40。这个结果会填回两级 TLB。', 'The low 21 bits are the offset into the page and pass through unchanged. 0x24e000000 + 0x164a40 = 0x24e164a40. The result is written back into both TLBs.'),
+          hardware: L('下一次访问同一个 2 MiB 页时，TLB 直接命中，不用再查页表。', 'The next access to the same 2 MiB page hits in the TLB and skips the walk.'),
+          route: [L('页基址', 'Page base'), L('+ 偏移', '+ offset'), L('物理地址', 'Physical address'), L('填回 TLB', 'Fill TLBs')],
+          trace: 'PA = 0x24e000000 + 0x164a40 = 0x24e164a40',
+          code: code(['offset = va & ((1 << 21) - 1)   // 0x164a40', 'pa = page_base + offset         // 0x24e164a40', 'l1_tlb.fill(vpn, pte); l2_tlb.fill(vpn, pte)'], ['offset = va & ((1 << 21) - 1)   // 0x164a40', 'pa = page_base + offset         // 0x24e164a40', 'l1_tlb.fill(vpn, pte); l2_tlb.fill(vpn, pte)']) },
+        { id: 'access', level: 'hbm', kind: 'transfer', chip: { label: L('取数', 'Fetch'), gloss: L('物理地址找到 HBM', 'PA finds an HBM channel') },
+          title: L('物理地址落到一组 HBM 的一个通道', 'The physical address lands on one HBM channel'),
+          body: L('L2 没有这行数据，于是存储控制器把物理地址换算成堆栈、通道、bank 和行列，从 DRAM 里读出来。', 'L2 doesn’t have the line, so the memory controller turns the physical address into a stack, channel, bank, row and column and reads it from DRAM.'),
+          hardware: L('地址怎样分散到各组 HBM 和各个通道，NVIDIA 没有公开。图里只标出其中一个通道。', 'NVIDIA doesn’t publish how addresses are spread across stacks and channels. One channel is marked here.'),
+          route: [L('物理地址', 'Physical address'), L('存储控制器', 'Memory controller'), L('HBM 通道', 'HBM channel'), L('DRAM bank', 'DRAM bank')],
+          trace: 'read(0x24e164a40) → HBM',
+          code: code(['line = l2.lookup(pa)          // miss', 'stack, channel, bank, row = hash(pa)   // 未公开', 'data = hbm[stack][channel].read(bank, row)'], ['line = l2.lookup(pa)          // miss', 'stack, channel, bank, row = hash(pa)   // unpublished', 'data = hbm[stack][channel].read(bank, row)']) },
+        { id: 'return', level: 'sm', kind: 'return', chip: { label: L('返回', 'Return'), gloss: L('数据进寄存器', 'Data reaches registers') },
+          title: L('数据回到寄存器', 'The data reaches the registers'),
+          body: L('数据经 L2 回到 SM，进入发起请求的线程的寄存器。之后同一页里的读都直接命中 TLB。', 'The data returns through L2 to the SM and lands in the requesting thread’s registers. Later reads in the same page hit the TLB directly.'),
+          hardware: L('一次完整遍历要好几次串行读显存，所以大页和 TLB 命中率对带宽敏感的内核很重要。', 'A full walk costs several serial memory reads, which is why big pages and TLB hit rates matter for bandwidth-heavy kernels.'),
+          route: [L('HBM', 'HBM'), L('L2', 'L2'), L('L1', 'L1'), L('寄存器', 'Register')],
+          trace: 'reg ← load(0x7f3ac2d64a40)',
+          code: code(['r = data          // A[3][0] 进入寄存器', '// 同一 2 MiB 页里的下一次读：TLB 命中'], ['r = data          // A[3][0] is in a register', '// next read in the same 2 MiB page: TLB hit']) }
+      ]
     },
+
     pixel: {
-      title: '像素着色：单个像素的计算路径',
-      gloss: '单个像素的颜色由管线逐步确定。',
-      nodes: [
-        { id: 'tri', label: '三角形', kind: 'data', x: 20, y: 80, w: 170, h: 80, detail: '几何：覆盖该像素中心的三角形判定。未覆盖的三角形与该像素无关。' },
-        { id: 'raster', label: '光栅化', kind: 'compute', x: 230, y: 80, w: 170, h: 80, detail: '插值：以重心插值将顶点属性按比例分配至该像素。' },
-        { id: 'shader', label: '片元着色', kind: 'compute', x: 440, y: 80, w: 170, h: 80, detail: '着色：对该像素执行一次着色器，计算其颜色。' },
-        { id: 'tex', label: '纹理', kind: 'memory', x: 440, y: 260, w: 170, h: 80, detail: '查表：以插值所得纹理坐标采样，获得纹理颜色。' },
-        { id: 'depth', label: '深度测试', kind: 'control', x: 650, y: 80, w: 170, h: 80, detail: '遮挡判定：距离更远则丢弃，更近则继续；遮挡关系在此确定。' },
-        { id: 'fb', label: '帧缓冲', kind: 'memory', x: 860, y: 80, w: 170, h: 80, detail: '通过深度测试的像素写入帧缓冲，随后交给显示扫描输出。' },
-        { id: 'pixel', label: '目标像素', kind: 'data', x: 860, y: 260, w: 170, h: 80, detail: '显示：帧缓冲送至屏幕，该像素点亮。' },
-      ],
-      flows: [
-        { from: 'tri', to: 'raster' }, { from: 'raster', to: 'shader' },
-        { from: 'shader', to: 'tex' }, { from: 'tex', to: 'shader' },
-        { from: 'shader', to: 'depth' }, { from: 'depth', to: 'fb' },
-        { from: 'fb', to: 'pixel' },
-      ],
-      views: {
-        structure: '结构视角：屏幕像素、三角形、光栅化、着色、纹理、深度与帧缓冲的位置关系。',
-        work: '工作视角：单个像素的步骤序列，以及各步骤的丢弃分支。',
-        data: '数据视角：顶点属性插值为像素数据，颜色逐步计算的过程。',
-        timeline: '时间视角：本步骤在单个像素完整过程中的位置。',
-      },
+      title: L('一个像素的旅程', 'One pixel’s journey'),
+      subtitle: L('H100 上能跑图形的那两个 TPC', 'On H100’s two graphics TPCs'),
+      scope: L('H100 只有两个 TPC 能跑顶点、几何和像素着色器，也没有显示接口。NVIDIA 的 H100 文章没有描述光栅和 ROP 硬件，图里只按功能标出它们所在的 GPC 和 L2 一侧。', 'Only two TPCs on H100 can run vertex, geometry and pixel shaders, and the card has no display output. NVIDIA’s H100 article doesn’t describe the raster or ROP hardware, so they are marked by function at the GPC and the L2 side.'),
+      nodes: [],
       steps: [
-        { title: '选定目标像素', body: '计算范围限定为单个像素，确定颜色来源。', active: ['pixel'], flows: [], trace: 'pixel = screen[x][y]', code: ['// 目标：单个像素', 'pixel = screen[x][y]'] },
-        { title: '覆盖该像素的三角形', body: '覆盖该像素中心的三角形进入下一阶段。', active: ['tri', 'pixel'], flows: ['tri>raster'], trace: 'covers(tri, pixel) = true', code: ['// 覆盖判断', 'covers = triangle_contains(tri, pixel)'] },
-        { title: '光栅化：插值计算', body: '重心插值将顶点属性分配至该像素。', active: ['raster', 'tri'], flows: ['tri>raster', 'raster>shader'], trace: 'attr = w0·v0 + w1·v1 + w2·v2', code: ['// 插值', 'attr = w0 * v0 + w1 * v1 + w2 * v2'] },
-        { title: '片元着色：颜色计算', body: '片元着色器对该像素执行一次。', active: ['shader'], flows: ['raster>shader'], trace: 'color = shade(attr)', code: ['// 片元着色', 'color = shade(interpolated_attr)'] },
-        { title: '纹理采样', body: '以插值纹理坐标采样，与光照结果结合。', active: ['tex', 'shader'], flows: ['shader>tex', 'tex>shader'], trace: 'color *= texture(uv)', code: ['// 采样', 'tex_color = texture(uv)', 'color *= tex_color'] },
-        { title: '深度测试：遮挡丢弃', body: '更远则丢弃，更近则继续；遮挡在此确定。', active: ['depth', 'pixel'], flows: ['shader>depth'], trace: 'z < depth_buffer ? 继续 : 丢弃', code: ['// 深度测试', 'if (z < depth_buffer[x][y]) keep(); else discard();'] },
-        { title: '写入帧缓冲', body: '通过测试的像素写入帧缓冲。', active: ['fb'], flows: ['depth>fb'], trace: 'framebuffer[x][y] = color', code: ['// 写入', 'framebuffer[x][y] = color', 'depth_buffer[x][y] = z'] },
-        { title: '显示与反向追溯', body: '帧缓冲送至屏幕，该像素点亮。', active: ['fb', 'pixel'], flows: ['fb>pixel'], trace: 'screen[x][y] ← framebuffer[x][y]', code: ['// 显示', 'screen[x][y] = framebuffer[x][y]'] },
-      ],
+        { id: 'where', level: 'die', kind: 'target', chip: { label: L('位置', 'Where'), gloss: L('两个图形 TPC', 'Two graphics TPCs') },
+          title: L('这颗芯片在哪里画图', 'Where this chip can draw'),
+          body: L('H100 主要做计算，132 个 SM 里只有两个 TPC（4 个 SM）能跑图形着色器。我们追踪屏幕上 (3, 4) 这一个像素。', 'H100 is built for compute: of its 132 SMs, only two TPCs (four SMs) can run graphics shaders. We follow the single pixel at (3, 4).'),
+          hardware: L('哪两个 TPC 能跑图形，NVIDIA 没说。图里标的位置只是示意。', 'NVIDIA doesn’t say which two TPCs these are. The marked position is illustrative.'),
+          route: [L('GPC', 'GPC'), L('图形 TPC', 'Graphics TPC'), L('像素 (3, 4)', 'Pixel (3, 4)')],
+          trace: 'target = framebuffer[3, 4]',
+          code: code(['// 只追踪一个像素', 'target = (x = 3, y = 4)'], ['// Follow one pixel', 'target = (x = 3, y = 4)']) },
+        { id: 'vertices', level: 'package', kind: 'transfer', chip: { label: L('顶点', 'Vertices'), gloss: L('从 HBM 读三角形', 'Read the triangle') },
+          title: L('三角形的顶点从 HBM 读进来', 'The triangle’s vertices come in from HBM'),
+          body: L('顶点缓冲在显存里。三个顶点 v₀、v₁、v₂ 的位置和颜色经 L2 送到图形 TPC 的 SM。', 'The vertex buffer is in GPU memory. The positions and colors of v₀, v₁ and v₂ travel through L2 to an SM in the graphics TPC.'),
+          hardware: L('读顶点和读矩阵走的是同一条访存通路：HBM、中介层、L2、SM。', 'Vertices take the same memory path as matrix data: HBM, interposer, L2, SM.'),
+          route: [L('HBM 顶点缓冲', 'Vertex buffer in HBM'), L('L2', 'L2'), L('图形 SM', 'Graphics SM')],
+          trace: 'v₀, v₁, v₂ ← vertex_buffer',
+          code: code(['v = vertex_buffer[i]   // 位置 + 颜色', '// 三个顶点：v0 红, v1 绿, v2 蓝'], ['v = vertex_buffer[i]   // position + color', '// three vertices: v0 red, v1 green, v2 blue']) },
+        { id: 'vertex-shader', level: 'sm', kind: 'compute', chip: { label: L('顶点着色', 'Transform'), gloss: L('算出屏幕坐标', 'To screen space') },
+          title: L('顶点着色器算出屏幕坐标', 'The vertex shader finds screen positions'),
+          body: L('每个顶点乘上变换矩阵，变成屏幕上的坐标。这是普通的浮点运算，在 SM 的 FP32 单元上跑。', 'Each vertex is multiplied by a transform matrix to get its screen position. That is ordinary floating-point math on the SM’s FP32 units.'),
+          hardware: L('着色器和计算内核用的是同一批 FP32 通道和寄存器，只是程序不同。', 'Shaders use the same FP32 lanes and registers as compute kernels; only the program differs.'),
+          route: [L('顶点', 'Vertex'), L('FP32', 'FP32'), L('屏幕坐标', 'Screen position')],
+          trace: 'p_screen = M · p',
+          code: code(['for v in (v0, v1, v2):', '    v.screen = viewport(M * v.position)'], ['for v in (v0, v1, v2):', '    v.screen = viewport(M * v.position)']) },
+        { id: 'raster', level: 'die', kind: 'raster', chip: { label: L('光栅化', 'Raster'), gloss: L('覆盖与权重', 'Coverage, weights') },
+          title: L('光栅化：这个像素在三角形里吗', 'Rasterization: is the pixel inside the triangle?'),
+          body: L('固定功能的光栅硬件逐个检查像素。像素 (3, 4) 的三个重心权重 0.2、0.5、0.3 都不小于 0，所以在三角形内，生成一个片元。', 'Fixed-function raster hardware tests each pixel. Pixel (3, 4) has barycentric weights 0.2, 0.5 and 0.3, none negative, so it is inside and becomes a fragment.'),
+          hardware: L('在 NVIDIA 的图形 GPU 里，每个 GPC 有一个光栅引擎。H100 的文章没有描述它，这里只标在 GPC 上。', 'In NVIDIA’s graphics GPUs each GPC has a raster engine. The H100 article doesn’t describe one, so it is only marked on the GPC.'),
+          route: [L('三角形', 'Triangle'), L('光栅', 'Raster'), L('片元 (3, 4)', 'Fragment (3, 4)')],
+          trace: 'w = (0.2, 0.5, 0.3), all ≥ 0 → inside',
+          code: code(['w0, w1, w2 = barycentric(tri, (3, 4))', 'if min(w0, w1, w2) >= 0:', '    emit_fragment(3, 4, w0, w1, w2)'], ['w0, w1, w2 = barycentric(tri, (3, 4))', 'if min(w0, w1, w2) >= 0:', '    emit_fragment(3, 4, w0, w1, w2)']) },
+        { id: 'fragment', level: 'sm', kind: 'compute', chip: { label: L('片元着色', 'Shade'), gloss: L('插值出颜色', 'Blend the colors') },
+          title: L('片元着色器算颜色', 'The fragment shader computes the color'),
+          body: L('按权重混合三个顶点的颜色：0.2 份红、0.5 份绿、0.3 份蓝，得到 (0.2, 0.5, 0.3)。', 'Blend the vertex colors by weight: 0.2 red, 0.5 green, 0.3 blue, which gives (0.2, 0.5, 0.3).'),
+          hardware: L('又回到 SM 的 FP32 通道。一个 warp 一次给 32 个片元着色。', 'Back on the SM’s FP32 lanes. One warp shades 32 fragments at once.'),
+          route: [L('片元', 'Fragment'), L('FP32', 'FP32'), L('(0.2, 0.5, 0.3)', '(0.2, 0.5, 0.3)')],
+          trace: 'c = 0.2·v₀ + 0.5·v₁ + 0.3·v₂ = (0.2, 0.5, 0.3)',
+          code: code(['c = w0 * v0.color + w1 * v1.color + w2 * v2.color', '# c = (0.2, 0.5, 0.3)'], ['c = w0 * v0.color + w1 * v1.color + w2 * v2.color', '# c = (0.2, 0.5, 0.3)']) },
+        { id: 'texture', level: 'sm', kind: 'sample', chip: { label: L('纹理', 'Texture'), gloss: L('TEX 单元采样', 'TEX unit samples') },
+          title: L('纹理单元取一个纹素', 'A texture unit fetches a texel'),
+          body: L('用插值出的纹理坐标 (0.25, 0.75) 去采样，取到白色纹素 (1, 1, 1)。颜色乘以白色，保持不变。', 'Sample at the interpolated coordinate (0.25, 0.75). The texel is white (1, 1, 1), so multiplying by it leaves the color unchanged.'),
+          hardware: L('纹理采样由 SM 里的 TEX 单元完成，数据经 L1 缓存读取。', 'Sampling is done by the TEX units in the SM, reading through the L1 cache.'),
+          route: [L('uv', 'uv'), L('TEX', 'TEX'), L('L1', 'L1'), L('纹素', 'Texel')],
+          trace: 'c × texture(0.25, 0.75) = c × (1, 1, 1)',
+          code: code(['t = texture.sample(0.25, 0.75)   // (1, 1, 1)', 'c = c * t'], ['t = texture.sample(0.25, 0.75)   // (1, 1, 1)', 'c = c * t']) },
+        { id: 'depth', level: 'package', kind: 'writeback', chip: { label: L('深度', 'Depth'), gloss: L('更近才写入', 'Nearer wins') },
+          title: L('比深度，再写进帧缓冲', 'Depth test, then write the framebuffer'),
+          body: L('新片元深度 0.4，比已有的 0.7 更近，通过测试。颜色 (51, 128, 77) 和新深度经 L2 写回 HBM 里的帧缓冲。', 'The new fragment’s depth is 0.4, nearer than the stored 0.7, so it passes. The color (51, 128, 77) and the new depth go through L2 into the framebuffer in HBM.'),
+          hardware: L('深度测试和混合由 ROP 硬件完成。H100 的文章没有描述 ROP，这里标在 L2 一侧。', 'Depth test and blending are done by ROP hardware. The H100 article doesn’t describe ROPs, so they are marked on the L2 side.'),
+          route: [L('z = 0.4 < 0.7', 'z = 0.4 < 0.7'), L('L2', 'L2'), L('HBM 帧缓冲', 'Framebuffer in HBM')],
+          trace: 'z 0.4 < 0.7 → fb[3,4] = (51, 128, 77)',
+          code: code(['if z < depth[3][4]:          // 0.4 < 0.7', '    fb[3][4] = round(255 * c)  // (51, 128, 77)', '    depth[3][4] = z'], ['if z < depth[3][4]:          // 0.4 < 0.7', '    fb[3][4] = round(255 * c)  // (51, 128, 77)', '    depth[3][4] = z']) },
+        { id: 'output', level: 'board', kind: 'output', chip: { label: L('送出', 'Out'), gloss: L('没有显示接口', 'No display port') },
+          title: L('帧画好了，但它没有显示接口', 'The frame is done, but there is no display port'),
+          body: L('H100 SXM 没有显示输出。画好的帧留在 HBM 里，要看到它，得经 PCIe 或 NVLink 从模组底部的连接器拷出去。', 'H100 SXM has no display output. The finished frame stays in HBM; to see it, it has to be copied out over PCIe or NVLink through the connector under the module.'),
+          hardware: L('这也是 H100 适合做远程渲染和仿真、不适合直接接显示器的原因。', 'This is why H100 suits remote rendering and simulation rather than driving a monitor.'),
+          route: [L('HBM 帧缓冲', 'Framebuffer in HBM'), L('GPU', 'GPU'), L('SXM 连接器', 'SXM connector'), L('主机', 'Host')],
+          trace: 'host ← copy(framebuffer)',
+          code: code(['// 没有扫描输出，只能拷走', 'cudaMemcpy(host_frame, framebuffer, size, DeviceToHost)'], ['// No scanout; copy it out instead', 'cudaMemcpy(host_frame, framebuffer, size, DeviceToHost)']) }
+      ]
     },
+
     stacking: {
-      title: '芯片堆叠：逻辑折叠剖面',
-      gloss: '两层逻辑堆叠，垂直连接替代横向连线。',
-      nodes: [
-        { id: 'lid', label: '散热盖', kind: 'control', x: 250, y: 30, w: 600, h: 50, detail: '最上层：热量导出层。堆叠密度提高时，中间层的热量导出难度增大。' },
-        { id: 'logic-top', label: '上层逻辑 · 超大核', kind: 'compute', x: 250, y: 100, w: 600, h: 90, detail: '上层逻辑：超大核位于上层，距散热盖最近，亦距下层最近。' },
-        { id: 'bond', label: '混合键合层', kind: 'control', x: 250, y: 210, w: 600, h: 40, detail: '上下层的垂直连接层，承载逻辑层之间的信号传输。' },
-        { id: 'logic-low', label: '下层逻辑 · 大核 + 小核', kind: 'compute', x: 250, y: 270, w: 600, h: 90, detail: '下层逻辑：大核与小核分工，靠近内存层。' },
-        { id: 'mem-layer', label: '内存 / 缓存层', kind: 'memory', x: 250, y: 380, w: 600, h: 70, detail: '内存与缓存层：数据离计算越近，等待越少。' },
-        { id: 'substrate', label: '基板', kind: 'data', x: 250, y: 470, w: 600, h: 40, detail: '最下层：承载整颗芯片，并将信号引至封装外部。' },
-        { id: 'cut-core', label: '被划掉的核', kind: 'compute', x: 880, y: 100, w: 180, h: 90, disabled: true, detail: '分档示例：同一颗芯片的低档版本中，该核存在但被关闭，不参与工作。' },
-        { id: 'gpu-block', label: 'GPU 块', kind: 'compute', x: 880, y: 270, w: 180, h: 90, detail: '图形计算块：与 CPU 逻辑并列于同一颗芯片，分工不同。' },
-      ],
-      flows: [
-        { from: 'logic-top', to: 'bond' }, { from: 'bond', to: 'logic-low' },
-        { from: 'logic-low', to: 'mem-layer' }, { from: 'mem-layer', to: 'substrate' },
-        { from: 'gpu-block', to: 'logic-low' },
-      ],
-      views: {
-        structure: '结构视角：自上而下的剖面：散热盖、两层逻辑、键合层、内存层、基板。',
-        work: '工作视角：信号垂直穿过各层，以及各层可能的排队与发热位置。',
-        data: '数据视角：数据距计算的距离，以及垂直距离短于横向距离的原因。',
-        timeline: '时间视角：本步骤在“切开—分层—连通—代价评估”全过程中的位置。',
-      },
+      title: L('芯片为什么堆起来', 'Why the chips are stacked'),
+      subtitle: L('HBM、中介层和封装', 'HBM, interposer and package'),
+      scope: L('八层 DRAM 剖面是示意，不代表某家供应商的层数。带宽来自 NVIDIA 产品规格。', 'The eight-layer DRAM cutaway is an illustration, not a particular vendor’s layer count. Bandwidth figures are NVIDIA product specs.'),
+      nodes: [],
       steps: [
-        { title: '堆叠芯片的剖面结构', body: '剖面结构为分析起点：两层逻辑堆叠。', active: ['lid', 'logic-top'], flows: [], trace: 'chip = 盖·上层·键合·下层·内存·基板', code: ['// 剖面', 'chip = [lid, logic_top, bond, logic_low, mem, substrate]'] },
-        { title: '同一芯片的分档', body: '关闭一部分单元，得到不同档次的芯片配置。', active: ['cut-core', 'logic-top'], flows: [], trace: '低档 = 全单元 − 被关闭单元', code: ['// 分档', 'high_tier = all_units_on', 'low_tier = all_units_on - cut_core'] },
-        { title: '剖面分层', body: '自上而下：盖、上层、键合、下层、内存、基板。', active: ['lid', 'bond', 'substrate'], flows: [], trace: '6 层（自上而下）', code: ['// 自上而下', 'layers = [lid, logic_top, bond, logic_low, mem, substrate]'] },
-        { title: '上层逻辑：超大核的位置', body: '上层超大核距散热盖近，亦距下层近。', active: ['logic-top'], flows: ['logic-top>bond'], trace: '超大核 → 键合层', code: ['// 上层', 'super_core -> bond_layer'] },
-        { title: '混合键合：上下层的连接', body: '键合层为垂直通道，距离较短。', active: ['bond'], flows: ['bond>logic-low'], trace: '上层 → 键合层 → 下层', code: ['// 垂直连接', 'signal = top_logic -[bond]-> low_logic'] },
-        { title: '下层逻辑与内存', body: '下层靠近内存层，但带宽与容量仍有限制。', active: ['logic-low', 'mem-layer'], flows: ['logic-low>mem-layer'], trace: '下层 ↔ 内存层', code: ['// 近处取数', 'data = mem_layer[near(low_logic)]'] },
-        { title: '信号距离：垂直路径与横向路径', body: '垂直路径短于横向绕行路径，源于几何。', active: ['bond', 'mem-layer'], flows: ['mem-layer>substrate'], trace: '垂直 ≪ 横向', code: ['// 距离对比', 'vertical = one_bond_layer', 'horizontal = across_the_die'] },
-        { title: '热与代价：堆叠的约束条件', body: '收益为短距离与高集成；代价为散热与制造难度。', active: ['lid', 'logic-top'], flows: [], trace: '收益：短距离；代价：散热、制造', code: ['// 权衡', 'benefit = short_vertical_path', 'cost = heat + yield + test'] },
-      ],
-    },
+        { id: 'need', level: 'board', kind: 'target', chip: { label: L('需求', 'Need'), gloss: L('每秒几 TB', 'Terabytes per second') },
+          title: L('SM 每秒要吃掉几 TB 数据', 'The SMs need terabytes per second'),
+          body: L('H100 SXM 的显存带宽是 3.35 TB/s，A100 80GB 是 2.04 TB/s。显存芯片如果像显卡那样焊在 PCB 上，引不出这么多又这么短的连线。', 'H100 SXM has 3.35 TB/s of memory bandwidth; A100 80GB has 2.04 TB/s. Memory chips soldered onto the PCB, as on a graphics card, can’t get that many short wires to the GPU.'),
+          hardware: L('所以 HBM 和 GPU 裸片挨着放在同一个封装里，中间只隔一毫米左右。', 'So the HBM stacks sit right next to the GPU die inside one package, about a millimetre apart.'),
+          route: [L('SM', 'SM'), L('L2', 'L2'), L('HBM', 'HBM')],
+          trace: 'H100: 3.35 TB/s · A100: 2.04 TB/s',
+          code: code(['// 每颗 SM 都在等数据', 'need = sms * bytes_per_cycle * clock'], ['// every SM is waiting on data', 'need = sms * bytes_per_cycle * clock']) },
+        { id: 'stack', level: 'hbm', explode: 0, kind: 'structure', chip: { label: L('叠层', 'Layers'), gloss: L('DRAM 叠在底座上', 'DRAM on a base die') },
+          title: L('一组 HBM 是一摞 DRAM 芯片', 'An HBM stack is a pile of DRAM dies'),
+          body: L('几层 DRAM 芯片叠在一块底部接口芯片上。叠起来占地小，每组只占 GPU 旁边的一小块地方。', 'Several DRAM dies sit on top of a base interface die. Stacking keeps the footprint small, so each stack takes only a small patch next to the GPU.'),
+          hardware: L('图里画了 8 层，用来说明结构；真实产品的层数取决于容量和供应商。', 'Eight layers are drawn to show the structure; real products vary by capacity and vendor.'),
+          route: [L('DRAM ×8', 'DRAM ×8'), L('底部接口芯片', 'Base die'), L('中介层', 'Interposer')],
+          trace: '16 GB per stack × 5 = 80 GB',
+          code: code(['stack = [base_die] + [dram_die] * 8   // 示意', 'capacity = 16 GB   // 每组'], ['stack = [base_die] + [dram_die] * 8   // illustrative', 'capacity = 16 GB   // per stack']) },
+        { id: 'tsv', level: 'hbm', explode: .55, kind: 'vertical', chip: { label: L('TSV', 'TSV'), gloss: L('垂直穿过硅片', 'Straight through silicon') },
+          title: L('信号直接穿过硅片', 'Signals go straight through the silicon'),
+          body: L('每层 DRAM 上打了上千个硅通孔（TSV），层与层之间用微凸点焊在一起。信号垂直走几十微米，而不是绕到边上。', 'Each DRAM die has thousands of through-silicon vias (TSVs), and the dies are joined by microbumps. Signals travel a few tens of microns vertically instead of routing around the edge.'),
+          hardware: L('TSV 是硅片里的竖直铜柱，和 PCB 上的普通过孔不是一回事。', 'A TSV is a vertical copper column inside the silicon. It is a different thing from an ordinary via in a PCB.'),
+          route: [L('DRAM 层', 'DRAM die'), L('TSV', 'TSV'), L('微凸点', 'Microbump'), L('底部芯片', 'Base die')],
+          trace: 'path = TSV + microbump, ~tens of µm per layer',
+          code: code(['// 读第 6 层的 bank', 'signal: base -> tsv -> bump -> ... -> dram[5]'], ['// read a bank on layer 6', 'signal: base -> tsv -> bump -> ... -> dram[5]']) },
+        { id: 'width', level: 'hbm', explode: .15, kind: 'interface', chip: { label: L('位宽', 'Width'), gloss: L('每组 1024 位', '1024 bits per stack') },
+          title: L('每组 1024 根数据线', '1024 data lines per stack'),
+          body: L('一组 HBM 的接口有 1024 位宽，分成多个独立通道：HBM3 是 16 × 64 位，HBM2e 是 8 × 128 位。宽而慢，比窄而快更省电。', 'Each stack has a 1024-bit interface split into independent channels: 16 × 64 bits on HBM3, 8 × 128 bits on HBM2e. Wide and slow uses less power than narrow and fast.'),
+          hardware: L('5 组启用的 HBM 一共 5120 位。H100 每根线约 5.2 Gb/s，A100 约 3.2 Gb/s。', 'The five active stacks add up to 5120 bits. That is about 5.2 Gb/s per line on H100 and 3.2 Gb/s on A100.'),
+          route: [L('通道 ×16', 'Channels ×16'), L('1024 位', '1024 bits'), L('× 5 组', '× 5 stacks')],
+          trace: '3.35 TB/s × 8 ÷ 5120 ≈ 5.2 Gb/s per line',
+          code: code(['bits = 5 * 1024             // 5120', 'per_line = 3.35e12 * 8 / bits   // ≈ 5.2e9 b/s'], ['bits = 5 * 1024             // 5120', 'per_line = 3.35e12 * 8 / bits   // ≈ 5.2e9 b/s']) },
+        { id: 'interposer', level: 'package', explode: .6, kind: 'lateral', chip: { label: L('中介层', 'Interposer'), gloss: L('硅上走细线', 'Fine wires in silicon') },
+          title: L('中介层：在硅上布几千根线', 'The interposer: thousands of wires in silicon'),
+          body: L('把裸片和 HBM 抬起来，下面是硅中介层。它用做芯片的工艺在表层布线，线距细到 PCB 做不到，几千根数据线从 HBM 底部一路连到 GPU 的 HBM PHY。', 'Lift the die and the HBM stacks and you see the silicon interposer. It is wired with chip-making lithography, at a pitch no PCB can reach, carrying thousands of data lines from each stack to the GPU’s HBM PHY.'),
+          hardware: L('这些线埋在中介层的金属层里，装配好以后从外面看不见。拆开时显示的走线是示意，不是真实版图。', 'The wires are buried in the interposer’s metal layers and can’t be seen once assembled. The routing shown when it is taken apart is illustrative, not the real layout.'),
+          route: [L('HBM 底部', 'HBM base'), L('中介层走线', 'Interposer wiring'), L('HBM PHY', 'HBM PHY'), L('GPU', 'GPU')],
+          trace: '5 × 1024 lines over ~1 mm',
+          code: code(['// 2.5D：芯片并排放在同一块硅上', 'for stack in hbm:', '    wire(stack.phy, gpu.phy[stack], width=1024)'], ['// 2.5D: dies side by side on one piece of silicon', 'for stack in hbm:', '    wire(stack.phy, gpu.phy[stack], width=1024)']) },
+        { id: 'layers', level: 'package', explode: 1, camera: 'side', kind: 'vertical', chip: { label: L('层次', 'Layers'), gloss: L('从硅到 PCB', 'Silicon down to PCB') },
+          title: L('从硅片一路往下到电路板', 'From silicon down to the circuit board'),
+          body: L('最上面是 GPU 裸片和 HBM，用微凸点焊在中介层上；中介层再用更大的凸点焊在有机基板上；基板底部的焊球接到 SXM 模组的 PCB。', 'At the top are the GPU die and HBM, attached to the interposer by microbumps. The interposer sits on an organic substrate on larger bumps, and the substrate’s solder balls connect to the SXM board.'),
+          hardware: L('每往下一层，连接点更大、更稀，最后才是 PCB 能处理的尺寸。NVIDIA 用的是台积电 CoWoS 这类封装。', 'Each layer down, the connections get bigger and sparser, until they reach a size a PCB can handle. This style of package is TSMC’s CoWoS.'),
+          route: [L('裸片 / HBM', 'Die / HBM'), L('中介层', 'Interposer'), L('基板', 'Substrate'), L('PCB', 'PCB')],
+          trace: 'microbump → interposer → bump → substrate → ball → PCB',
+          code: code(['layers = ["die + HBM", "microbumps", "interposer",', '          "bumps", "substrate", "solder balls", "PCB"]'], ['layers = ["die + HBM", "microbumps", "interposer",', '          "bumps", "substrate", "solder balls", "PCB"]']) },
+        { id: 'heat', level: 'package', explode: 0, kind: 'heat', chip: { label: L('散热', 'Heat'), gloss: L('热量往上走', 'Heat goes up') },
+          title: L('热从顶面导出去', 'Heat leaves through the top'),
+          body: L('H100 SXM 最高可配置到 700 W，A100 SXM 是 400 W。GPU 裸片和 HBM 的顶面做到差不多一样高，同一块冷板压在上面把热带走。', 'H100 SXM can be configured up to 700 W; A100 SXM runs at 400 W. The GPU die and the HBM tops are made nearly level so one cold plate can press on all of them.'),
+          hardware: L('HBM 是一摞芯片，最下面几层的热要穿过上面几层才能出去，所以叠得越高，散热越难。冷板在模型里没有画出来。', 'An HBM stack is a pile of dies; heat from the bottom layers has to pass through the ones above, so taller stacks are harder to cool. The cold plate isn’t drawn in the model.'),
+          route: [L('SM 和 HBM 发热', 'SMs and HBM heat up'), L('顶面', 'Top surface'), L('冷板', 'Cold plate')],
+          trace: 'H100 SXM ≤ 700 W · A100 SXM 400 W',
+          code: code(['// 热流方向', 'heat: die/hbm -> top surface -> cold plate'], ['// heat flow', 'heat: die/hbm -> top surface -> cold plate']) },
+        { id: 'yield', level: 'die', explode: 0, kind: 'yield', chip: { label: L('良率', 'Yield'), gloss: L('关掉一部分', 'Some parts are off') },
+          title: L('同一块硅，不是每部分都启用', 'Not every part of the silicon is switched on'),
+          body: L('完整的 GH100 有 144 个 SM 和 6 个 HBM 位置，H100 SXM 只启用 132 个 SM 和 5 组 HBM。一颗大芯片很难没有缺陷，关掉一部分就能把更多芯片卖出去。', 'A full GH100 has 144 SMs and six HBM sites; H100 SXM enables 132 SMs and five stacks. A huge die rarely comes out flawless, and switching some parts off lets more of them ship.'),
+          hardware: L('暗色的 SM 和第六个 HBM 位置就是没启用的部分。哪些单元被关掉每颗芯片都不一样，图里的位置是示意。', 'The dark SMs and the sixth HBM site are the parts that are off. Which units are disabled differs from chip to chip; the positions shown are illustrative.'),
+          route: [L('144 → 132 SM', '144 → 132 SMs'), L('6 → 5 组 HBM', '6 → 5 stacks')],
+          trace: 'GH100: 144 SM, 6 sites → H100 SXM: 132 SM, 5 stacks',
+          code: code(['full    = {"sm": 144, "hbm_sites": 6}', 'shipped = {"sm": 132, "hbm_stacks": 5}   // H100 SXM'], ['full    = {"sm": 144, "hbm_sites": 6}', 'shipped = {"sm": 132, "hbm_stacks": 5}   // H100 SXM']) }
+      ]
+    }
   };
 
-  // Predict-then-play: keyed by journey + step index. Each question asks about
-  // the NEXT step (or, on the last step, the whole journey), so the current
-  // step's explanation does not give the answer away. answer = option index.
+  // Each question asks about the next step, so the current text doesn't give it away.
   const PREDICTS = {
-    'gemm:1': { q: 'C[3,7] 的输入载入何处，方可被反复复用？', options: ['保留于片外显存，每次现取', '载入 Shared Memory', '写回输出 C'], answer: 1, explain: '正确：载入 Shared Memory 后，多次乘加均自片上读取，无需每次访问片外显存。' },
-    'gemm:3': { q: '一个 warp 如何参与矩阵乘法？', options: ['每个线程各自完成整个矩阵', '32 个线程协作提供和处理矩阵片段', '只由一个线程处理全部输出'], answer: 1, explain: '32 个线程协作组织操作数与累加器，通过矩阵指令完成片段的乘加。' },
-    'gemm:5': { q: '当前块计算完成后的后续步骤为何？', options: ['直接写回 C[3,7]，结束计算', '同步后载入下一块继续计算', '重新划分整张矩阵'], answer: 1, explain: '正确：同步确认全部搬运与计算完成后，载入下一块，直至累加完成方可写回。' },
-    'pagetable:1': { q: 'TLB 未命中后的遍历起点为何？', options: ['直接访问内存取数据', '逐级查询页表', '更换虚拟地址重试'], answer: 1, explain: '正确：无缓存的翻译结果时，遍历自 PGD 开始逐级查询。' },
-    'pagetable:5': { q: 'PTE 查询完成后，物理地址的构成方式为何？', options: ['PTE 本身即为物理地址', '物理页号 + 页内偏移', '虚拟地址 + TLB 大小'], answer: 1, explain: '正确：PTE 给出页号，页内偏移不变，两者组合为物理地址，并可回填 TLB。' },
-    'pixel:2': { q: '光栅化阶段该像素属性的来源为何？', options: ['查阅现成的像素表', '顶点属性按重心权重插值', '着色器随机生成'], answer: 1, explain: '正确：attr = w0·v0 + w1·v1 + w2·v2；该像素为三角形内部插值所得的点。' },
-    'pixel:5': { q: '深度缓冲中已写入更近像素时，更远的新像素如何处理？', options: ['覆盖旧像素', '被丢弃，不写入', '着色后擦除'], answer: 1, explain: '正确：深度测试在写入前丢弃被遮挡的片元。' },
-    'stacking:1': { q: '同一颗芯片的低档版本中，图中被划掉的核处于何种状态？', options: ['物理上不存在', '存在但被关闭，不参与工作', '转为 GPU 继续工作'], answer: 1, explain: '正确：分档可以通过关闭同一颗芯片的一部分单元来实现。' },
-    'stacking:4': { q: '混合键合层在上下两层逻辑之间的功能为何？', options: ['仅将两层粘合', '提供上下层之间的垂直信号连接', '仅为上层供电，与信号无关'], answer: 1, explain: '正确：键合层为信号沿垂直方向传输的通道；距离缩短为堆叠省距离的关键。' },
+    'gemm:1': { q: L('C[3,7] 的输入要放到哪里，才能被反复读取？', 'Where should C[3,7]’s inputs go so they can be read many times?'), options: [L('留在 HBM，每次去取', 'Leave them in HBM and fetch each time'), L('搬进 SM 的共享内存', 'Copy them into the SM’s shared memory'), L('先写进输出 C', 'Write them into C first')], answer: 1, explain: L('搬进共享内存后，后面的乘加都从片上读，不用每次去 HBM。', 'Once in shared memory, the multiply-adds read them on chip instead of going back to HBM.') },
+    'gemm:3': { q: L('一个 warp 怎样参与矩阵乘法？', 'How does a warp take part in the multiply?'), options: [L('每个线程算完整个矩阵', 'Each thread computes the whole matrix'), L('32 个线程一起提供和处理矩阵片段', 'The 32 threads supply and process matrix fragments together'), L('只有一个线程在算', 'Only one thread does the work')], answer: 1, explain: L('32 个线程各拿一部分操作数和累加器，一起执行矩阵指令。', 'Each of the 32 threads holds part of the operands and accumulators, and they run the matrix instruction together.') },
+    'gemm:5': { q: L('第一块算完以后呢？', 'What happens after the first tile?'), options: [L('直接把 19 写回 C', 'Write 19 to C right away'), L('同步，换下一块继续加', 'Synchronize, load the next tile, keep adding'), L('重新切分整个矩阵', 'Re-tile the whole matrix')], answer: 1, explain: L('19 只是一半。同步后换下一块，加完才是 37。', '19 is only half the sum. After syncing, the next tile brings it to 37.') },
+    'pagetable:1': { q: L('两级 TLB 都没命中，接下来谁来找物理地址？', 'Both TLBs miss. Who finds the physical address?'), options: [L('CPU 的操作系统', 'The CPU’s operating system'), L('GPU 自己的 GMMU 逐级查页表', 'The GPU’s own GMMU walks the page table'), L('直接报错', 'The load fails')], answer: 1, explain: L('GMMU 是 GPU 上的硬件，自己读页表，不用 CPU 插手。', 'The GMMU is hardware on the GPU and reads the page table itself, without the CPU.') },
+    'pagetable:4': { q: L('PD0 这一项指向 2 MiB 大页，物理地址怎么得出？', 'The PD0 entry maps a 2 MiB page. How do you get the physical address?'), options: [L('页表项本身就是物理地址', 'The entry is the physical address'), L('页基址加上虚拟地址低 21 位', 'Page base plus the low 21 bits of the virtual address'), L('虚拟地址加上 TLB 大小', 'Virtual address plus the TLB size')], answer: 1, explain: L('页内偏移原样保留：0x24e000000 + 0x164a40。', 'The offset into the page carries over: 0x24e000000 + 0x164a40.') },
+    'pixel:3': { q: L('像素 (3, 4) 的颜色从哪里来？', 'Where does pixel (3, 4) get its color?'), options: [L('查一张现成的像素表', 'From a ready-made pixel table'), L('三个顶点的颜色按重心权重混合', 'The vertex colors blended by barycentric weights'), L('着色器随机生成', 'The shader picks one at random')], answer: 1, explain: L('c = 0.2·v₀ + 0.5·v₁ + 0.3·v₂。', 'c = 0.2·v₀ + 0.5·v₁ + 0.3·v₂.') },
+    'pixel:5': { q: L('如果帧缓冲里已经有一个更近的像素，会怎样？', 'What if the framebuffer already holds a nearer pixel?'), options: [L('新的覆盖旧的', 'The new one overwrites it'), L('新片元被丢掉，不写入', 'The new fragment is discarded'), L('两个颜色平均', 'The colors are averaged')], answer: 1, explain: L('深度测试在写入前把被挡住的片元丢掉。', 'The depth test drops hidden fragments before they are written.') },
+    'stacking:2': { q: L('一组 HBM 一次能并行传多少位？', 'How many bits does one HBM stack move in parallel?'), options: [L('64 位', '64 bits'), L('1024 位', '1024 bits'), L('8 位', '8 bits')], answer: 1, explain: L('每组 1024 位，分成多个独立通道。', '1024 bits per stack, split into independent channels.') },
+    'stacking:4': { q: L('为什么不把这几千根线布在 PCB 上？', 'Why not route these thousands of wires on the PCB?'), options: [L('PCB 线太短', 'PCB wires are too short'), L('PCB 做不到这么细的线距', 'A PCB can’t reach that wiring pitch'), L('PCB 不导电', 'PCBs don’t conduct')], answer: 1, explain: L('中介层用芯片工艺布线，线距比 PCB 细得多。', 'The interposer uses chip lithography, with a far finer pitch than any PCB.') }
   };
 
-  // Bottom timeline phases (text-economy rule: <=6 nodes, 1-2 words
-  // each, gloss <=6 words on the selected node only). Each phase maps
-  // to the first step of its span; clicking a phase jumps there. The
-  // timeline IS the trace: no separate trace/log panel exists.
-  const PHASES = {
-    gemm: [
-      { label: '选定', step: 0, gloss: '确定单个输出目标。' },
-      { label: '依赖', step: 1, gloss: '仅依赖一行一列。' },
-      { label: '分块', step: 2, gloss: '块负责输出 tile。' },
-      { label: '载入', step: 3, gloss: '小块载入共享存储。' },
-      { label: '计算', step: 4, gloss: '分工乘加并累加。' },
-      { label: '写回', step: 7, gloss: '结果写回输出。' },
-    ],
-    pagetable: [
-      { label: '发出', step: 0, gloss: 'CPU 发出虚拟地址。' },
-      { label: 'TLB', step: 1, gloss: '翻译缓存未命中。' },
-      { label: '查表', step: 2, gloss: '逐级查询至 PTE。' },
-      { label: '访问', step: 6, gloss: '经缓存返回 CPU。' },
-    ],
-    pixel: [
-      { label: '选定', step: 0, gloss: '确定目标像素。' },
-      { label: '覆盖', step: 1, gloss: '命中覆盖三角形。' },
-      { label: '插值', step: 2, gloss: '顶点属性重心插值。' },
-      { label: '着色', step: 3, gloss: '着色与纹理采样。' },
-      { label: '深度', step: 5, gloss: '遮挡丢弃判定。' },
-      { label: '显示', step: 6, gloss: '写入帧缓冲并显示。' },
-    ],
-    stacking: [
-      { label: '剖面', step: 0, gloss: '两层逻辑堆叠。' },
-      { label: '分档', step: 1, gloss: '关闭单元即低档。' },
-      { label: '分层', step: 2, gloss: '自上而下六层。' },
-      { label: '连接', step: 3, gloss: '键合层垂直连接。' },
-      { label: '内存', step: 5, gloss: '下层靠近内存层。' },
-      { label: '代价', step: 6, gloss: '短距离与散热代价。' },
-    ],
-  };
-  function currentPhase(state) {
-    var phases = PHASES[state.journey] || [];
-    var cur = phases[0] || null;
-    phases.forEach(function (p) { if (p.step <= state.stepIndex) cur = p; });
-    return cur;
-  }
+  const STEP_CHIPS = {};
+  Object.keys(JOURNEYS).forEach(key => { STEP_CHIPS[key] = JOURNEYS[key].steps.map(step => step.chip); });
 
-  // Bottom timeline step chips (Piece 3): one chip per step, NOT per
-  // phase. Each label is 1-2 words, each gloss is short, and only the
-  // selected step's gloss is printed — the same text-economy rule the
-  // phase timeline used, with direct selection restored for every step.
-  // Labels/glosses are timeline metadata only: step titles, bodies,
-  // traces, code and predictions are unchanged. PHASES is kept above
-  // for backward compatibility (older tests reference it).
-  const STEP_CHIPS = {
-    gemm: [
-      { label: '选定', gloss: '确定单个输出目标。' },
-      { label: '依赖', gloss: '仅依赖一行一列。' },
-      { label: '分块', gloss: '块负责输出 tile。' },
-      { label: '载入', gloss: '小块载入共享存储。' },
-      { label: '分工', gloss: '同指令，不同数据。' },
-      { label: '乘加', gloss: '乘加并累加。' },
-      { label: '同步', gloss: '同步后载入下一块。' },
-      { label: '写回', gloss: '结果写回输出。' },
-    ],
-    pagetable: [
-      { label: '发出', gloss: 'CPU 发出虚拟地址。' },
-      { label: 'TLB', gloss: '翻译缓存未命中。' },
-      { label: 'PGD', gloss: '高位索引第一级。' },
-      { label: 'PUD', gloss: '下段索引第二级。' },
-      { label: 'PMD', gloss: '继续缩小范围。' },
-      { label: 'PTE', gloss: '页号加页内偏移。' },
-      { label: '访问', gloss: '经缓存返回 CPU。' },
-    ],
-    pixel: [
-      { label: '选定', gloss: '确定目标像素。' },
-      { label: '覆盖', gloss: '命中覆盖三角形。' },
-      { label: '插值', gloss: '顶点属性重心插值。' },
-      { label: '着色', gloss: '着色器计算颜色。' },
-      { label: '采样', gloss: '纹理采样结合光照。' },
-      { label: '深度', gloss: '遮挡丢弃判定。' },
-      { label: '写入', gloss: '写入帧缓冲。' },
-      { label: '显示', gloss: '帧缓冲送至屏幕。' },
-    ],
-    stacking: [
-      { label: '剖面', gloss: '两层逻辑堆叠。' },
-      { label: '分档', gloss: '关闭单元即低档。' },
-      { label: '分层', gloss: '自上而下六层。' },
-      { label: '上层', gloss: '超大核距盖最近。' },
-      { label: '键合', gloss: '键合层垂直连接。' },
-      { label: '内存', gloss: '下层靠近内存层。' },
-      { label: '距离', gloss: '垂直短于横向。' },
-      { label: '代价', gloss: '短距离与散热代价。' },
-    ],
-  };
-  function currentStepChip(state) {
-    var chips = STEP_CHIPS[state.journey] || [];
-    return chips[state.stepIndex] || null;
-  }
-
-  const VIEWS = ['structure', 'work', 'data', 'timeline'];
-
-  function createState(overrides) {
-    const o = overrides || {};
+  function createState(o) {
+    o = o || {};
+    const model = MODELS[o.model] ? o.model : 'h100';
     return {
       journey: JOURNEYS[o.journey] ? o.journey : 'gemm',
-      model: MODELS[o.model] ? o.model : 'h100',
-      view: VIEWS.indexOf(o.view) >= 0 ? o.view : 'structure',
+      model,
       stepIndex: 0,
       selected: null,
       playing: false,
       predictions: {},
-      compareModel: (o.compareModel && MODELS[o.compareModel] && o.compareModel !== (MODELS[o.model] ? o.model : 'h100')) ? o.compareModel : null,
+      compareModel: (o.compareModel && MODELS[o.compareModel] && o.compareModel !== model) ? o.compareModel : null
     };
   }
+  function currentJourney(state) { return JOURNEYS[state.journey]; }
+  function currentStep(state) { return currentJourney(state).steps[state.stepIndex]; }
+  function currentStepChip(state) { return (STEP_CHIPS[state.journey] || [])[state.stepIndex] || null; }
   function getPredict(journey, stepIndex) { return PREDICTS[journey + ':' + stepIndex] || null; }
   function predict(state, choice) {
     const p = getPredict(state.journey, state.stepIndex);
     if (!p || choice < 0 || choice >= p.options.length) return null;
-    const key = state.journey + ':' + state.stepIndex;
-    state.predictions[key] = choice;
+    state.predictions[state.journey + ':' + state.stepIndex] = choice;
     return { correct: choice === p.answer, explain: p.explain };
   }
-  function predictionMade(state) {
-    return state.predictions[state.journey + ':' + state.stepIndex];
-  }
-  function currentJourney(state) { return JOURNEYS[state.journey]; }
-  function currentStep(state) { return currentJourney(state).steps[state.stepIndex]; }
-  function getStepNote(step, model) {
-    // Per-model annotation; defaults to the shared step body.
-    if (step.modelNotes && step.modelNotes[model]) return step.modelNotes[model];
-    return step.body;
-  }
+  function predictionMade(state) { return state.predictions[state.journey + ':' + state.stepIndex]; }
   function setCompare(state, model) {
     if (!model) { state.compareModel = null; return state; }
     if (!MODELS[model] || model === state.model) return state;
@@ -317,8 +349,9 @@
   }
   function prev(state) { if (!isAtStart(state)) state.stepIndex -= 1; return state; }
   function goto(state, i) {
-    var n = currentJourney(state).steps.length;
-    state.stepIndex = Math.max(0, Math.min(n - 1, i));
+    const n = currentJourney(state).steps.length;
+    const index = Number.isFinite(Number(i)) ? Math.trunc(Number(i)) : 0;
+    state.stepIndex = Math.max(0, Math.min(n - 1, index));
     state.playing = false;
     return state;
   }
@@ -335,29 +368,15 @@
     }
     return state;
   }
-  function setView(state, view) {
-    // View switch must preserve journey, model, step and selection.
-    if (VIEWS.indexOf(view) >= 0) state.view = view;
-    return state;
-  }
   function select(state, nodeId) {
-    const ok = currentJourney(state).nodes.some(function (n) { return n.id === nodeId; });
-    if (ok) state.selected = nodeId;
+    if (currentJourney(state).nodes.some(n => n.id === nodeId)) state.selected = nodeId;
     return state;
   }
-  // Piece 4 (keyboard): move the block selection one node forward (+1)
-  // or backward (-1) in the current journey's node order, wrapping at
-  // both ends. With no selection yet, +1 starts at the first node and
-  // -1 at the last, so a canvas-focused arrow always lands somewhere.
-  // Step index and playing are untouched: selection movement is not
-  // step navigation, even though both use arrow keys in different
-  // focus contexts (see app.js / scene3d.js).
   function selectNext(state, dir) {
-    var nodes = currentJourney(state).nodes;
+    const nodes = currentJourney(state).nodes;
     if (!nodes.length) return state;
-    var cur = -1;
-    for (var i = 0; i < nodes.length; i++) if (nodes[i].id === state.selected) cur = i;
-    var nextIdx = cur < 0 ? (dir < 0 ? nodes.length - 1 : 0) : (cur + dir + nodes.length) % nodes.length;
+    const cur = nodes.findIndex(n => n.id === state.selected);
+    const nextIdx = cur < 0 ? (dir < 0 ? nodes.length - 1 : 0) : (cur + dir + nodes.length) % nodes.length;
     state.selected = nodes[nextIdx].id;
     return state;
   }
@@ -367,20 +386,17 @@
     return next(state);
   }
   function encodeState(state) {
-    var parts = ['j=' + encodeURIComponent(state.journey), 'm=' + encodeURIComponent(state.model),
-      'v=' + encodeURIComponent(state.view), 's=' + state.stepIndex,
-      'sel=' + encodeURIComponent(state.selected || '')];
+    const parts = ['j=' + encodeURIComponent(state.journey), 'm=' + encodeURIComponent(state.model), 's=' + state.stepIndex];
+    if (state.selected) parts.push('sel=' + encodeURIComponent(state.selected));
     if (state.compareModel) parts.push('cmp=' + encodeURIComponent(state.compareModel));
     return parts.join('&');
   }
   function decodeState(hash) {
     const out = createState({});
     if (!hash) return out;
-    const q = hash.replace(/^#/, '');
-    const params = new URLSearchParams(q);
+    const params = new URLSearchParams(String(hash).replace(/^#/, ''));
     if (JOURNEYS[params.get('j')]) out.journey = params.get('j');
     if (MODELS[params.get('m')]) out.model = params.get('m');
-    if (VIEWS.indexOf(params.get('v')) >= 0) out.view = params.get('v');
     const s = parseInt(params.get('s'), 10);
     if (!isNaN(s)) out.stepIndex = Math.max(0, Math.min(currentJourney(out).steps.length - 1, s));
     const sel = params.get('sel');
@@ -389,8 +405,16 @@
     if (cmp) setCompare(out, cmp);
     return out;
   }
+  // Where a step happens in the 3D scene: hardware level, explosion and camera.
+  function guideFor(journey, stepIndex) {
+    const j = JOURNEYS[journey] || JOURNEYS.gemm;
+    const step = j.steps[Math.max(0, Math.min(j.steps.length - 1, Number(stepIndex) || 0))];
+    return { level: step.level || 'board', explode: Number(step.explode) || 0, camera: step.camera || 'three-quarter' };
+  }
 
-  const api = { MODELS, JOURNEYS, VIEWS, PREDICTS, PHASES, STEP_CHIPS, currentPhase, currentStepChip, createState, currentJourney, currentStep, getStepNote, setCompare, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, setView, select, selectNext, playStep, encodeState, decodeState, getPredict, predict, predictionMade };
+  const api = { MODELS, JOURNEYS, PREDICTS, STEP_CHIPS, ADDRESS, currentStepChip, createState, currentJourney, currentStep,
+    setCompare, isAtStart, isAtEnd, next, prev, goto, reset, setJourney, setModel, select, selectNext, playStep,
+    encodeState, decodeState, getPredict, predict, predictionMade, guideFor };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GpuExplorerState = api;
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));

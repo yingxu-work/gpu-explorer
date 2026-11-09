@@ -11,9 +11,14 @@
     hbm: 'package', power: 'board', interconnect: 'board' };
   const GEMM_LEVELS = ['board', 'hbm', 'die', 'package', 'sm', 'sm', 'sm', 'package'];
   const clamp = value => Math.max(0, Math.min(1, Number(value) || 0));
+  // The app passes each step's level/explode/camera (state.guideFor); the
+  // GEMM table remains the fallback for callers that only know the step.
   function guideLevel(context) {
-    return context.journey === 'gemm' ? GEMM_LEVELS[context.stepIndex] || 'board' : 'board';
+    if (LEVELS.includes(context.guideLevel)) return context.guideLevel;
+    return context.journey === 'gemm' || !context.journey ? GEMM_LEVELS[context.stepIndex] || 'board' : 'board';
   }
+  function guideExplode(context) { return clamp(context.guideExplode); }
+  function guideCamera(context) { return ['top', 'side'].includes(context.guideCamera) ? context.guideCamera : 'three-quarter'; }
   function breadcrumbs(level) {
     const chain = [];
     for (let next = LEVELS.includes(level) ? level : 'board'; next; next = PARENTS[next]) chain.unshift(next);
@@ -35,11 +40,11 @@
     const anatomy = ui.mode === 'explore' ? anatomyContext(ui) : ui.anatomy || anatomyContext();
     return {
       ...ui, anatomy, mode: 'learn', level: guideLevel(context), selection: null,
-      isolated: false, explode: 0, explodeAuto: false, explodePhase: 0,
+      isolated: false, explode: guideExplode(context), explodeAuto: false, explodePhase: 0,
       progress: context.reducedMotion ? 1 : 0, dwell: 0,
       visualPhase: 0, motionPlaying: !context.reducedMotion,
       playback: playback === 'sequence' ? 'sequence' : context.reducedMotion ? 'paused' : 'step',
-      cameraPreset: 'three-quarter', guideRevision: ui.guideRevision + 1,
+      cameraPreset: guideCamera(context), guideRevision: ui.guideRevision + 1,
       advanceRequested: false
     };
   }
@@ -151,5 +156,5 @@
       default: return ui;
     }
   }
-  return { LEVELS, GEMM_LEVELS, PARENTS, breadcrumbs, guideLevel, sequenceIntent, create, transition };
+  return { LEVELS, GEMM_LEVELS, PARENTS, breadcrumbs, guideLevel, guideExplode, guideCamera, sequenceIntent, create, transition };
 });
