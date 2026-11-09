@@ -13,10 +13,11 @@ for(const model of ['h100','a100']) {
     assert.equal(s.channels*s.channelBits,1024);
     assert.equal(s.pseudoChannels,s.channels*2);
     assert.equal(s.channels,model==='h100'?16:8);
-    assert.ok(s.scope.includes('不对应特定供应商版图'));
-    assert.ok(detail.components['hbm-channel'].description.includes(`${s.channels} × ${s.channelBits} bit`));
-    assert.ok(detail.components['hbm-channel'].description.includes('独立的存储访问路径'));
-    assert.ok(detail.components['hbm-controller'].description.includes('GPU 内部'));
+    assert.ok(s.scope.zh.includes('不对应任何供应商的版图')&&s.scope.en.includes('don’t match any vendor’s layout'));
+    assert.ok(detail.components['hbm-channel'].description.en.includes(`${s.channels} × ${s.channelBits} bits`));
+    assert.ok(detail.components['hbm-channel'].description.zh.includes(`${s.channels} × ${s.channelBits} 位`));
+    assert.ok(detail.components['hbm-channel'].description.en.includes('independently'));
+    assert.ok(detail.components['hbm-controller'].description.en.includes('edge of the GPU die'));
   });
 
   test(`${model}: the open quadrant exposes silicon TSVs through the complete stack`,()=>{

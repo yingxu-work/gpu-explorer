@@ -1,10 +1,13 @@
 // A PCB/SXM cutaway specimen, not a vendor pinout or a recovered module netlist.
-export function createInterconnectDetail(T, model='h100') {
+import { createLabelFactory } from './surface-label.js?v=20261109a';
+const L=(zh,en)=>({zh,en});
+export function createInterconnectDetail(T, model='h100', labelFactory=null) {
+  const labels=labelFactory||createLabelFactory(T);
   const root=new T.Group();root.name='interconnect-detail';root.visible=false;
   const components={},anchors={},layers=[],viaAssemblies=[];
   const boxGeo=new T.BoxGeometry(1,1,1);
   const mats={
-    mask:new T.MeshStandardMaterial({color:0x204e39,roughness:.62,metalness:.09}),
+    mask:new T.MeshPhysicalMaterial({color:0x1b4a3a,roughness:.46,metalness:0,clearcoat:.5,clearcoatRoughness:.3}),
     core:new T.MeshStandardMaterial({color:0x73765a,roughness:.86,metalness:.02}),
     resin:new T.MeshStandardMaterial({color:0x8b8969,roughness:.8,metalness:.02}),
     copper:new T.MeshStandardMaterial({color:0xb57d4d,roughness:.38,metalness:.87}),
@@ -21,14 +24,8 @@ export function createInterconnectDetail(T, model='h100') {
   }
   function box(p,x,y,z,w,h,d,m){const a=new T.Mesh(boxGeo,m);a.position.set(x,y,z);a.scale.set(w,h,d);a.castShadow=true;a.receiveShadow=true;p.add(a);return a;}
   function inst(p,list,m,g=boxGeo){const a=new T.InstancedMesh(g,m,list.length),d=new T.Object3D();list.forEach((v,i)=>{d.position.set(v.x||0,v.y||0,v.z||0);d.scale.set(v.w||1,v.h||1,v.d||1);d.rotation.set(v.rx||0,v.ry||0,v.rz||0);d.updateMatrix();a.setMatrixAt(i,d.matrix);});a.castShadow=true;a.receiveShadow=true;p.add(a);return a;}
-  function print(p,text,x,y,z,w=4,d=.25,color='#c9d5c5'){
-    const aspect=w/d,c=document.createElement('canvas');c.height=Math.min(128,Math.floor(2048/aspect));c.width=Math.round(c.height*aspect);
-    const q=c.getContext('2d');let fontPixels=Math.floor(c.height*.68);
-    const font=()=>{q.font='600 '+fontPixels+'px Arial, sans-serif';};font();
-    const measure=()=>q.measureText?.(text)?.width||text.length*fontPixels*.58;
-    if(measure()>c.width*.92){fontPixels=Math.max(1,Math.floor(fontPixels*c.width*.92/measure()));font();}
-    const textWidthPixels=measure();q.fillStyle=color;q.textAlign='center';q.textBaseline='middle';q.fillText(text,c.width/2,c.height/2);
-    const tx=new T.CanvasTexture(c);tx.colorSpace=T.SRGBColorSpace;const a=new T.Mesh(new T.PlaneGeometry(w,d),new T.MeshBasicMaterial({map:tx,transparent:true,depthWrite:false,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-2}));a.rotation.x=-Math.PI/2;a.position.set(x,y,z);a.userData.surfaceText={text,canvasAspect:c.width/c.height,worldAspect:aspect,fontPixels,canvasWidth:c.width,canvasHeight:c.height,textWidthPixels};p.add(a);return a;
+  function print(p,text,x,y,z,w=4,d=.25,color='rgba(222,228,214,.72)',mono=false){
+    const a=labels.label(p,text,x,y,z,w,d,{color,mono,weight:500});a.userData.surfaceText=a.userData.surfaceLabel;return a;
   }
   // Remove a bounded witness window from each slab rather than putting an
   // apparently solid pin through an opaque block. The remaining edges retain
@@ -50,15 +47,15 @@ export function createInterconnectDetail(T, model='h100') {
     geometry.rotateX(Math.PI/2);geometry.translate(0,height/2,0);return geometry;
   }
   function track(p,points,width,mat,y=.15){for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];box(p,(a[0]+b[0])/2,y,(a[1]+b[1])/2,Math.max(Math.abs(a[0]-b[0]),width),.024,Math.max(Math.abs(a[1]-b[1]),width),mat);}}
-  const board=group('link-board','PCB 与 SXM 互连剖面','SXM 模组通过多层 PCB 连接 GPU 封装、板对板接触阵列与供电网络。沿铜层、过孔和接点，可以追踪电源和信号在模组中的路径。',root,null);
-  const stack=group('link-layers','介质与铜层','绝缘介质隔开铜信号层与参考平面。右侧阶梯与剖窗展示层间关系和孔壁；拆解时层间距展开，各层连接随之显露。',board);
-  const copper=group('link-copper','PCB 铜走线','PCB 铜走线把封装焊盘连接到模组上的接点和电源网络。走线的宽度、间距与参考平面共同影响电流传输和信号完整性。',board);
-  const vias=group('link-vias','PCB 金属化过孔','PCB 金属化孔以铜孔壁连接不同铜层。附近的参考过孔让回流跨层；HBM TSV 则穿过硅片，连接堆叠芯片。',board);
-  const pairs=group('link-pairs','差分对与相邻参考面','两根相邻走线传输差分信号，并以接近的路径与长度到达接收端。邻近参考面与跨层回流路径一起维持信号的连续性。',board);
-  const ground=group('link-ground','参考平面 / 回流路径','参考平面为信号提供邻近的回流路径。信号换层时，参考过孔连接相邻参考层，让回流随信号过孔跨层。',board);
-  const socket=group('link-socket','SXM 板对板接触阵列','SXM 接触阵列连接 GPU 模组与载板，承载板间电源与高速信号。展开后的连接器露出塑料定位框、金属接触指与背面引脚。',board);
+  const board=group('link-board',L('PCB 与 SXM 连接器剖面','PCB and SXM connector cutaway'),L('多层电路板把 GPU 封装、供电和背面的连接器接在一起。顺着铜层、过孔和触点，可以看出电和信号怎么走。','The multilayer board joins the GPU package, the power parts and the connector underneath. Follow the copper layers, vias and contacts to see how power and signals travel.'),root,null);
+  const stack=group('link-layers',L('介质与铜层','Dielectric and copper layers'),L('绝缘介质把一层层铜隔开。右侧切成台阶，开了一个窗，能看到层与层和孔壁。拆开时层间距会拉大。','Insulating layers separate the copper layers. The right side is stepped and cut open to show the layers and via walls; taking it apart spreads them out.'),board);
+  const copper=group('link-copper',L('铜走线','Copper traces'),L('把封装焊盘接到连接器和电源网络。线宽、间距和下面的参考平面一起决定信号质量。','Connect the package pads to the connector and power network. Width, spacing and the reference plane below decide signal quality.'),board);
+  const vias=group('link-vias',L('过孔','Vias'),L('孔壁镀铜，把不同铜层连起来。旁边的接地过孔让回流电流跟着换层。HBM 里的 TSV 是穿过硅片的，和这里不同。','Copper-plated holes that join copper layers. Ground vias beside them let return current follow the signal between layers. TSVs in HBM go through silicon and are a different thing.'),board);
+  const pairs=group('link-pairs',L('差分对','Differential pairs'),L('高速信号用两根并排、等长的线一起传，接收端看两根线的差。','High-speed signals travel on two side-by-side lines of equal length, and the receiver reads the difference.'),board);
+  const ground=group('link-ground',L('参考平面','Reference plane'),L('给信号就近提供回流路径。信号换层时，旁边的接地过孔把回流也带过去。','Gives every signal a nearby return path. When a signal changes layer, a ground via next to it carries the return current across.'),board);
+  const socket=group('link-socket',L('SXM 触点阵列','SXM contact array'),L('把模组接到服务器主板，走供电和高速信号。拆开后能看到塑料框、金属触指和背面引脚。','Connects the module to the server board for power and high-speed signals. Taken apart, it shows the plastic frame, the contact fingers and the pins underneath.'),board);
   socket.position.z=3;
-  const footprint=group('link-footprint','GPU 封装焊盘区','封装焊盘把 GPU 封装接到模组 PCB。焊盘和焊球经板内走线连接供电网络与板对板接点，形成封装到模组的电气接口。',board);
+  const footprint=group('link-footprint',L('封装焊盘区','Package land field'),L('GPU 封装底部的焊球焊在这里，再经板内走线连到供电和连接器。','The GPU package’s solder balls land here and connect through the board to power and the connector.'),board);
   // Left edges stay aligned while the right edge steps inward, exposing copper
   // and dielectric. No specific manufacturing stack-up is asserted.
   for(let i=0;i<8;i++){
@@ -73,9 +70,8 @@ export function createInterconnectDetail(T, model='h100') {
   slab(board,-1.25,.13,-.85,9.9,.08,6.5,mats.mask);
   // The open right-hand strip exposes via barrels through the cutaway.
   slab(ground,2.3,-.37,-.3,6.9,.035,7.0,mats.ground);
-  print(board,'PCB / BOARD-TO-BOARD INTERCONNECT',-.8,.2,-3.8,9.4,.39);
-  print(board,'COPPER LAYERS / VIAS / CONTACT ARRAY',-.8,.2,3.6,9.8,.24,'#8fa798');
-  print(stack,'DIELECTRIC + COPPER',4.45,.095,2.9,3.7,.25,'#d1ba94');
+  print(board,L('电路板剖面 · 示意','Board cross-section · illustrative'),-.8,.2,-3.8,4.6,.3,'rgba(222,228,214,.6)');
+  print(stack,L('介质 + 铜层','Dielectric + copper'),4.45,.095,2.9,2.4,.2,'rgba(220,196,150,.85)');
   // Top package land pattern: pad array plus a lifted package frame for context.
   box(footprint,-1.4,.215,-.6,5.3,.12,4.3,mats.plastic);
   box(footprint,-1.4,.29,-.6,5.05,.025,4.05,mats.mask);
@@ -84,7 +80,7 @@ export function createInterconnectDetail(T, model='h100') {
     lands.push({x:-3.65+c*.25,y:.325,z:-2.35+r*.25,w:.065,h:.025,d:.065});
   }
   inst(footprint,lands,mats.gold,new T.CylinderGeometry(1,1,1,10));
-  box(footprint,-1.4,.37,-.6,1.7,.12,1.2,mats.plastic);print(footprint,'LAND FIELD',-1.4,.44,-.6,1.52,.23);
+  box(footprint,-1.4,.37,-.6,1.7,.12,1.2,mats.plastic);print(footprint,L('焊盘区','Land field'),-1.4,.44,-.6,1.1,.2,'rgba(222,228,214,.6)');
   // Annular copper through-vias along the witness strip, with both an inner
   // bore and a finite copper wall rather than a solid pin or zero-thickness tube.
   const barrelGeo=tube(.135,.105,1.55);
@@ -114,7 +110,7 @@ export function createInterconnectDetail(T, model='h100') {
       for(const side of [-1,1])fingers.push({x:cx+side*.041,y:-1.47,z:cz,w:.032,h:.12,d:.13});
     }
   }
-  inst(socket,recesses,mats.cavity);inst(socket,fingers,mats.gold);inst(socket,contacts,mats.gold);print(socket,'SXM CONTACT ARRAY',-3.75,-1.35,2.49,4,.25,'#b9c7bd');
+  inst(socket,recesses,mats.cavity);inst(socket,fingers,mats.gold);inst(socket,contacts,mats.gold);print(socket,L('SXM 触点','SXM contacts'),-3.75,-1.35,2.49,2.2,.22,'rgba(222,228,214,.6)');
   const padSolder=[];for(const x of [-3.75,2.25])for(let i=0;i<14;i++)padSolder.push({x:x-1.85+i*.285,y:-1.26,z:2.61,w:.12,h:.1,d:.18});inst(socket,padSolder,mats.silver);
   // Readable paired conductors. Routes are orthogonal schematic examples with
   // lengths matched within each pair; they are not PCIe/NVLink net mappings.
@@ -127,8 +123,8 @@ export function createInterconnectDetail(T, model='h100') {
   }
   // A low-profile visual route joins contacts, PCB via, pair and land pattern.
   track(copper,[[-5.65,2.7],[-4.65,2.7],[-4.65,.65],[-4.05,.65]],.17,mats.copper,.215);
-  print(pairs,'PAIRED SIGNAL ROUTES',-4.8,.23,-3.25,3.3,.23,'#b2cbc0');
-  print(vias,'PCB VIAS',4.1,.3,2.5,2.5,.23,'#d0b886');
+  print(pairs,L('差分对','Differential pairs'),-4.8,.23,-3.25,2.0,.2,'rgba(222,228,214,.66)');
+  print(vias,L('过孔','Vias'),4.1,.3,2.5,1.2,.2,'rgba(220,196,150,.85)');
   const groundCuts=[];for(let z=-3.4;z<3;z+=.38)groundCuts.push({x:5.45,y:-.35,z,w:.12,h:.035,d:.08});inst(ground,groundCuts,mats.silver);
   // Corner fastening rings and broad ground stitching retain a module look.
   const screws=[];for(const x of [-5.85,5.85])for(const z of [-4.1,4.1])screws.push({x,y:.13,z,w:.18,h:.05,d:.18});inst(board,screws,mats.silver,new T.CylinderGeometry(1,1,1,16));

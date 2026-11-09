@@ -1,18 +1,21 @@
 // Multiphase buck teaching specimen. Component count/layout is illustrative,
 // not a reconstruction of an H100/A100 power schematic or voltage rail.
-export function createPowerDetail(T, model='h100') {
+import { createLabelFactory } from './surface-label.js?v=20261109a';
+const L=(zh,en)=>({zh,en});
+export function createPowerDetail(T, model='h100', labelFactory=null) {
+  const labels=labelFactory||createLabelFactory(T);
   const root=new T.Group();root.name='power-detail';root.visible=false;
   const components={},anchors={},layers=[];
   const geo=new T.BoxGeometry(1,1,1);
   const mats={
-    pcb:new T.MeshStandardMaterial({color:0x214c3d,roughness:.72,metalness:.06}),
+    pcb:new T.MeshPhysicalMaterial({color:0x1b4a3a,roughness:.46,metalness:0,clearcoat:.5,clearcoatRoughness:.3}),
     edge:new T.MeshStandardMaterial({color:0x263d30,roughness:.88,metalness:.03}),
     copper:new T.MeshStandardMaterial({color:0xb68250,roughness:.38,metalness:.83}),
     gold:new T.MeshStandardMaterial({color:0xb6a16c,roughness:.35,metalness:.83}),
-    silver:new T.MeshStandardMaterial({color:0xbac2bf,roughness:.28,metalness:.87}),
-    black:new T.MeshStandardMaterial({color:0x1b2528,roughness:.75,metalness:.06}),
-    core:new T.MeshStandardMaterial({color:0x49504c,roughness:.86,metalness:.08}),
-    ceramic:new T.MeshStandardMaterial({color:0xb8b19a,roughness:.62,metalness:.12}),
+    silver:new T.MeshStandardMaterial({color:0xbcc1c3,roughness:.36,metalness:.88}),
+    black:new T.MeshStandardMaterial({color:0x15191b,roughness:.6,metalness:.04}),
+    core:new T.MeshStandardMaterial({color:0x34393b,roughness:.82,metalness:.06}),
+    ceramic:new T.MeshStandardMaterial({color:0x9c8a6b,roughness:.68,metalness:0}),
     control:new T.MeshStandardMaterial({color:0x6b8b9b,roughness:.35,metalness:.6}),
     rail:new T.MeshStandardMaterial({color:0x8ba58c,roughness:.35,metalness:.65})
   };
@@ -22,40 +25,28 @@ export function createPowerDetail(T, model='h100') {
   }
   function box(p,x,y,z,w,h,d,m){const a=new T.Mesh(geo,m);a.position.set(x,y,z);a.scale.set(w,h,d);a.castShadow=true;a.receiveShadow=true;p.add(a);return a;}
   function inst(p,list,m,g=geo){const a=new T.InstancedMesh(g,m,list.length),d=new T.Object3D();list.forEach((v,i)=>{d.position.set(v.x||0,v.y||0,v.z||0);d.scale.set(v.w||1,v.h||1,v.d||1);d.rotation.set(v.rx||0,v.ry||0,v.rz||0);d.updateMatrix();a.setMatrixAt(i,d.matrix);});a.castShadow=true;a.receiveShadow=true;p.add(a);return a;}
-  function print(p,text,x,y,z,w=3,d=.25,color='#bdcbbd'){
-    // Match texture pixels to the physical surface. A fixed 8:1 texture made
-    // short package marks look wide and long board legends unnaturally thin.
-    const aspect=w/d,c=document.createElement('canvas');c.height=Math.max(32,Math.min(128,Math.round(2048/aspect)));c.width=Math.round(c.height*aspect);
-    const q=c.getContext('2d');let fontPixels=c.height*.68;
-    q.font=`500 ${fontPixels}px monospace`;
-    const measure=()=>q.measureText?.(text)?.width??text.length*fontPixels*.61;
-    fontPixels*=Math.min(1,c.width*.92/measure());q.font=`500 ${fontPixels}px monospace`;
-    q.fillStyle=color;q.textAlign='center';q.textBaseline='middle';q.fillText(text,c.width/2,c.height/2);
-    const tex=new T.CanvasTexture(c);tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4;
-    const m=new T.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-2});
-    const a=new T.Mesh(new T.PlaneGeometry(w,d),m);a.rotation.x=-Math.PI/2;a.position.set(x,y,z);
-    a.userData.surfaceText={text,canvasAspect:c.width/c.height,worldAspect:aspect,fontPixels,canvasWidth:c.width,canvasHeight:c.height,textWidthPixels:measure()};p.add(a);return a;
+  function print(p,text,x,y,z,w=3,d=.25,color='rgba(222,228,214,.72)',mono=false){
+    const a=labels.label(p,text,x,y,z,w,d,{color,mono,weight:500});a.userData.surfaceText=a.userData.surfaceLabel;return a;
   }
   function track(p,points,width,mat,y=.08){for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i];box(p,(a[0]+b[0])/2,y,(a[1]+b[1])/2,Math.max(Math.abs(b[0]-a[0]),width),.025,Math.max(Math.abs(b[1]-a[1]),width),mat);}}
-  const board=group('power-board','多相降压供电板','并联功率级将输入电源转换为 GPU 所需供电；电感平滑电流，输出电容稳定电压。',root,null);
+  const board=group('power-board',L('多相降压供电','Multiphase buck converter'),L('几相并联的降压电路把输入电压降到 GPU 用的低电压。电感让电流平稳，输出电容稳住电压。','Several buck phases in parallel step the input down to the GPU’s low voltage. Inductors smooth the current; output capacitors hold the voltage steady.'),root,null);
   box(board,0,-.12,0,13,.25,9.2,mats.pcb);box(board,0,-.26,0,13,.035,9.2,mats.edge);
-  print(board,'MULTIPHASE BUCK / POWER DELIVERY',0,.025,-4.05,8.2,.42);
-  print(board,'POWER STAGES  /  INDUCTORS  /  OUTPUT FILTER',0,.026,4.12,9.6,.25,'#86a08c');
-  const ground=group('power-ground','回流参考平面','开关电流沿 PCB 回流网络形成闭合回路。导电参考平面提供低阻抗回流路径，与正向供电网络共同传输电能。',board);
+  print(board,L('六相降压 · 示意','Six-phase buck · illustrative'),0,.025,-4.05,4.6,.32,'rgba(222,228,214,.6)');
+  const ground=group('power-ground',L('回流参考平面','Return reference plane'),L('电流要走回去才成回路。这层铜给开关电流一条低阻抗的回流路径。','Current needs a way back to close the loop. This copper plane gives switching current a low-impedance return path.'),board);
   box(ground,0,-.275,0,12.82,.025,9.03,mats.silver);
-  const input=group('power-input','输入去耦电容','输入电容为开关功率级提供局部脉动电流，缩短高频电流回路，并减小输入电源的电压波动。',board);
-  const controller=group('power-controller','PWM 控制器','控制器按相位错开发出 PWM，通过电压与电流反馈调节各相，协调功率级的开关时序。',board);
-  const stage=group('power-stage','集成功率级 / DrMOS','每相功率级包含驱动与开关晶体管，交替连接输入和回流路径；功率级之后由电感和输出电容滤波。',board);
-  const inductor=group('power-inductor','电感与磁芯剖面','铜绕组与磁芯储存磁场能量，限制电流变化，使各相的输出电流更加平滑。剖面可观察绕组围绕磁芯的连接。',board);
-  const output=group('power-output','输出去耦电容','并联输出电容承接各相纹波并响应负载变化。多相电流在共同输出节点叠加，交错相位可降低总纹波。',board);
-  const rail=group('power-rail','公共输出铜排','各相电感的输出汇入同一供电节点，通过宽铜排将合并后的电流送向 GPU 负载。',board);
-  const feedback=group('power-feedback','反馈与相位控制','采样线路将输出电压与各相电流送回控制器；PWM 线路把调节后的开关时序送到功率级。',board);
+  const input=group('power-input',L('输入电容','Input capacitors'),L('就近给开关的功率级供应脉冲电流，让高频电流回路尽量短，输入电压少抖动。','Supply pulse current right next to the switching stages, keeping the high-frequency loop short and the input voltage steady.'),board);
+  const controller=group('power-controller',L('PWM 控制器','PWM controller'),L('给每一相错开时间发出开关信号，并根据电压和电流反馈调整。','Sends staggered switching signals to each phase and adjusts them from voltage and current feedback.'),board);
+  const stage=group('power-stage',L('功率级（DrMOS）','Power stages (DrMOS)'),L('每相一个，里面是驱动和开关管，在输入和地之间快速切换。后面接电感和电容做滤波。','One per phase, with a driver and switching transistors that flip between input and ground. The inductor and capacitors after it filter the output.'),board);
+  const inductor=group('power-inductor',L('电感（含剖面）','Inductors (one cut open)'),L('铜绕组和磁芯把能量存在磁场里，限制电流变化的速度，让每相电流平稳。第一个电感切开了，能看到绕组。','A copper winding around a magnetic core stores energy and limits how fast current can change, smoothing each phase. The first one is cut open to show the winding.'),board);
+  const output=group('power-output',L('输出电容','Output capacitors'),L('吸收各相的纹波，负载突然变化时先顶上。几相错开开关，叠加后的纹波更小。','Absorb each phase’s ripple and cover sudden load changes. Staggering the phases makes the combined ripple smaller.'),board);
+  const rail=group('power-rail',L('输出铜排','Output rail'),L('各相的输出汇到一起，经宽铜排送往 GPU。','The phases join here and a wide copper rail carries the total current to the GPU.'),board);
+  const feedback=group('power-feedback',L('反馈与控制线','Feedback and control lines'),L('采样线把输出电压和每相电流送回控制器，PWM 线把开关信号送到功率级。','Sense lines bring the output voltage and phase currents back to the controller; PWM lines carry switching signals to the stages.'),board);
   const xs=Array.from({length:6},(_,i)=>-4.75+i*1.9);
   const cin=[],cinEnds=[],cout=[],coutEnds=[],pads=[],pins=[],tiny=[];
   xs.forEach((x,i)=>{
     for(let k=0;k<3;k++){const z=-3.05+k*.3;cin.push({x,y:.16,z,w:.72,h:.25,d:.18});cinEnds.push({x:x-.37,y:.15,z,w:.12,h:.27,d:.2},{x:x+.37,y:.15,z,w:.12,h:.27,d:.2});}
     box(stage,x,.1,-1.83,1.28,.08,1.5,mats.gold);box(stage,x,.32,-1.83,1.05,.4,1.23,mats.black);box(stage,x,.53,-1.83,.79,.015,.91,mats.core);
-    print(stage,'P'+(i+1),x,.548,-1.86,.62,.22,'#c3cbc7');
+    print(stage,'Q'+(i+1),x,.548,-1.86,.4,.16,'rgba(200,206,204,.5)',true);
     for(let k=0;k<6;k++){pins.push({x:x-.59,y:.12,z:-2.36+k*.21,w:.12,h:.1,d:.12},{x:x+.59,y:.12,z:-2.36+k*.21,w:.12,h:.1,d:.12});}
     track(rail,[[x,-3.43],[x,-2.56]],.14,mats.copper,.055);
     track(rail,[[x,-1.1],[x,-.63]],.24,mats.copper,.07);
@@ -78,11 +69,11 @@ export function createPowerDetail(T, model='h100') {
         const coil=new T.Mesh(new T.TubeGeometry(new T.CatmullRomCurve3(points),96,.035,8,false),mats.copper);
         coil.userData.windingTurn=n;coil.castShadow=true;coil.receiveShadow=true;winding.add(coil);
       }
-      print(inductor,'CUTAWAY',x,.96,.77,1.2,.18,'#d3b78c');
+      print(inductor,L('剖面','Cutaway'),x,.96,.77,.8,.16,'rgba(220,196,150,.85)');
     }else{
       const shell=new T.Group();shell.name='inductor-shell-'+(i+1);inductor.add(shell);layers.push({group:shell,base:0,factor:.45});
       box(shell,x,.54,.15,1.34,.76,1.34,mats.core);
-      box(shell,x,.94,.15,1.15,.03,1.15,mats.black);print(shell,'L'+(i+1),x,.965,.13,.8,.29,'#c2c6be');
+      box(shell,x,.94,.15,1.15,.03,1.15,mats.black);print(shell,'R22',x,.965,.13,.5,.18,'rgba(190,196,190,.5)',true);
     }
     track(rail,[[x,.92],[x,2.68]],.26,mats.copper,.065);
     for(let k=0;k<4;k++){const z=1.33+k*.3;cout.push({x:x+.52,y:.19,z,w:.24,h:.3,d:.18});coutEnds.push({x:x+.52,y:.19,z:z-.1,w:.26,h:.32,d:.06},{x:x+.52,y:.19,z:z+.1,w:.26,h:.32,d:.06});}
@@ -92,10 +83,10 @@ export function createPowerDetail(T, model='h100') {
   inst(input,cin,mats.ceramic);inst(input,cinEnds,mats.silver);inst(output,cout,mats.ceramic);inst(output,coutEnds,mats.silver);inst(stage,pins,mats.silver);inst(board,tiny,mats.ceramic);
   track(rail,[[-5.6,-3.45],[5.6,-3.45]],.23,mats.gold,.055);
   box(rail,0,.12,2.85,11.55,.15,.42,mats.rail);box(rail,0,.11,3.32,11.55,.12,.18,mats.copper);
-  print(rail,'COMMON OUTPUT → LOAD',0,.21,2.84,4.3,.23,'#e0e4d6');
+  print(rail,L('输出 → GPU','Output → GPU'),0,.21,2.84,2.4,.2,'rgba(28,36,30,.8)');
   box(controller,-5.55,.2,-3.43,.83,.32,.82,mats.black);
   const cpins=[];for(let i=0;i<7;i++)for(const sign of [-1,1]){cpins.push({x:-5.55+sign*.46,y:.09,z:-3.76+i*.11,w:.12,h:.08,d:.06});cpins.push({x:-5.88+i*.11,y:.09,z:-3.43+sign*.46,w:.06,h:.08,d:.12});}inst(controller,cpins,mats.silver);
-  print(controller,'PWM',-5.55,.37,-3.43,.63,.18,'#b1c4cd');
+  print(controller,'PWM',-5.55,.37,-3.43,.4,.14,'rgba(190,200,204,.55)',true);
   track(feedback,[[5.75,2.85],[5.95,2.85],[5.95,-3.7],[-5.55,-3.7]],.035,mats.control,.04);
   const holes=[];for(const x of [-6.02,6.02])for(const z of [-4.12,4.12])holes.push({x,y:.045,z,w:.18,h:.04,d:.18});inst(board,holes,mats.silver,new T.CylinderGeometry(1,1,1,16));
   const anchorValues={

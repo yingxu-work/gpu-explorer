@@ -1,107 +1,185 @@
-import { createHBMDetail } from './hbm-model.js?v=20261102x';
-import { createPowerDetail } from './power-model.js?v=20261102x';
-import { createInterconnectDetail } from './interconnect-model.js?v=20261102x';
+import { createHBMDetail } from './hbm-model.js?v=20261109a';
+import { createPowerDetail } from './power-model.js?v=20261109a';
+import { createInterconnectDetail } from './interconnect-model.js?v=20261109a';
+import { createLabelFactory } from './surface-label.js?v=20261109a';
+import { boardTexture, siliconBackTexture, sramTexture, logicTexture, substrateTexture } from './surface-textures.js?v=20261109a';
+
+const L = (zh, en) => ({ zh, en });
 
 // Hide every sibling subtree along the selected object's ancestor path.
-// Ancestors remain as paths, without retaining their unselected own meshes.
 export function isolateHardwareSubtree(root, selected) {
   const path = new Set();
-  for(let node=selected;node;node=node.parent){path.add(node);if(node===root)break;}
-  if(!path.has(root))return [];
-  const hidden=[];
-  function prune(node){
-    if(node===selected)return;
-    for(const child of node.children){
-      if(path.has(child))prune(child);
-      else if(child.visible){child.visible=false;hidden.push(child);}
+  for (let node = selected; node; node = node.parent) { path.add(node); if (node === root) break; }
+  if (!path.has(root)) return [];
+  const hidden = [];
+  function prune(node) {
+    if (node === selected) return;
+    for (const child of node.children) {
+      if (path.has(child)) prune(child);
+      else if (child.visible) { child.visible = false; hidden.push(child); }
     }
   }
-  prune(root);return hidden;
+  prune(root); return hidden;
 }
 
-// Fit all eight bounds corners in camera space. Returning orbit/far limits
-// with the position prevents OrbitControls from clamping a valid narrow fit.
-export function calculateCameraFit(T,bounds,viewDirection,fov,aspect,margin=1.1) {
-  const target=bounds.getCenter(new T.Vector3()),direction=viewDirection.clone().normalize();
-  const right=new T.Vector3(0,1,0).cross(direction).normalize();if(right.lengthSq()<.01)right.set(1,0,0);
-  const up=direction.clone().cross(right).normalize(),tangent=Math.tan(T.MathUtils.degToRad(fov/2));
-  let distance=3.5;
-  for(const x of [bounds.min.x,bounds.max.x])for(const y of [bounds.min.y,bounds.max.y])for(const z of [bounds.min.z,bounds.max.z]){
-    const point=new T.Vector3(x,y,z).sub(target),near=point.dot(direction);
-    distance=Math.max(distance,near+Math.abs(point.dot(right))*margin/(tangent*aspect),near+Math.abs(point.dot(up))*margin/tangent);
+// Fit all eight bounds corners in camera space and return matching orbit limits.
+export function calculateCameraFit(T, bounds, viewDirection, fov, aspect, margin = 1.1) {
+  const target = bounds.getCenter(new T.Vector3()), direction = viewDirection.clone().normalize();
+  const right = new T.Vector3(0, 1, 0).cross(direction).normalize(); if (right.lengthSq() < .01) right.set(1, 0, 0);
+  const up = direction.clone().cross(right).normalize(), tangent = Math.tan(T.MathUtils.degToRad(fov / 2));
+  let distance = 3.5;
+  for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
+    const point = new T.Vector3(x, y, z).sub(target), near = point.dot(direction);
+    distance = Math.max(distance, near + Math.abs(point.dot(right)) * margin / (tangent * aspect), near + Math.abs(point.dot(up)) * margin / tangent);
   }
-  distance+=.2;
-  const maxDistance=Math.max(52,distance*1.8),far=Math.max(180,maxDistance+bounds.getSize(new T.Vector3()).length()*2);
-  return {position:target.clone().addScaledVector(direction,distance),target,distance,maxDistance,far};
+  distance += .2;
+  const maxDistance = Math.max(52, distance * 1.8), far = Math.max(180, maxDistance + bounds.getSize(new T.Vector3()).length() * 2);
+  return { position: target.clone().addScaledVector(direction, distance), target, distance, maxDistance, far };
 }
 
 // A semantic legend for the functional SM view, not a physical silicon palette.
-// Counts: NVIDIA CUDA Guide 12.4.1 §§16.7.1/16.8.1, GH100 Fig4 / GA100 Fig5.
-export function getSMResourceLegend(model='h100') {
-  const a=model==='a100',name=a?'A100':'H100';
-  const arithmeticSource='https://docs.nvidia.com/cuda/archive/12.4.1/cuda-c-programming-guide/index.html#'+(a?'compute-capability-8-x':'compute-capability-9-0');
-  const diagramSource='https://developer.nvidia.com/blog/nvidia-'+(a?'ampere':'hopper')+'-architecture-in-depth/';
-  const resources=[
-    {id:'fp32',label:'FP32 CUDA 执行单元',shortLabel:'FP32 CUDA',color:'#79aa80',category:'execution',countPerSM:a?64:128,countPerPartition:a?16:32,countUnit:'lanes',description:`绿色 FP32 CUDA 运算通道执行逐线程单精度浮点指令。${name} 每个 SMSP ${a?16:32} 个，每 SM ${a?64:128} 个。`,precisionNote:'FP16/BF16 逐线程算术使用对应的半精度指令。'},
-    {id:'fp64',label:'FP64 执行单元',shortLabel:'FP64',color:'#669dce',category:'execution',countPerSM:a?32:64,countPerPartition:a?8:16,countUnit:'lanes',description:`蓝色 FP64 通道执行逐线程双精度浮点运算。每个 SMSP ${a?8:16} 个，每 SM ${a?32:64} 个。`},
-    {id:'int32',label:'INT32 整数执行单元',shortLabel:'INT32',color:'#59aaa4',category:'execution',countPerSM:64,countPerPartition:16,countUnit:'lanes',description:'青绿色 INT32 通道执行整数运算。每个 SMSP 16 个，每 SM 64 个。'},
-    {id:'sfu',label:'SFU 特殊函数单元',shortLabel:'SFU',color:'#ce9078',category:'execution',countPerSM:16,countPerPartition:4,countUnit:'units',description:'珊瑚色特殊函数单元执行单精度超越函数的相关运算。每 SMSP 4 个，每 SM 16 个。'},
-    {id:'tensor',label:`第 ${a?'三':'四'} 代 Tensor Core`,shortLabel:'Tensor Core',color:'#d1ad69',category:'matrix',countPerSM:4,countPerPartition:1,countUnit:'cores',description:`金色第 ${a?'三':'四'} 代 Tensor Core 执行矩阵乘加。每 SMSP 1 个，每 SM 4 个；支持 FP16/BF16/TF32/FP64 等矩阵模式${a?'':'，Hopper 还支持 FP8'}。`,precisionNote:'FP16/BF16 矩阵输入可配合 FP32 累加。'},
-    {id:'registers',label:'寄存器文件',shortLabel:'Register File',color:'#a79bc7',category:'storage',countPerSM:65536,countPerPartition:16384,countUnit:'32-bit registers',description:'紫色寄存器保存线程的操作数与累加器。每 SMSP 16,384 个 32-bit 寄存器（64 KiB），每 SM 合计 65,536 个（256 KiB）。'},
-    {id:'lsu',label:'Load / Store 单元',shortLabel:'LD / ST',color:'#b77c4b',category:'data-movement',countPerSM:32,countPerPartition:8,countUnit:'units',description:'铜色载入/存储单元执行线程的内存访问请求。每 SMSP 8 个，每 SM 32 个。'},
-    {id:'warp',label:'Warp 调度器',shortLabel:'Warp Scheduler',color:'#b88959',category:'control',countPerSM:4,countPerPartition:1,countUnit:'schedulers',description:'从就绪 warp 中选择指令并安排执行。每个 SMSP 1 个调度器，每 SM 4 个。'},
-    {id:'dispatch',label:'指令派发单元',shortLabel:'Dispatch',color:'#9b8c75',category:'control',countPerSM:4,countPerPartition:1,countUnit:'dispatch units',description:'将调度器选定的指令送往执行管线。每个 SMSP 1 个，每 SM 4 个。'},
-    {id:'l0-instruction-cache',label:'本地 L0 指令缓存',shortLabel:'L0 I-Cache',color:'#8398ab',category:'storage',countPerSM:4,countPerPartition:1,countUnit:'local caches',description:'缓存当前 SMSP 使用的指令，供调度与派发阶段读取。'},
-    {id:'instruction-cache',label:'共享 L1 指令缓存',shortLabel:'L1 I-Cache',color:'#8398ab',category:'storage',description:'四个 SMSP 共用的 SM 级指令缓存，为本地 L0 指令缓存提供指令。'},
-    {id:'texture',label:'纹理单元（Tex）',shortLabel:'Texture',color:'#789aad',category:'sampling',countPerSM:4,countPerPartition:null,countUnit:'units',description:'四个纹理单元执行纹理寻址、采样与过滤。'},
-    {id:'smem',label:'L1 数据缓存 / 共享内存',shortLabel:'L1 Data / Shared',color:'#4f9b94',category:'storage',capacityKB:a?192:256,sharedMaxKB:a?164:228,description:`SM 共用 ${a?192:256} KB L1 数据缓存/共享内存资源，Shared Memory 最多 ${a?164:228} KB。共享内存按 32 banks 组织，支持线程块内的数据复用。`}
+// Counts: CUDA C++ Programming Guide 12.4.1 §16.7.1 / §16.8.1; GH100 Fig. 4, GA100 Fig. 5.
+export function getSMResourceLegend(model = 'h100') {
+  const a = model === 'a100', name = a ? 'A100' : 'H100';
+  const arithmeticSource = 'https://docs.nvidia.com/cuda/archive/12.4.1/cuda-c-programming-guide/index.html#' + (a ? 'compute-capability-8-x' : 'compute-capability-9-0');
+  const diagramSource = 'https://developer.nvidia.com/blog/nvidia-' + (a ? 'ampere' : 'hopper') + '-architecture-in-depth/';
+  const gen = a ? L('第三代', 'third-generation') : L('第四代', 'fourth-generation');
+  const resources = [
+    { id: 'fp32', label: L('FP32 运算通道', 'FP32 lanes'), shortLabel: L('FP32', 'FP32'), color: '#79aa80', category: 'execution', countPerSM: a ? 64 : 128, countPerPartition: a ? 16 : 32, countUnit: 'lanes',
+      description: L(`绿色格子是 FP32 通道，每个线程的单精度浮点指令在这里执行。${name} 每个子分区 ${a ? 16 : 32} 个，每 SM ${a ? 64 : 128} 个。`, `Green cells are FP32 lanes, where each thread’s single-precision float instructions run. ${name} has ${a ? 16 : 32} per partition and ${a ? 64 : 128} per SM.`),
+      precisionNote: L('逐线程的 FP16 / BF16 运算有自己的半精度指令。', 'Per-thread FP16 / BF16 math uses its own half-precision instructions.') },
+    { id: 'fp64', label: L('FP64 运算通道', 'FP64 lanes'), shortLabel: L('FP64', 'FP64'), color: '#669dce', category: 'execution', countPerSM: a ? 32 : 64, countPerPartition: a ? 8 : 16, countUnit: 'lanes',
+      description: L(`蓝色是双精度通道。每个子分区 ${a ? 8 : 16} 个，每 SM ${a ? 32 : 64} 个。`, `Blue cells are double-precision lanes: ${a ? 8 : 16} per partition, ${a ? 32 : 64} per SM.`) },
+    { id: 'int32', label: L('INT32 运算通道', 'INT32 lanes'), shortLabel: L('INT32', 'INT32'), color: '#59aaa4', category: 'execution', countPerSM: 64, countPerPartition: 16, countUnit: 'lanes',
+      description: L('青色是整数通道，地址计算和循环计数多在这里。每个子分区 16 个，每 SM 64 个。', 'Teal cells are integer lanes, used for address math and loop counters. 16 per partition, 64 per SM.') },
+    { id: 'sfu', label: L('特殊函数单元（SFU）', 'Special function units (SFU)'), shortLabel: L('SFU', 'SFU'), color: '#ce9078', category: 'execution', countPerSM: 16, countPerPartition: 4, countUnit: 'units',
+      description: L('做正弦、倒数、平方根这类超越函数的近似。每个子分区 4 个，每 SM 16 个。', 'Approximate sine, reciprocal, square root and similar functions. 4 per partition, 16 per SM.') },
+    { id: 'tensor', label: L(`${gen.zh} Tensor Core`, `${gen.en[0].toUpperCase() + gen.en.slice(1)} Tensor Cores`), shortLabel: L('Tensor Core', 'Tensor Core'), color: '#d1ad69', category: 'matrix', countPerSM: 4, countPerPartition: 1, countUnit: 'cores',
+      description: L(`做矩阵乘加。每个子分区 1 个，每 SM 4 个；支持 FP16、BF16、TF32、FP64 等矩阵格式${a ? '' : '，Hopper 还支持 FP8'}。`, `Matrix multiply-add units. One per partition, four per SM; they handle FP16, BF16, TF32, FP64 and other matrix formats${a ? '' : ', plus FP8 on Hopper'}.`),
+      precisionNote: L('常见用法是 FP16 / BF16 输入、FP32 累加。', 'A common setup is FP16 / BF16 inputs with FP32 accumulation.') },
+    { id: 'registers', label: L('寄存器文件', 'Register file'), shortLabel: L('寄存器', 'Registers'), color: '#a79bc7', category: 'storage', countPerSM: 65536, countPerPartition: 16384, countUnit: '32-bit registers',
+      description: L('紫色是存储，不是运算单元：放线程的操作数和累加器。每个子分区 16,384 个 32 位寄存器（64 KiB），每 SM 共 256 KiB。', 'Purple is storage, not compute: it holds thread operands and accumulators. 16,384 32-bit registers (64 KiB) per partition, 256 KiB per SM.') },
+    { id: 'lsu', label: L('载入 / 存储单元（LD/ST）', 'Load/store units (LD/ST)'), shortLabel: L('LD/ST', 'LD/ST'), color: '#b77c4b', category: 'data-movement', countPerSM: 32, countPerPartition: 8, countUnit: 'units',
+      description: L('执行线程的读写内存请求，连接寄存器和 L1 / 共享内存。每个子分区 8 个，每 SM 32 个。', 'Carry out threads’ memory reads and writes between registers and L1 / shared memory. 8 per partition, 32 per SM.') },
+    { id: 'warp', label: L('Warp 调度器', 'Warp scheduler'), shortLabel: L('调度器', 'Scheduler'), color: '#b88959', category: 'control', countPerSM: 4, countPerPartition: 1, countUnit: 'schedulers',
+      description: L('每个周期从就绪的 warp 里挑一条指令发出。每个子分区 1 个，每 SM 4 个。它只管控制，不经手数据。', 'Each cycle it picks an instruction from a ready warp. One per partition, four per SM. It handles control only; data doesn’t pass through it.') },
+    { id: 'dispatch', label: L('指令派发', 'Dispatch unit'), shortLabel: L('派发', 'Dispatch'), color: '#9b8c75', category: 'control', countPerSM: 4, countPerPartition: 1, countUnit: 'dispatch units',
+      description: L('把调度器选中的指令送到对应的运算单元。每个子分区 1 个。', 'Sends the instruction the scheduler picked to the right execution units. One per partition.') },
+    { id: 'l0-instruction-cache', label: L('L0 指令缓存', 'L0 instruction cache'), shortLabel: L('L0 指令', 'L0 I-cache'), color: '#8398ab', category: 'storage', countPerSM: 4, countPerPartition: 1, countUnit: 'local caches',
+      description: L('每个子分区自己的小指令缓存，调度器从这里取指令。', 'A small instruction cache in each partition that the scheduler reads from.') },
+    { id: 'instruction-cache', label: L('L1 指令缓存', 'L1 instruction cache'), shortLabel: L('L1 指令', 'L1 I-cache'), color: '#8398ab', category: 'storage',
+      description: L('四个子分区共用，给各自的 L0 指令缓存供指令。', 'Shared by the four partitions; it refills their L0 instruction caches.') },
+    { id: 'texture', label: L('纹理单元', 'Texture units'), shortLabel: L('TEX', 'TEX'), color: '#789aad', category: 'sampling', countPerSM: 4, countPerPartition: null, countUnit: 'units',
+      description: L('四个纹理单元负责纹理寻址、采样和过滤。', 'Four texture units handle texture addressing, sampling and filtering.') },
+    { id: 'smem', label: L('L1 数据缓存 / 共享内存', 'L1 data cache / shared memory'), shortLabel: L('L1 / 共享', 'L1 / shared'), color: '#4f9b94', category: 'storage', capacityKB: a ? 192 : 256, sharedMaxKB: a ? 164 : 228,
+      description: L(`四个子分区共用的一块 ${a ? 192 : 256} KB 存储，可以分出最多 ${a ? 164 : 228} KB 当共享内存。共享内存分 32 banks，同一线程块里的线程靠它交换和复用数据。`, `${a ? 192 : 256} KB of storage shared by the four partitions; up to ${a ? 164 : 228} KB can be used as shared memory. Shared memory has 32 banks and is how threads in one block share and reuse data.`) }
   ];
-  if(!a)resources.push({id:'tma',label:'Tensor Memory Accelerator',shortLabel:'TMA',color:'#b9b2a3',category:'data-movement',description:'Hopper 的异步张量搬运硬件，在全局内存与共享内存之间传输张量数据。'});
-  return resources.map(item=>({...item,sourceUrls:[arithmeticSource,diagramSource],colorMeaning:'功能配色'}));
+  if (!a) resources.push({ id: 'tma', label: L('张量内存加速器（TMA）', 'Tensor Memory Accelerator (TMA)'), shortLabel: L('TMA', 'TMA'), color: '#b9b2a3', category: 'data-movement',
+    description: L('Hopper 新增的搬运硬件，在显存和共享内存之间异步搬整块张量，线程不用逐个发地址。', 'Hopper’s copy engine for moving whole tensors between global and shared memory asynchronously, without threads issuing every address.') });
+  return resources.map(item => ({ ...item, sourceUrls: [arithmeticSource, diagramSource], colorMeaning: 'functional' }));
 }
 
+// Die floorplan after NVIDIA's full-GPU block diagrams (GH100 Fig. 3,
+// GA100 Fig. 4): two rows of four GPCs around a two-part L2, memory
+// controllers along the HBM edges, host interface on one end and NVLink on
+// the other. Positions are functional, not the transistor layout.
+export function dieFloorplan(model = 'h100') {
+  const ampere = model === 'a100';
+  const tpcRows = ampere ? 8 : 9, gpcDepth = 2.8, pitch = gpcDepth / tpcRows;
+  const columns = [-1.56, -.52, .52, 1.56], rowCentres = [-1.95, 1.95];
+  // Shipping products: H100 SXM 66 of 72 TPCs; A100 54 of 64 TPCs in 7 GPCs.
+  const disabled = gpc => ampere
+    ? (gpc === 7 ? Array.from({ length: tpcRows }, (_, r) => r) : gpc >= 5 ? [(gpc * 3 + 2) % tpcRows] : [])
+    : (gpc < 6 ? [(gpc * 5 + 3) % tpcRows] : []);
+  const gpcs = [];
+  for (let g = 0; g < 8; g++) {
+    const x = columns[g % 4], z = rowCentres[Math.floor(g / 4)], off = disabled(g);
+    const tpcs = Array.from({ length: tpcRows }, (_, row) => {
+      // Rows count outward from the L2 so row 0 is always nearest the cache.
+      const zz = z < 0 ? z + gpcDepth / 2 - pitch * (row + .5) : z - gpcDepth / 2 + pitch * (row + .5);
+      return { row, z: zz, active: !off.includes(row), sms: [x - .235, x + .235].map(sx => ({ x: sx, z: zz })) };
+    });
+    gpcs.push({ index: g, x, z, w: .96, d: gpcDepth, pitch, tpcs, active: tpcs.some(t => t.active) });
+  }
+  const sites = [-2.6, 0, 2.6];
+  const memoryControllers = [];
+  for (const side of [-1, 1]) for (const z of sites) memoryControllers.push({ x: side * 2.38, z, w: .42, d: 2.3, active: !(side > 0 && z === 2.6) });
+  const activeSMs = gpcs.reduce((n, g) => n + g.tpcs.filter(t => t.active).length * 2, 0);
+  // The SM used by the GEMM lesson and the TPC used by the pixel lesson are
+  // illustrative choices; NVIDIA does not publish which units are enabled.
+  const lessonTPC = gpcs[1].tpcs[2], graphicsTPC = gpcs[0].tpcs[3];
+  return { ampere, tpcRows, gpcs, memoryControllers, activeSMs, totalSMs: 8 * tpcRows * 2,
+    l2: [{ x: -1.04, z: 0, w: 2.0, d: .78 }, { x: 1.04, z: 0, w: 2.0, d: .78 }],
+    host: { x: 0, z: -3.58, w: 4.1, d: .26 }, nvlink: { x: 0, z: 3.58, w: 4.1, d: .26 },
+    lessonSM: { x: lessonTPC.sms[0].x, z: lessonTPC.z }, graphicsTPC: { x: gpcs[0].x, z: graphicsTPC.z }, gmmu: { x: 0, z: -.62 } };
+}
+
+export const HBM_SITES = [
+  { x: -3.75, z: -2.6, active: true }, { x: -3.75, z: 0, active: true }, { x: -3.75, z: 2.6, active: true },
+  { x: 3.75, z: -2.6, active: true }, { x: 3.75, z: 0, active: true }, { x: 3.75, z: 2.6, active: false }
+];
+
 // Procedural SXM anatomy. Package/board geometry is a recognizable physical
-// reconstruction, not a vendor CAD model. The etched logical floorplan is
-// schematic; its active SM and HBM counts match the selected shipping product.
+// reconstruction, not a vendor CAD model.
 export function createHardwareModel(T, model = 'h100') {
   const ampere = model === 'a100';
   const specification = ampere
-    ? { name: 'A100', die: 'GA100', sm: 108, gpc: 7, l2: '40 MB', hbm: 'HBM2e', memory: '80 GB' }
-    : { name: 'H100', die: 'GH100', sm: 132, gpc: 8, l2: '50 MB', hbm: 'HBM3', memory: '80 GB' };
+    ? { name: 'A100', die: 'GA100', sm: 108, gpc: 7, l2: '40 MB', l2Half: '20 MB', hbm: 'HBM2e', memory: '80 GB', pcie: 'PCIe 4.0', nvlink: 'NVLink 3', links: 12 }
+    : { name: 'H100', die: 'GH100', sm: 132, gpc: 8, l2: '50 MB', l2Half: '25 MB', hbm: 'HBM3', memory: '80 GB', pcie: 'PCIe 5.0', nvlink: 'NVLink 4', links: 18 };
+  const floorplan = dieFloorplan(model);
+  const labels = createLabelFactory(T);
   const root = new T.Group();
   const components = {};
   const layers = [];
   const hbmSlices = [];
   const unitBox = new T.BoxGeometry(1, 1, 1);
+  const textures = { sram: sramTexture(T), logic: logicTexture(T), silicon: siliconBackTexture(T), substrate: substrateTexture(T) };
+  const std = (color, roughness, metalness, extra = {}) => new T.MeshStandardMaterial({ color, roughness, metalness, ...extra });
+  const textured = (color, map, roughness = .55, metalness = .22) => std(color, roughness, metalness, { map });
   const mats = {
-    pcb: new T.MeshStandardMaterial({ color: 0x174d3d, roughness: .7, metalness: .13 }),
-    pcbEdge: new T.MeshStandardMaterial({ color: 0x273d2f, roughness: .68, metalness: .1 }),
-    substrate: new T.MeshStandardMaterial({ color: 0x21432f, roughness: .55, metalness: .2 }),
-    ceramic: new T.MeshStandardMaterial({ color: 0xd3c9ac, roughness: .61, metalness: .1 }),
-    silver: new T.MeshStandardMaterial({ color: 0xaab5b9, roughness: .24, metalness: .95 }),
-    bright: new T.MeshStandardMaterial({ color: 0xe1e5e6, roughness: .18, metalness: .95 }),
-    darkMetal: new T.MeshStandardMaterial({ color: 0x3e4a4e, roughness: .32, metalness: .72 }),
-    black: new T.MeshStandardMaterial({ color: 0x182024, roughness: .55, metalness: .24 }),
-    chip: new T.MeshStandardMaterial({ color: 0x252c32, roughness: .38, metalness: .45 }),
-    memory: new T.MeshStandardMaterial({ color: 0x3b4149, roughness: .34, metalness: .61 }),
-    silicon: new T.MeshStandardMaterial({ color: 0x3b4b4c, roughness: .24, metalness: .78 }),
-    siliconSide: new T.MeshStandardMaterial({ color: 0x111b24, roughness: .19, metalness: .86 }),
-    gold: new T.MeshStandardMaterial({ color: 0xbda677, roughness: .34, metalness: .85 }),
-    copper: new T.MeshStandardMaterial({ color: 0xb77c4b, roughness: .38, metalness: .85 }),
-    activeSM: new T.MeshStandardMaterial({ color: 0x79aa80, roughness: .34, metalness: .56 }),
-    inactiveSM: new T.MeshStandardMaterial({ color: 0x283637, roughness: .6, metalness: .3 }),
-    trace: new T.MeshStandardMaterial({ color: 0xa3ab83, roughness: .44, metalness: .67 }),
-    smem: new T.MeshStandardMaterial({ color: 0x4f9b94, roughness: .4, metalness: .56 }),
-    tensor: new T.MeshStandardMaterial({ color: 0xd1ad69, roughness: .28, metalness: .68 }),
-    register: new T.MeshStandardMaterial({ color: 0xa79bc7, roughness: .4, metalness: .5 }),
-    scheduler: new T.MeshStandardMaterial({ color: 0xb88959, roughness: .4, metalness: .63 }),
-    fp64:new T.MeshStandardMaterial({color:0x669dce,roughness:.38,metalness:.5}),
-    int32:new T.MeshStandardMaterial({color:0x59aaa4,roughness:.38,metalness:.5}),
-    sfu:new T.MeshStandardMaterial({color:0xce9078,roughness:.4,metalness:.45}),
-    instruction:new T.MeshStandardMaterial({color:0x8398ab,roughness:.4,metalness:.5}),
-    texture:new T.MeshStandardMaterial({color:0x789aad,roughness:.4,metalness:.5}),
-    dispatch:new T.MeshStandardMaterial({color:0x9b8c75,roughness:.4,metalness:.55}),
-    tma:new T.MeshStandardMaterial({color:0xb9b2a3,roughness:.4,metalness:.5})
+    // Board: glossy green solder mask over FR-4.
+    pcbEdge: std(0x2a3a2c, .8, 0),
+    substrate: std(0x262f2a, .62, .05, { map: textures.substrate }),
+    ceramic: std(0x9c8a6b, .68, 0),
+    silver: std(0xc3c8cb, .34, .92),
+    bright: std(0xdfe3e5, .22, .95),
+    nickel: std(0xb6bcc0, .4, .95),
+    darkMetal: std(0x3e4549, .38, .7),
+    black: std(0x15191b, .62, .04),
+    epoxy: std(0x121517, .5, .06),
+    mold: std(0x0f1214, .82, 0),
+    ferrite: std(0x2c3033, .78, .08),
+    plastic: std(0x16191b, .74, 0),
+    chip: std(0x1b2024, .55, .05),
+    silicon: new T.MeshPhysicalMaterial({ color: 0x59626a, map: textures.silicon, roughness: .2, metalness: .7, clearcoat: .35, clearcoatRoughness: .18 }),
+    siliconSide: std(0x2a3036, .32, .55),
+    interposer: std(0x3b4248, .36, .52),
+    underfill: std(0x22201b, .55, .02),
+    gold: std(0xd0a64e, .26, 1),
+    copper: std(0xb87a4c, .34, .95),
+    solder: std(0xb9bec0, .36, .85),
+    rdl: std(0xb98a55, .32, .9),
+    // Functional floorplans: legend colour multiplied by an SRAM or logic pattern.
+    activeSM: textured(0x79aa80, textures.logic, .52, .24),
+    inactiveSM: std(0x262e2e, .7, .12),
+    l2: textured(0xb9a46e, textures.sram, .48, .3),
+    memoryController: textured(0x8b98a8, textures.logic, .5, .28),
+    io: textured(0x7f8c96, textures.logic, .5, .28),
+    trace: std(0x9da48a, .4, .7),
+    smem: textured(0x4f9b94, textures.sram, .5, .22),
+    tensor: textured(0xd1ad69, textures.logic, .45, .3),
+    register: textured(0xa79bc7, textures.sram, .5, .2),
+    scheduler: textured(0xb88959, textures.logic, .5, .22),
+    fp64: textured(0x669dce, textures.logic, .5, .22),
+    int32: textured(0x59aaa4, textures.logic, .5, .22),
+    sfu: textured(0xce9078, textures.logic, .5, .22),
+    instruction: textured(0x8398ab, textures.sram, .5, .22),
+    texture: textured(0x789aad, textures.logic, .5, .22),
+    dispatch: textured(0x9b8c75, textures.logic, .5, .22),
+    tma: textured(0xb9b2a3, textures.logic, .5, .22),
+    lsu: textured(0xb77c4b, textures.logic, .5, .24),
+    partition: std(0x1a1f22, .6, .2),
+    smBase: std(0x23292d, .45, .4)
   };
   const box = (parent, x, y, z, w, h, d, mat, shadow = true) => {
     const mesh = new T.Mesh(unitBox, mat);
@@ -126,80 +204,10 @@ export function createHardwareModel(T, model = 'h100') {
     components[id] = { id, label, description, level, parent: parentId, group };
     return group;
   };
-  function surfaceText(parent, text, x, y, z, w, d, color = '#d4ddca', font = '500 36px monospace') {
-    // Texture pixels must have the same aspect as the physical label. Mapping
-    // one fixed 8:1 canvas onto a 48:1 strip stretches every glyph sixfold.
-    const canvas = document.createElement('canvas'),aspect=w/d;
-    canvas.width=Math.min(4096,Math.max(128,Math.round(128*aspect)));
-    canvas.height=Math.max(16,Math.round(canvas.width/aspect));
-    const ctx = canvas.getContext('2d');ctx.fillStyle = color;
-    const referenceFont=font.replace(/[\d.]+px/,'100px');ctx.font=referenceFont;
-    const measured=ctx.measureText(text),referenceWidth=Number.isFinite(measured?.width)?measured.width:text.length*60;
-    const fontSize=Math.min(canvas.height*.82,canvas.width*.92/Math.max(1,referenceWidth)*100);
-    ctx.font=font.replace(/[\d.]+px/,fontSize.toFixed(2)+'px');
-    ctx.textBaseline = 'middle';ctx.textAlign = 'center';ctx.fillText(text,canvas.width/2,canvas.height/2);
-    const texture = new T.CanvasTexture(canvas); texture.colorSpace = T.SRGBColorSpace;
-    texture.anisotropy=8;texture.minFilter=T.LinearMipmapLinearFilter;texture.magFilter=T.LinearFilter;
-    const material = new T.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false,toneMapped:false, polygonOffset: true, polygonOffsetFactor: -2 });
-    const mesh = new T.Mesh(new T.PlaneGeometry(w, d), material);
-    mesh.name='surface-label:'+text;mesh.userData.surfaceLabel={text,worldAspect:aspect,textureAspect:canvas.width/canvas.height,fontSize};
-    mesh.rotation.x = -Math.PI / 2; mesh.position.set(x, y, z); parent.add(mesh); return mesh;
-  }
-  function boardTexture() {
-    const canvas = document.createElement('canvas'); canvas.width = 2048; canvas.height = 2048;
-    const c = canvas.getContext('2d'); c.fillStyle = '#275747'; c.fillRect(0, 0, 2048, 2048);
-    // Repeatable, multilayer-looking routing. Most of the centre is hidden
-    // under the physical package, exactly as it is on a real board.
-    let seed = 8281;
-    const rand = () => { seed = (1664525 * seed + 1013904223) >>> 0; return seed / 4294967296; };
-    for (let i = 0; i < 360; i++) {
-      const x = 100 + rand() * 1848, z = 100 + rand() * 1848;
-      c.strokeStyle = i % 9 === 0 ? 'rgba(178,173,104,.19)' : 'rgba(113,170,126,.15)';
-      c.lineWidth = 1 + rand() * 2;
-      c.beginPath(); c.moveTo(x, z); c.lineTo(x + 20 + rand() * 160, z);
-      c.lineTo(x + 60 + rand() * 180, z + 40); c.lineTo(x + 60 + rand() * 180, z + 90 + rand() * 180); c.stroke();
-    }
-    c.strokeStyle = 'rgba(193,211,171,.18)'; c.lineWidth = 2;
-    c.strokeRect(38, 38, 1972, 1972);
-    for (let i = 0; i < 44; i++) {
-      const x = 75 + i * 43;
-      c.beginPath(); c.moveTo(x, 150); c.lineTo(x, 300); c.lineTo(x + 110, 410); c.lineTo(x + 110, 560); c.stroke();
-      c.beginPath(); c.moveTo(x, 1898); c.lineTo(x, 1748); c.lineTo(x + 110, 1638); c.lineTo(x + 110, 1488); c.stroke();
-    }
-    c.fillStyle = '#a4b5a1'; c.font = '22px monospace'; c.fillText('GPU EXPLORER   /   SXM MODULE', 180, 1900);
-    c.font = '17px monospace'; c.fillText('POWER  /  MEMORY  /  COMPUTE', 180, 1935);
-    const texture = new T.CanvasTexture(canvas); texture.colorSpace = T.SRGBColorSpace;
-    texture.anisotropy = 8; return texture;
-  }
-  function dieTexture() {
-    const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 1024;
-    const c = canvas.getContext('2d'); c.fillStyle = '#435253'; c.fillRect(0, 0, 1024, 1024);
-    c.strokeStyle = '#7a8271'; c.lineWidth = 2;
-    for (let i = 10; i < 1024; i += 24) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i, 1024); c.stroke(); }
-    c.strokeStyle = '#687d6c'; c.lineWidth = 1;
-    for (let i = 12; i < 1024; i += 12) { c.beginPath(); c.moveTo(0, i); c.lineTo(1024, i); c.stroke(); }
-    c.strokeStyle = '#a7a58b'; c.lineWidth = 4; c.strokeRect(12, 12, 1000, 1000);
-    c.strokeStyle = '#888c78'; c.lineWidth = 2; c.strokeRect(24, 24, 976, 976);
-    const texture = new T.CanvasTexture(canvas); texture.colorSpace = T.SRGBColorSpace;
-    texture.anisotropy = 8; return texture;
-  }
-  function siliconCoverTexture() {
-    const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=1536;
-    const c=canvas.getContext('2d');c.fillStyle='#263b43';c.fillRect(0,0,1024,1536);
-    // On a physical naked die the metallization is microscopic. Retain its
-    // dark optical sheen and faint etching; the raised logical floorplan is
-    // only revealed by the explicitly educational Die hierarchy level.
-    c.strokeStyle='rgba(155,183,181,.055)';c.lineWidth=1;
-    for(let x=24;x<1024;x+=32){c.beginPath();c.moveTo(x,20);c.lineTo(x,1516);c.stroke();}
-    for(let z=24;z<1536;z+=32){c.beginPath();c.moveTo(20,z);c.lineTo(1004,z);c.stroke();}
-    c.strokeStyle='rgba(176,184,162,.25)';c.lineWidth=3;c.strokeRect(13,13,998,1510);
-    c.strokeStyle='rgba(176,184,162,.10)';c.lineWidth=1;c.strokeRect(24,24,976,1488);
-    c.fillStyle='rgba(187,205,202,.68)';c.font='500 104px monospace';c.textAlign='center';c.fillText(specification.die,512,700);
-    c.fillStyle='rgba(177,196,192,.34)';c.font='26px monospace';c.fillText(specification.name+'  ·  SXM 80GB',512,762);
-    c.font='19px monospace';c.fillText('SILICON SURFACE',512,819);
-    const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=8;return texture;
-  }
-  const pcb = component('pcb', 'SXM 模组电路板', '承载 GPU 封装、供电与高速连接器的多层 PCB。', 'board');
+  const text = labels.label;
+
+  // ---------- Board ----------
+  const pcb = component('pcb', L('SXM 模组电路板', 'SXM module board'), L('多层电路板，承载 GPU 封装、供电器件，背面是连接服务器的高密度连接器。', 'A multilayer board that carries the GPU package and power parts, with the high-density server connector underneath.'), 'board');
   const outline = new T.Shape(); const s = 8.5, r = .38;
   outline.moveTo(-s + r, -s); outline.lineTo(s - r, -s); outline.quadraticCurveTo(s, -s, s, -s + r);
   outline.lineTo(s, s - r); outline.quadraticCurveTo(s, s, s - r, s); outline.lineTo(-s + r, s);
@@ -207,331 +215,296 @@ export function createHardwareModel(T, model = 'h100') {
   [-7.65, 7.65].forEach(x => [-7.65, 7.65].forEach(z => { const hole = new T.Path(); hole.absarc(x, z, .32, 0, Math.PI * 2, true); outline.holes.push(hole); }));
   const pcbGeometry = new T.ExtrudeGeometry(outline, { depth: .2, bevelEnabled: false, curveSegments: 12 });
   pcbGeometry.rotateX(-Math.PI / 2);
-  const pcbBody = new T.Mesh(pcbGeometry, [mats.pcb, mats.pcbEdge]); pcbBody.position.y = -.51; pcb.add(pcbBody); pcbBody.castShadow = true; pcbBody.receiveShadow = true;
-  // Surface texture has matching holes. It is an actual shaped PCB face,
-  // not a square alpha decal that would accidentally fill the holes.
-  const faceGeo = new T.ShapeGeometry(outline, 12); faceGeo.rotateX(-Math.PI / 2);
-  const uv = faceGeo.attributes.uv;
-  const pos = faceGeo.attributes.position;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, (pos.getX(i) + 8.5) / 17, (8.5 - pos.getZ(i)) / 17);
-  const face = new T.Mesh(faceGeo, new T.MeshStandardMaterial({ map: boardTexture(), roughness: .68, metalness: .23 }));
-  face.position.y = -.302; face.receiveShadow = true; pcb.add(face);
-  // Conductive via stitching at the edge, rendered in one draw call.
-  const vias = [];
-  for (let p = -7; p <= 7; p += .3) { vias.push({x:p,y:-.29,z:8.18,w:.035,h:.012,d:.035},{x:p,y:-.29,z:-8.18,w:.035,h:.012,d:.035},{x:8.18,y:-.29,z:p,w:.035,h:.012,d:.035},{x:-8.18,y:-.29,z:p,w:.035,h:.012,d:.035}); }
-  instances(pcb, vias, mats.gold);
-  // Bolts, washer rings, and visible cross slots make scale legible.
-  const washerGeo = new T.TorusGeometry(.33, .055, 8, 24);
-  const boltGeo = new T.CylinderGeometry(.235, .235, .14, 24);
-  [-7.65, 7.65].forEach(x => [-7.65, 7.65].forEach(z => {
-    const washer = new T.Mesh(washerGeo, mats.gold); washer.rotation.x = Math.PI / 2; washer.position.set(x,-.285,z); pcb.add(washer);
-    const screw = new T.Mesh(boltGeo, mats.silver); screw.position.set(x,-.24,z); pcb.add(screw); screw.castShadow = true;
-    box(pcb,x,-.163,z,.25,.012,.035,mats.black,false); box(pcb,x,-.162,z,.035,.012,.25,mats.black,false);
-  }));
-  const power = component('power', '多相供电 / VRM', '电感、功率级与去耦电容将电源转换为 GPU 使用的低电压、大电流供电。', 'board', pcb, 'pcb');
+  const pcbBody = new T.Mesh(pcbGeometry, [mats.pcbEdge, mats.pcbEdge]); pcbBody.position.y = -.51; pcb.add(pcbBody); pcbBody.castShadow = true; pcbBody.receiveShadow = true;
   const inductors = [], inductorCaps = [], controllers = [], caps = [], capEnds = [];
   const powerLeads = [], powerLands = [], magneticSeams = [];
-  for (const side of [-1,1]) for (let i = 0; i < 8; i++) {
+  for (const side of [-1, 1]) for (let i = 0; i < 8; i++) {
     const z = -5.85 + i * 1.62;
-    inductors.push({x:side*6.55,y:.05,z,w:.82,h:.62,d:1.03});
-    inductorCaps.push({x:side*6.55,y:.37,z,w:.72,h:.025,d:.85});
-    controllers.push({x:side*7.45,y:-.12,z,w:.36,h:.33,d:.82});
-    // Solder lands, power-stage leads and the seam in each molded ferrite
-    // housing give the board a readable manufacturing scale at grazing angles.
-    for(const end of [-1,1]) {
-      powerLands.push({x:side*6.55,y:-.245,z:z+end*.46,w:.90,h:.07,d:.18});
-      magneticSeams.push({x:side*6.55+end*.315,y:.386,z,w:.012,h:.012,d:.76});
-      for(let pin=0;pin<6;pin++)powerLeads.push({x:side*7.45+end*.215,y:-.225,z:z-.32+pin*.128,w:.12,h:.07,d:.064});
+    inductors.push({ x: side * 6.55, y: .05, z, w: .82, h: .62, d: 1.03 });
+    inductorCaps.push({ x: side * 6.55, y: .37, z, w: .74, h: .02, d: .9 });
+    controllers.push({ x: side * 7.45, y: -.17, z, w: .36, h: .22, d: .82 });
+    for (const end of [-1, 1]) {
+      powerLands.push({ x: side * 6.55, y: -.265, z: z + end * .46, w: .90, h: .05, d: .18 });
+      magneticSeams.push({ x: side * 6.55 + end * .315, y: .383, z, w: .012, h: .008, d: .76 });
+      for (let pin = 0; pin < 6; pin++) powerLeads.push({ x: side * 7.45 + end * .2, y: -.265, z: z - .32 + pin * .128, w: .1, h: .04, d: .07 });
     }
-    for(let k=0;k<3;k++) { const cz=z-.42+k*.42;
-      caps.push({x:side*5.56,y:-.18,z:cz,w:.22,h:.22,d:.25});
-      capEnds.push({x:side*5.56,y:-.168,z:cz-.105,w:.23,h:.23,d:.045},{x:side*5.56,y:-.168,z:cz+.105,w:.23,h:.23,d:.045});
-    }
-  }
-  instances(power,inductors,mats.black); instances(power,inductorCaps,mats.darkMetal); instances(power,controllers,mats.chip);
-  instances(power,caps,mats.ceramic); instances(power,capEnds,mats.silver);
-  instances(power,powerLands,mats.silver); instances(power,powerLeads,mats.silver); instances(power,magneticSeams,mats.black);
-  for(const side of [-1,1]) for(let i=0;i<8;i++) surfaceText(power,'R22',side*6.55,.388,-5.85+i*1.62,.5,.23,'#879293','500 45px monospace');
-  // Dense decoupling rows at north/south edges and around the package.
-  const smallCaps = [], smallEnds = [], resistors=[];
-  for(const side of [-1,1]) for(let i=0;i<26;i++) {
-    const x=-5.55+i*.44, z=side*6.2;
-    smallCaps.push({x,y:-.21,z,w:.22,h:.18,d:.31});
-    smallEnds.push({x:x-.09,y:-.2,z,w:.055,h:.2,d:.32},{x:x+.09,y:-.2,z,w:.055,h:.2,d:.32});
-    if(i%2===0) resistors.push({x,y:-.23,z:side*6.7,w:.3,h:.12,d:.16});
-  }
-  instances(pcb,smallCaps,mats.ceramic); instances(pcb,smallEnds,mats.silver); instances(pcb,resistors,mats.chip);
-  const sxm = component('sxm','SXM 高密度连接器','位于模组背面，连接高速信号与供电。','board',pcb,'pcb');
-  const contacts=[];
-  for(const side of [-1,1]) {
-    box(sxm,0,-.65,side*6.85,10.5,.28,1.0,mats.black);
-    for(let row=0;row<3;row++) for(let i=0;i<70;i++) contacts.push({x:-5.08+i*.147,y:-.8,z:side*6.85+(row-1)*.24,w:.08,h:.08,d:.10});
-  }
-  instances(sxm,contacts,mats.gold);
-  surfaceText(pcb,`${specification.name}  ·  SXM   /   ${specification.memory}`,0,-.285,7.13,5.5,.44,'#d2dbcb','600 42px monospace');
-  surfaceText(pcb,'GPU EXPLORER  /  ANATOMY LAB',0,-.285,-7.45,5.6,.38,'#b8c7b6','400 34px monospace');
-  const serial = component('package','GPU 封装','有机封装基板承载硅中介层、GPU 裸片和 HBM；这些部件通过微凸点互连。','package');
-  const substrate = new T.Group(); serial.add(substrate); layers.push({group:substrate,factor:.9});
-  box(substrate,0,-.105,0,10.7,.32,10.2,mats.substrate);
-  box(substrate,0,.062,0,10.34,.025,9.84,mats.gold);
-  box(substrate,0,.085,0,10.28,.03,9.78,mats.substrate);
-  const bga=[];
-  for(let x=-4.9;x<=4.9;x+=.24) for(let z=-4.65;z<=4.65;z+=.24) if(Math.abs(x)>4.1||Math.abs(z)>3.9) bga.push({x,y:-.29,z,w:.11,h:.11,d:.11});
-  instances(substrate,bga,mats.silver,new T.SphereGeometry(.5,6,4));
-  // A segmented substrate edge reveals the copper-bearing laminate without
-  // pretending the microscopic production stack-up is visible at this scale.
-  const substrateEdges=[];
-  for(const x of [-5.355,5.355])for(let band=0;band<3;band++)substrateEdges.push({x,y:-.205+band*.075,z:0,w:.012,h:.009,d:9.72});
-  for(const z of [-5.105,5.105])for(let band=0;band<3;band++)substrateEdges.push({x:0,y:-.205+band*.075,z,w:10.15,h:.009,d:.012});
-  instances(substrate,substrateEdges,mats.copper);
-  const interposer = component('interposer','硅中介层','通过高密度横向互连，在 GPU 与五组 HBM 之间传输数据。','package',serial,'package');
-  layers.push({group:interposer,factor:1.8});
-  box(interposer,0,.145,0,9.75,.10,8.4,mats.siliconSide);
-  box(interposer,0,.2,0,9.58,.018,8.24,mats.darkMetal);
-  const interconnect=[];
-  for(const side of [-1,1]) for(let i=0;i<48;i++) interconnect.push({x:side*3.22,y:.216,z:-3.6+i*.153,w:1.35,h:.012,d:.012});
-  instances(interposer,interconnect,mats.gold);
-  // Low mounting rim: brushed nickel, with a real recessed centre.
-  for(const z of [-4.8,4.8]) box(substrate,0,.2,z,10.45,.28,.35,mats.silver);
-  for(const x of [-5.05,5.05]) box(substrate,x,.2,0,.35,.28,9.28,mats.silver);
-  for(const x of [-4.98,4.98]) for(const z of [-4.72,4.72]) {
-    const screw = new T.Mesh(new T.CylinderGeometry(.13,.13,.035,16),mats.darkMetal); screw.position.set(x,.36,z); substrate.add(screw);
-    box(substrate,x,.382,z,.16,.008,.025,mats.black,false);
-  }
-  const packageCaps=[], packageEnds=[];
-  for(let x=-4.5;x<=4.5;x+=.34) for(const side of [-1,1]) {
-    packageCaps.push({x,y:.15,z:side*4.45,w:.16,h:.13,d:.22});
-    packageEnds.push({x:x-.07,y:.16,z:side*4.45,w:.035,h:.14,d:.23},{x:x+.07,y:.16,z:side*4.45,w:.035,h:.14,d:.23});
-  }
-  instances(substrate,packageCaps,mats.ceramic); instances(substrate,packageEnds,mats.silver);
-  const hbm = component('hbm',`5 × ${specification.hbm} 堆栈`,`五组 HBM 提供 ${specification.memory} 容量。每组由多层 DRAM 通过 TSV 垂直连接。`,'package',serial,'package');
-  layers.push({group:hbm,factor:3.1});
-  const hbmPositions = [{x:-3.75,z:-2.6},{x:-3.75,z:0},{x:-3.75,z:2.6},{x:3.75,z:-2.6},{x:3.75,z:0}];
-  const hbmBasePads=[];
-  for(let i=0;i<hbmPositions.length;i++) {
-    const p=hbmPositions[i];
-    box(hbm,p.x,.26,p.z,1.65,.07,1.95,mats.gold);
-    for(const side of [-1,1])for(let contact=0;contact<18;contact++)hbmBasePads.push({x:p.x+side*.825,y:.262,z:p.z-.83+contact*.098,w:.035,h:.055,d:.045});
-    for(let slice=0;slice<8;slice++) {
-      const plate=box(hbm,p.x,.32+slice*.045,p.z,1.54,.035,1.82,slice%2?mats.memory:mats.darkMetal);
-      hbmSlices.push({mesh:plate,y:plate.position.y,index:slice});
-    }
-    const top=box(hbm,p.x,.692,p.z,1.56,.065,1.84,mats.memory); hbmSlices.push({mesh:top,y:top.position.y,index:8});
-    const memoryLabel=surfaceText(hbm,specification.hbm,p.x,.731,p.z-.1,1.3,.25,'#c4cbd0','500 45px monospace');
-    const capacityLabel=surfaceText(hbm,`${i+1}  ·  16 GB`,p.x,.732,p.z+.3,1.1,.18,'#89979e','400 40px monospace');
-    hbmSlices.push({mesh:memoryLabel,y:.731,index:8},{mesh:capacityLabel,y:.732,index:8});
-  }
-  instances(hbm,hbmBasePads,mats.silver);
-  // Sixth site is a visible unpopulated pad, not a claimed sixth HBM stack.
-  if(!ampere) {
-    box(interposer,3.75,.245,2.6,1.64,.035,1.94,mats.substrate);
-    const pads=[]; for(let x=0;x<10;x++) for(let z=0;z<12;z++) pads.push({x:3.1+x*.145,y:.269,z:1.82+z*.14,w:.044,h:.008,d:.044});
-    instances(interposer,pads,mats.gold);
-  }
-  const die = component('gpu-die',`${specification.die} GPU 裸片`,`${specification.sm} 个有源 SM 执行并行计算，${specification.l2} L2 缓存支持片上数据复用。`,'die',serial,'package');
-  layers.push({group:die,factor:3.1});
-  box(die,0,.31,0,5.30,.18,7.65,mats.siliconSide);
-  const siliconMat = mats.silicon.clone(); siliconMat.map = dieTexture();
-  const diePlane = new T.Mesh(new T.PlaneGeometry(5.26,7.61),siliconMat); diePlane.rotation.x=-Math.PI/2; diePlane.position.y=.406; die.add(diePlane); diePlane.receiveShadow=true;
-  // Seal ring catches grazing light, a thin continuous metallic edge.
-  for(const z of [-3.76,3.76]) box(die,0,.419,z,5.18,.015,.025,mats.gold,false);
-  for(const x of [-2.57,2.57]) box(die,x,.419,0,.025,.015,7.52,mats.gold,false);
-  const dieBumps=[];
-  for(const side of [-1,1])for(let pin=0;pin<48;pin++)dieBumps.push({x:side*2.52,y:.223,z:-3.48+pin*.148,w:.043,h:.035,d:.043});
-  instances(die,dieBumps,mats.gold,new T.SphereGeometry(.5,6,4));
-  const l2 = component('l2',`${specification.l2} L2 缓存`,'SM 与显存之间共享的片上缓存。读写可能命中 L2，未命中时才访问 HBM。','die',die,'gpu-die');
-  box(l2,0,.438,0,.35,.048,6.28,mats.gold);
-  const l2Banks=[]; for(let i=0;i<36;i++) l2Banks.push({x:0,y:.471,z:-2.98+i*.17,w:.25,h:.014,d:.1});
-  instances(l2,l2Banks,mats.darkMetal);
-  const sm = component('sm',`${specification.sm} 个有源 SM`,'线程块被调度到 SM。双击进入一个 SM，查看四个执行子分区、寄存器、Tensor Core 和共享内存。','die',die,'gpu-die');
-  const smCells=[], disabledCells=[],smBanks=[],smPartitionLines=[],smTensorTiles=[],smRegisterRows=[];
-  let activeIndex=0;
-  const rows=4;
-  for(let gpc=0;gpc<specification.gpc;gpc++) {
-    const side=gpc%2?1:-1, row=Math.floor(gpc/2);
-    const centreX=side*1.38, centreZ=-2.57+row*1.71;
-    box(sm,centreX,.434,centreZ,2.05,.035,1.52,mats.black,false);
-    surfaceText(sm,`GPC ${gpc}`,centreX,.456,centreZ-.695,1.68,.10,'#839987','400 30px monospace');
-    const count=ampere?(gpc<3?16:15):(gpc<4?17:16);
-    for(let n=0;n<18;n++) {
-      const x=centreX-.85+(n%6)*.34, z=centreZ-.52+Math.floor(n/6)*.49;
-      const cell={x,y:.466,z,w:.295,h:.035,d:.405};
-      if(n<count) {
-        smCells.push(cell); activeIndex++;
-        for(let b=0;b<3;b++) smBanks.push({x:x-.085+b*.085,y:.487,z:z-.07,w:.045,h:.009,d:.19});
-        smPartitionLines.push({x,y:.489,z:z+.14,w:.24,h:.008,d:.035});
-        for(const dx of [-.075,.075])smTensorTiles.push({x:x+dx,y:.495,z:z+.074,w:.045,h:.012,d:.048});
-        for(let row=0;row<3;row++)smRegisterRows.push({x:x-.086+row*.086,y:.495,z:z-.145,w:.055,h:.011,d:.028});
-      } else disabledCells.push(cell);
+    for (let k = 0; k < 3; k++) {
+      const cz = z - .42 + k * .42;
+      caps.push({ x: side * 5.56, y: -.2, z: cz, w: .22, h: .18, d: .2 });
+      capEnds.push({ x: side * 5.56, y: -.2, z: cz - .115, w: .23, h: .19, d: .05 }, { x: side * 5.56, y: -.2, z: cz + .115, w: .23, h: .19, d: .05 });
     }
   }
-  instances(sm,smCells,mats.activeSM); instances(sm,disabledCells,mats.inactiveSM);
-  instances(sm,smBanks,mats.darkMetal); instances(sm,smPartitionLines,mats.trace);
-  instances(sm,smTensorTiles,mats.tensor); instances(sm,smRegisterRows,mats.register);
-  surfaceText(die,`${specification.die}   /   ${specification.sm} SM`,0,.45,3.55,3.5,.28,'#b4c1ae','600 42px monospace');
-  surfaceText(die,'PCIe  ·  GIGATHREAD ENGINE',0,.451,-3.54,4.0,.21,'#aebbac','500 34px monospace');
-  const siliconCover=new T.Mesh(unitBox,new T.MeshPhysicalMaterial({
-    color:0x8aa0a5,map:siliconCoverTexture(),roughness:.19,metalness:.92,
-    clearcoat:1,clearcoatRoughness:.13,iridescence:.62,iridescenceIOR:1.33,iridescenceThicknessRange:[100,270]
+  const faceGeo = new T.ShapeGeometry(outline, 12); faceGeo.rotateX(-Math.PI / 2);
+  const uv = faceGeo.attributes.uv, pos = faceGeo.attributes.position;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (pos.getX(i) + 8.5) / 17, (8.5 - pos.getZ(i)) / 17);
+  const solderMask = new T.MeshPhysicalMaterial({ color: 0xa8b4ae, map: boardTexture(T, { inductors, controllers }), roughness: .46, metalness: 0, clearcoat: .55, clearcoatRoughness: .32 });
+  const face = new T.Mesh(faceGeo, solderMask); face.position.y = -.302; face.receiveShadow = true; pcb.add(face);
+  const vias = [];
+  for (let p = -7; p <= 7; p += .3) vias.push({ x: p, y: -.296, z: 8.18, w: .05, h: .01, d: .05 }, { x: p, y: -.296, z: -8.18, w: .05, h: .01, d: .05 }, { x: 8.18, y: -.296, z: p, w: .05, h: .01, d: .05 }, { x: -8.18, y: -.296, z: p, w: .05, h: .01, d: .05 });
+  instances(pcb, vias, mats.copper);
+  const washerGeo = new T.TorusGeometry(.33, .05, 8, 28);
+  const boltGeo = new T.CylinderGeometry(.235, .235, .14, 28);
+  [-7.65, 7.65].forEach(x => [-7.65, 7.65].forEach(z => {
+    const washer = new T.Mesh(washerGeo, mats.nickel); washer.rotation.x = Math.PI / 2; washer.position.set(x, -.285, z); pcb.add(washer);
+    const screw = new T.Mesh(boltGeo, mats.silver); screw.position.set(x, -.24, z); pcb.add(screw); screw.castShadow = true;
+    box(pcb, x, -.168, z, .25, .012, .035, mats.black, false); box(pcb, x, -.167, z, .035, .012, .25, mats.black, false);
   }));
-  siliconCover.position.set(0,.486,0);siliconCover.scale.set(5.255,.105,7.605);siliconCover.castShadow=true;siliconCover.receiveShadow=true;die.add(siliconCover);
-  // Functional organization follows NVIDIA's 2 × 2 SM subpartition diagrams.
-  // These raised shapes show shared resources and connectivity, not silicon distances.
-  const smRoot = new T.Group(); smRoot.visible=false; root.add(smRoot);
-  const smAssembly = component('sm-detail','SM 功能组织','四个执行子分区共用 L1 数据缓存/共享内存，协同执行线程块。','sm',smRoot,'sm');
-  box(smAssembly,0,-.08,0,10.9,.28,8.6,mats.siliconSide);
-  box(smAssembly,0,.07,0,10.6,.025,8.3,mats.darkMetal);
-  const registerGroup = component('registers','寄存器文件','每个子分区的寄存器文件保存线程操作数和累加器。','sm',smAssembly,'sm-detail');
-  const scheduler = component('warp','Warp 调度器','四个子分区各有一个调度器，从可就绪的 warp 中发射指令。调度器属于控制路径，数据通过寄存器、执行管线和 LD/ST 访问存储。','sm',smAssembly,'sm-detail');
-  const dispatch = component('dispatch','指令派发','把调度器选定的指令送往执行管线。','sm',smAssembly,'sm-detail');
-  const tensor = component('tensor','Tensor Core',ampere?'矩阵乘加执行单元。线程协同提供矩阵片段，操作数与累加器分布依具体 MMA 指令而异。':'矩阵乘加执行单元。Hopper GMMA 可从共享内存取得矩阵操作数；具体来源和寄存器分布依指令而异。','sm',smAssembly,'sm-detail');
-  const lsu=component('lsu','Load / Store 单元','执行载入与存储请求，连接寄存器和 L1 数据缓存/共享内存。','sm',smAssembly,'sm-detail');
-  const smem=component('smem','L1 数据缓存 / 共享内存',`四个子分区共用 ${ampere?'192':'256'} KB 存储资源，其中 Shared Memory 最多 ${ampere?'164':'228'} KB；共享内存按 32 banks 组织。`,'sm',smAssembly,'sm-detail');
-  const instruction=component('instruction-cache','L1 指令缓存','为 SM 内的指令读取提供缓存。','sm',smAssembly,'sm-detail');
-  const l0Instruction=component('l0-instruction-cache','本地 L0 指令缓存','缓存当前 SMSP 使用的指令。','sm',smAssembly,'sm-detail');
-  const smBus=component('sm-bus','SM 内部互连','在执行管线、LD/ST 和 L1 数据缓存/共享内存之间传输数据。','sm',smAssembly,'sm-detail');
-  const fp32Group=component('fp32','FP32 CUDA 执行单元','绿色运算通道执行逐线程 FP32 算术指令。','sm',smAssembly,'sm-detail');
-  const fp64Group=component('fp64','FP64 执行单元','执行逐线程双精度算术指令。','sm',smAssembly,'sm-detail');
-  const int32Group=component('int32','INT32 整数执行单元','执行逐线程整数算术指令。','sm',smAssembly,'sm-detail');
-  const sfuGroup=component('sfu','特殊函数单元（SFU）','超越函数相关的专用硬件算术单元。','sm',smAssembly,'sm-detail');
-  const textureGroup=component('texture','纹理单元（Tex）','SM 共用的纹理采样/过滤功能。','sm',smAssembly,'sm-detail');
-  const fp32=[],fp64=[],int32=[],sfuCells=[],registers=[],registerStrips=[],lsuCells=[],laneContacts=[],registerWordlines=[],tensorArrays=[],tensorBus=[];
-  const partitionOrigins=[{x:-2.65,z:-1.72},{x:2.65,z:-1.72},{x:-2.65,z:1.08},{x:2.65,z:1.08}];
-  box(instruction,0,.23,-3.65,10.15,.12,.40,mats.instruction);
-  surfaceText(instruction,'L1 INSTRUCTION CACHE',0,.296,-3.65,8.5,.32,'#172632','600 32px monospace');
-  for(let partition=0;partition<4;partition++) {
-    const {x,z}=partitionOrigins[partition];
-    box(smAssembly,x,.13,z,4.95,.08,2.62,mats.black);
-    box(l0Instruction,x,.225,z-1.10,4.65,.07,.15,mats.instruction).userData.unitCount=1;
-    box(scheduler,x,.255,z-.87,4.65,.14,.32,mats.scheduler).userData.unitCount=1;
-    surfaceText(scheduler,`SMSP ${partition}  ·  WARP SCHEDULER`,x,.332,z-.87,4.27,.28,'#302415','600 31px monospace');
-    box(dispatch,x,.25,z-.64,4.65,.10,.13,mats.dispatch).userData.unitCount=1;
-    for(let row=0;row<2;row++)for(let bank=0;bank<16;bank++){
-      const bx=x-2.14+bank*.285,bz=z-.43+row*.16;
-      registers.push({x:bx,y:.25,z:bz,w:.22,h:.10,d:.105});
-      registerWordlines.push({x:bx,y:.307,z:bz,w:.16,h:.012,d:.018});
-    }
-    registerStrips.push({x,y:.33,z:z-.11,w:4.40,h:.025,d:.20});
-    surfaceText(registerGroup,'REGISTER FILE',x,.354,z-.11,3.10,.18,'#172632','600 31px monospace');
-    // One coloured execution cell means one lane. Purple storage bank glyphs
-    // above are intentionally compressed symbols, not one glyph per register.
-    for(let row=0;row<(ampere?2:4);row++)for(let lane=0;lane<8;lane++){
-      const lx=x-1.52+lane*.31,lz=z+.10+row*.19;
-      fp32.push({x:lx,y:.24,z:lz,w:.23,h:.13,d:.14});
-      laneContacts.push({x:lx-.092,y:.313,z:lz,w:.026,h:.014,d:.105},{x:lx+.092,y:.313,z:lz,w:.026,h:.014,d:.105});
-    }
-    for(let row=0;row<4;row++)for(let lane=0;lane<4;lane++)int32.push({x:x-2.19+lane*.10,y:.24,z:z+.10+row*.19,w:.075,h:.13,d:.14});
-    for(let row=0;row<(ampere?2:4);row++)for(let lane=0;lane<4;lane++)fp64.push({x:x+.86+lane*.10,y:.24,z:z+.10+row*.19,w:.075,h:.13,d:.14});
-    box(fp32Group,x-.435,.327,z+.835,2.40,.025,.16,mats.activeSM);
-    surfaceText(fp32Group,`FP32 ×${ampere?16:32}`,x-.435,.345,z+.835,2.25,.14,'#173021','600 31px monospace');
-    box(int32Group,x-2.04,.327,z+.835,.43,.025,.16,mats.int32);
-    surfaceText(int32Group,'INT32',x-2.04,.345,z+.835,.41,.14,'#173331','600 31px monospace');
-    box(fp64Group,x+1.01,.327,z+.835,.44,.025,.16,mats.fp64);
-    surfaceText(fp64Group,'FP64',x+1.01,.345,z+.835,.42,.14,'#142b3d','600 31px monospace');
-    box(tensor,x+1.80,.27,z+.39,.98,.22,.93,mats.tensor).userData.unitCount=1;
-    for(let row=0;row<4;row++)for(let col=0;col<4;col++)tensorArrays.push({x:x+1.48+col*.21,y:.391,z:z+.08+row*.20,w:.14,h:.02,d:.13});
-    tensorBus.push({x:x+1.80,y:.408,z:z+.39,w:.84,h:.016,d:.035},{x:x+1.80,y:.408,z:z+.39,w:.035,h:.016,d:.80});
-    surfaceText(tensor,'TENSOR',x+1.80,.426,z+.39,.89,.20,'#302415','600 34px monospace');
-    for(let lane=0;lane<8;lane++)lsuCells.push({x:x-2.10+lane*.47,y:.25,z:z+1.02,w:.37,h:.12,d:.17});
-    for(let unit=0;unit<4;unit++)sfuCells.push({x:x+1.77+unit*.14,y:.25,z:z+1.02,w:.11,h:.12,d:.17});
-    surfaceText(sfuGroup,'SFU',x+1.98,.319,z+1.02,.53,.14,'#392219','600 31px monospace');
-    // Branches terminate at the central interconnect, rather than crossing scheduler boxes.
-    box(smBus,x*.5,.18,z+1.18,Math.abs(x),.035,.045,mats.trace,false);
+  const power = component('power', L('多相供电（VRM）', 'Multiphase power (VRM)'), L('把服务器给的电压降到 GPU 需要的约 1 伏，同时提供几百安的电流。两侧每一组电感加功率级就是一相。', 'Steps the server’s supply down to the roughly one volt the GPU runs at, while delivering hundreds of amps. Each inductor with its power stage on either side is one phase.'), 'board', pcb, 'pcb');
+  instances(power, inductors, mats.ferrite); instances(power, inductorCaps, mats.black); instances(power, controllers, mats.chip);
+  instances(power, caps, mats.ceramic); instances(power, capEnds, mats.solder);
+  instances(power, powerLands, mats.solder); instances(power, powerLeads, mats.solder); instances(power, magneticSeams, mats.black);
+  for (const side of [-1, 1]) for (let i = 0; i < 8; i++) text(power, 'R22', side * 6.55, .384, -5.85 + i * 1.62 + .1, .42, .18, { mono: true, color: 'rgba(170,176,178,.55)' });
+  const smallCaps = [], smallEnds = [], resistors = [];
+  for (const side of [-1, 1]) for (let i = 0; i < 26; i++) {
+    const x = -5.55 + i * .44, z = side * 6.2;
+    smallCaps.push({ x, y: -.235, z, w: .16, h: .12, d: .26 });
+    smallEnds.push({ x: x - .085, y: -.235, z, w: .05, h: .13, d: .27 }, { x: x + .085, y: -.235, z, w: .05, h: .13, d: .27 });
+    if (i % 2 === 0) resistors.push({ x, y: -.25, z: side * 6.7, w: .26, h: .07, d: .14 });
   }
-  instances(registerGroup,registers,mats.register);instances(registerGroup,registerStrips,mats.silver);
-  instances(registerGroup,registerWordlines,mats.darkMetal);
-  const countedInstances=(parent,id,cells,material)=>{const mesh=instances(parent,cells,material);mesh.name='execution-lanes:'+id;mesh.userData.resourceId=id;mesh.userData.unitCount=cells.length;return mesh;};
-  countedInstances(fp32Group,'fp32',fp32,mats.activeSM);countedInstances(fp64Group,'fp64',fp64,mats.fp64);
-  countedInstances(int32Group,'int32',int32,mats.int32);countedInstances(sfuGroup,'sfu',sfuCells,mats.sfu);countedInstances(lsu,'lsu',lsuCells,mats.copper);
-  instances(fp32Group,laneContacts,mats.trace);instances(tensor,tensorArrays,mats.darkMetal);instances(tensor,tensorBus,mats.copper);
-  box(smBus,0,.18,.50,.065,.035,3.75,mats.trace,false);
-  box(smBus,0,.18,2.40,10.1,.035,.07,mats.trace,false);
-  const tma=ampere?null:component('tma','Tensor Memory Accelerator','Hopper 的 TMA 在全局内存与共享内存之间异步搬运张量。','sm',smAssembly,'sm-detail');
-  if(!ampere){box(tma,0,.24,2.65,10.05,.10,.28,mats.tma);surfaceText(tma,'TENSOR MEMORY ACCELERATOR',0,.296,2.65,8.5,.25,'#302d24','600 32px monospace');}
-  box(smem,0,.25,3.20,10.09,.25,.66,mats.smem);
-  const sharedBanks=[];for(let bank=0;bank<32;bank++)sharedBanks.push({x:-4.79+bank*.309,y:.39,z:3.20,w:.20,h:.025,d:.39});
-  instances(smem,sharedBanks,mats.darkMetal);
-  // A separate nameplate leaves all 32 bank cells visually unobstructed.
-  // Its top remains below the teaching signal route at y=.56.
-  box(smem,0,.36,3.63,9.86,.12,.30,mats.smem);
-  surfaceText(smem,`${ampere?'192':'256'} KB  ·  L1 DATA / SHARED`,0,.428,3.63,9.25,.26,'#12302d','600 32px monospace');
-  for(let unit=0;unit<4;unit++){const x=-3.84+unit*2.56;box(textureGroup,x,.21,3.86,2.32,.10,.24,mats.texture).userData.unitCount=1;surfaceText(textureGroup,'TEX',x,.267,3.86,1.9,.19,'#182d39','600 31px monospace');}
-  surfaceText(smAssembly,`${specification.name}  /  SM FUNCTIONAL ORGANIZATION`,0,.12,-4.03,9.6,.23,'#aab9ba','400 28px monospace');
-  const hbmDetail=createHBMDetail(T,model),powerDetail=createPowerDetail(T,model),interconnectDetail=createInterconnectDetail(T,model);
-  const hbmRoot=hbmDetail.root,powerRoot=powerDetail.root,interconnectRoot=interconnectDetail.root;
-  root.add(hbmRoot,powerRoot,interconnectRoot);
-  Object.assign(components,hbmDetail.components,powerDetail.components,interconnectDetail.components);
-  const smResourceLegend=getSMResourceLegend(model);
-  for(const entry of smResourceLegend)if(components[entry.id])Object.assign(components[entry.id],entry);
-  const anchors={
-    pcb:new T.Vector3(-6.5,.25,6.1),package:new T.Vector3(-4.7,.3,4.7),interposer:new T.Vector3(4.8,.35,3.6),
-    hbm:new T.Vector3(-3.75,.9,-2.6),'gpu-die':new T.Vector3(0,.8,0),l2:new T.Vector3(0,.6,0),
-    power:new T.Vector3(6.55,.5,-3),sxm:new T.Vector3(0,-.65,6.85),sm:new T.Vector3(-1.5,.7,-1),
-    'a-tile':new T.Vector3(-3.75,.9,-2.6),'b-tile':new T.Vector3(-3.75,.9,0),'c-out':new T.Vector3(3.75,.9,0),
-    warp:new T.Vector3(-2.65,.5,-2.59),smem:new T.Vector3(0,.6,3.20),tensor:new T.Vector3(-.85,.5,-1.33),registers:new T.Vector3(-2.65,.5,-2.03),lsu:new T.Vector3(-2.65,.4,-.70),tma:new T.Vector3(0,.4,2.65),
-    fp32:new T.Vector3(-3.085,.45,-1.33),fp64:new T.Vector3(-1.64,.45,-1.33),int32:new T.Vector3(-4.69,.45,-1.33),sfu:new T.Vector3(-.67,.45,-.70),texture:new T.Vector3(0,.35,3.86),'l0-instruction-cache':new T.Vector3(-2.65,.35,-2.82),
-    ...hbmDetail.anchors,...powerDetail.anchors,...interconnectDetail.anchors
+  instances(pcb, smallCaps, mats.ceramic); instances(pcb, smallEnds, mats.solder); instances(pcb, resistors, mats.chip);
+  const sxm = component('sxm', L('SXM 高密度连接器', 'SXM connectors'), L('在模组背面，把供电、PCIe 和 NVLink 信号接到服务器主板上。', 'On the back of the module, carrying power, PCIe and NVLink to the server board.'), 'board', pcb, 'pcb');
+  const contacts = [];
+  for (const side of [-1, 1]) {
+    box(sxm, 0, -.66, side * 6.85, 10.5, .28, 1.0, mats.plastic);
+    for (let row = 0; row < 3; row++) for (let i = 0; i < 70; i++) contacts.push({ x: -5.08 + i * .147, y: -.8, z: side * 6.85 + (row - 1) * .24, w: .08, h: .06, d: .10 });
+  }
+  instances(sxm, contacts, mats.gold);
+
+  // ---------- Package ----------
+  const serial = component('package', L('GPU 封装', 'GPU package'), L('有机基板上放着硅中介层，中介层上并排放 GPU 裸片和 HBM。这种 2.5D 封装让几千根线只走一毫米左右。', 'An organic substrate holds a silicon interposer with the GPU die and HBM side by side on it. This 2.5D package lets thousands of wires run only about a millimetre.'), 'package');
+  const substrate = new T.Group(); serial.add(substrate); layers.push({ group: substrate, factor: .9 });
+  box(substrate, 0, -.105, 0, 10.7, .32, 10.2, mats.substrate);
+  const bga = [];
+  for (let x = -4.9; x <= 4.9; x += .24) for (let z = -4.65; z <= 4.65; z += .24) if (Math.abs(x) > 4.1 || Math.abs(z) > 3.9) bga.push({ x, y: -.29, z, w: .11, h: .11, d: .11 });
+  instances(substrate, bga, mats.solder, new T.SphereGeometry(.5, 8, 6));
+  const substrateEdges = [];
+  for (const x of [-5.355, 5.355]) for (let band = 0; band < 3; band++) substrateEdges.push({ x, y: -.205 + band * .075, z: 0, w: .012, h: .009, d: 9.72 });
+  for (const z of [-5.105, 5.105]) for (let band = 0; band < 3; band++) substrateEdges.push({ x: 0, y: -.205 + band * .075, z, w: 10.15, h: .009, d: .012 });
+  instances(substrate, substrateEdges, mats.copper);
+  // Stiffener frame: nickel-plated, keeps the large substrate flat.
+  for (const z of [-4.8, 4.8]) box(substrate, 0, .2, z, 10.45, .28, .35, mats.nickel);
+  for (const x of [-5.05, 5.05]) box(substrate, x, .2, 0, .35, .28, 9.28, mats.nickel);
+  const packageCaps = [], packageEnds = [];
+  for (let x = -4.5; x <= 4.5; x += .34) for (const side of [-1, 1]) {
+    packageCaps.push({ x, y: .12, z: side * 4.45, w: .12, h: .08, d: .2 });
+    packageEnds.push({ x: x - .06, y: .12, z: side * 4.45, w: .03, h: .09, d: .21 }, { x: x + .06, y: .12, z: side * 4.45, w: .03, h: .09, d: .21 });
+  }
+  instances(substrate, packageCaps, mats.ceramic); instances(substrate, packageEnds, mats.solder);
+
+  const interposer = component('interposer', L('硅中介层', 'Silicon interposer'), L('一整块硅，表层的金属层里布着 GPU 和 HBM 之间的几千根线。装配好后这些线被芯片盖住，拆开才看得到（图中走线为示意）。', 'A single piece of silicon whose metal layers carry the thousands of wires between the GPU and HBM. Once assembled the wiring is hidden under the dies; take it apart to see it (routing shown is illustrative).'), 'package', serial, 'package');
+  layers.push({ group: interposer, factor: 1.8 });
+  box(interposer, 0, .145, 0, 9.75, .10, 8.4, mats.siliconSide);
+  box(interposer, 0, .2, 0, 9.58, .016, 8.24, mats.interposer);
+  // Microbump fields and RDL wiring live on the interposer top. Assembled, the
+  // dies and underfill cover them; exploded, they show what joins the chips.
+  const bumps = [], rdl = [];
+  for (let x = -2.5; x <= 2.5; x += .2) for (let z = -3.6; z <= 3.6; z += .2) if (Math.abs(x) > 1.9 || Math.abs(z) > 3.3 || (Math.round((x + z) * 5) % 3 === 0)) bumps.push({ x, y: .212, z, w: .05, h: .014, d: .05 });
+  for (const site of HBM_SITES) {
+    for (let x = site.x - .7; x <= site.x + .7; x += .14) for (let z = site.z - .82; z <= site.z + .82; z += .16) bumps.push({ x, y: .212, z, w: .045, h: .014, d: .045 });
+    if (!site.active) continue;
+    const dir = Math.sign(site.x), inner = site.x - dir * .55, phy = dir * 2.3;
+    for (let i = 0; i < 24; i++) {
+      const z = site.z - .78 + i * .068, zDie = site.z * .92 - .72 + i * .062;
+      rdl.push({ x: (inner + phy) / 2, y: .211, z: (z + zDie) / 2, w: Math.abs(inner - phy), h: .006, d: .018 });
+    }
+  }
+  instances(interposer, bumps, mats.solder, new T.CylinderGeometry(.5, .5, 1, 8));
+  instances(interposer, rdl, mats.rdl);
+
+  // Six HBM sites; the sixth is present on the package but not enabled.
+  const hbm = component('hbm', L(`5 组 ${specification.hbm}`, `5 × ${specification.hbm} stacks`), L(`五组启用的 HBM，共 ${specification.memory}。每组是几层 DRAM 芯片叠在一块底部接口芯片上，四周包着黑色塑封料，顶面露出硅。`, `Five active HBM stacks, ${specification.memory} in total. Each is several DRAM dies on a base interface die, wrapped in black mold compound with bare silicon on top.`), 'package', serial, 'package');
+  layers.push({ group: hbm, factor: 3.1 });
+  const inactive = component('hbm-inactive', L('第六个 HBM 位置（未启用）', 'Sixth HBM site (not enabled)'), L(`封装上有六个 HBM 位置，这款产品只启用五组。图中把第六个画成同样外形、但没有启用的块。完整的 ${specification.die} 设计支持六组。`, `The package has six HBM sites and this product enables five. The sixth is drawn with the same outline but switched off. The full ${specification.die} design supports six.`), 'package', serial, 'package');
+  layers.push({ group: inactive, factor: 3.1 });
+  const hbmBasePads = [];
+  HBM_SITES.forEach((p, i) => {
+    const parent = p.active ? hbm : inactive;
+    box(parent, p.x, .245, p.z, 1.64, .05, 1.93, mats.siliconSide);
+    // Eight molded layers whose top lands level with the GPU die, so one cold
+    // plate can sit on both (the die back is at y ≈ 0.54).
+    for (let slice = 0; slice < 8; slice++) {
+      const plate = box(parent, p.x, .29 + slice * .03, p.z, 1.56, .028, 1.84, mats.mold);
+      hbmSlices.push({ mesh: plate, y: plate.position.y, index: slice });
+    }
+    const top = box(parent, p.x, .525, p.z, 1.56, .026, 1.84, p.active ? mats.silicon : mats.siliconSide);
+    hbmSlices.push({ mesh: top, y: top.position.y, index: 8 });
+    if (p.active) {
+      const mark = text(parent, `${specification.hbm} · 16 GB`, p.x, .5395, p.z + .55, 1.1, .16, { mono: true, color: 'rgba(214,222,226,.34)' });
+      hbmSlices.push({ mesh: mark, y: mark.position.y, index: 8 });
+    }
+    for (const side of [-1, 1]) for (let contact = 0; contact < 18; contact++) hbmBasePads.push({ x: p.x + side * .80, y: .25, z: p.z - .83 + contact * .098, w: .03, h: .04, d: .04 });
+  });
+  instances(hbm, hbmBasePads, mats.solder);
+  // Underfill fillets close the gaps at the die and stack edges.
+  const fillets = [];
+  for (const p of HBM_SITES) fillets.push({ x: p.x, y: .222, z: p.z, w: 1.72, h: .03, d: 2.01 });
+  fillets.push({ x: 0, y: .222, z: 0, w: 5.42, h: .03, d: 7.77 });
+  instances(interposer, fillets, mats.underfill);
+
+  // ---------- GPU die ----------
+  const die = component('gpu-die', L(`${specification.die} GPU 裸片`, `${specification.die} GPU die`), L(`装配好时看到的是磨平的硅片背面。双击进入，看 ${specification.sm} 个启用的 SM、两半 ${specification.l2} L2 和四周的接口怎样排布。`, `Assembled, you see the ground silicon back. Double-click to go inside and see how the ${specification.sm} enabled SMs, the two halves of the ${specification.l2} L2 and the edge interfaces are laid out.`), 'die', serial, 'package');
+  layers.push({ group: die, factor: 3.1 });
+  box(die, 0, .31, 0, 5.30, .18, 7.65, mats.siliconSide);
+  box(die, 0, .405, 0, 5.24, .012, 7.59, mats.smBase);
+  const dieBumps = [];
+  for (const side of [-1, 1]) for (let pin = 0; pin < 48; pin++) dieBumps.push({ x: side * 2.52, y: .223, z: -3.48 + pin * .148, w: .043, h: .03, d: .043 });
+  instances(die, dieBumps, mats.solder, new T.SphereGeometry(.5, 6, 4));
+  const fpY = .43;
+  const l2 = component('l2', L(`${specification.l2} L2 缓存`, `${specification.l2} L2 cache`), L(`所有 SM 共用的片上缓存，分成两半，每半 ${specification.l2Half}。读写先查 L2，没命中才去 HBM。`, `On-die cache shared by every SM, split into two halves of ${specification.l2Half}. Reads and writes check L2 first and only go to HBM on a miss.`), 'die', die, 'gpu-die');
+  for (const half of floorplan.l2) {
+    box(l2, half.x, fpY, half.z, half.w, .04, half.d, mats.l2);
+    text(l2, L(`L2 · ${specification.l2Half}`, `L2 · ${specification.l2Half}`), half.x, fpY + .022, half.z, 1.1, .2, { color: 'rgba(28,24,14,.72)', weight: 600 });
+  }
+  box(l2, 0, fpY - .004, 0, .07, .03, .78, mats.trace);
+  const mc = component('memory-controller', L('存储控制器与 HBM PHY', 'Memory controllers and HBM PHY'), L(`沿两条长边排开，正对着旁边的 HBM。${ampere ? 'A100' : 'H100'} 启用 10 个 512 位控制器，每组 HBM 对应两个。`, `Along the two long edges, facing the HBM stacks. ${ampere ? 'A100' : 'H100'} enables ten 512-bit controllers, two per stack.`), 'die', die, 'gpu-die');
+  for (const m of floorplan.memoryControllers) {
+    box(mc, m.x, fpY, m.z, m.w, .04, m.d, m.active ? mats.memoryController : mats.inactiveSM);
+    if (m.active) text(mc, 'HBM PHY', m.x, fpY + .022, m.z, .9, .17, { rotate: Math.sign(m.x) * Math.PI / 2, color: 'rgba(16,20,26,.62)', weight: 600 });
+  }
+  const host = component('pcie', L(`${specification.pcie} 主机接口与 GigaThread 引擎`, `${specification.pcie} host interface and GigaThread engine`), L('主机通过 PCIe 把命令和数据送进来，GigaThread 引擎把线程块分配到各个 SM。', 'The host sends commands and data over PCIe; the GigaThread engine hands thread blocks out to the SMs.'), 'die', die, 'gpu-die');
+  box(host, floorplan.host.x, fpY, floorplan.host.z, floorplan.host.w, .04, floorplan.host.d, mats.io);
+  text(host, L(`${specification.pcie} · GigaThread 引擎`, `${specification.pcie} · GigaThread engine`), 0, fpY + .022, floorplan.host.z, 3.0, .17, { color: 'rgba(14,18,22,.66)', weight: 600 });
+  const link = component('nvlink', L(`${specification.nvlink}（${specification.links} 条链路）`, `${specification.nvlink} (${specification.links} links)`), L(`GPU 之间直接互连的高速链路，经 SXM 连接器接到其他 GPU。${specification.name} 有 ${specification.links} 条。`, `High-speed links that connect GPUs directly, through the SXM connector. ${specification.name} has ${specification.links}.`), 'die', die, 'gpu-die');
+  box(link, floorplan.nvlink.x, fpY, floorplan.nvlink.z, floorplan.nvlink.w, .04, floorplan.nvlink.d, mats.io);
+  text(link, L(`${specification.nvlink} · ${specification.links} 条链路`, `${specification.nvlink} · ${specification.links} links`), 0, fpY + .022, floorplan.nvlink.z, 3.0, .17, { color: 'rgba(14,18,22,.66)', weight: 600 });
+  const sm = component('sm', L(`${specification.sm} 个启用的 SM`, `${specification.sm} enabled SMs`), L(`每两个 SM 组成一个 TPC，九个（A100 是八个）TPC 组成一个 GPC。暗色的是没启用的 TPC，位置每颗芯片不同。双击进入一个 SM。`, `Two SMs make a TPC and ${ampere ? 'eight' : 'nine'} TPCs make a GPC. Dark cells are disabled TPCs; which ones varies from chip to chip. Double-click to go inside one SM.`), 'die', die, 'gpu-die');
+  const smCells = [], disabledCells = [], smPartitions = [], smL1 = [], gpcFrames = [];
+  for (const gpc of floorplan.gpcs) {
+    gpcFrames.push({ x: gpc.x, y: fpY - .01, z: gpc.z, w: gpc.w, h: .02, d: gpc.d });
+    const nearL2 = gpc.z < 0 ? gpc.z + gpc.d / 2 : gpc.z - gpc.d / 2;
+    text(sm, `GPC ${gpc.index}`, gpc.x, fpY + .006, gpc.z < 0 ? gpc.z - gpc.d / 2 - .06 : gpc.z + gpc.d / 2 + .06, .62, .1, { color: 'rgba(200,210,204,.6)', weight: 600 });
+    for (const tpc of gpc.tpcs) for (const cell of tpc.sms) {
+      const item = { x: cell.x, y: fpY + .012, z: cell.z, w: .4, h: .03, d: gpc.pitch * .8 };
+      if (!tpc.active) { disabledCells.push(item); continue; }
+      smCells.push(item);
+      for (const dx of [-.1, .1]) for (const dz of [-.05, .03]) smPartitions.push({ x: cell.x + dx, y: fpY + .03, z: cell.z + dz * (gpc.pitch / .31), w: .16, h: .008, d: gpc.pitch * .22 });
+      smL1.push({ x: cell.x, y: fpY + .03, z: cell.z + Math.sign(nearL2 - cell.z) * gpc.pitch * .3, w: .34, h: .01, d: gpc.pitch * .12 });
+    }
+  }
+  instances(sm, gpcFrames, mats.partition);
+  instances(sm, smCells, mats.activeSM); instances(sm, disabledCells, mats.inactiveSM);
+  instances(sm, smPartitions, mats.scheduler); instances(sm, smL1, mats.smem);
+  const siliconCover = new T.Mesh(unitBox, new T.MeshPhysicalMaterial({ color: 0x5a636b, map: textures.silicon, roughness: .18, metalness: .72, clearcoat: .4, clearcoatRoughness: .12 }));
+  siliconCover.position.set(0, .486, 0); siliconCover.scale.set(5.255, .105, 7.605); siliconCover.castShadow = true; siliconCover.receiveShadow = true; die.add(siliconCover);
+
+  // ---------- SM (functional organization after GH100 Fig. 4 / GA100 Fig. 5) ----------
+  const smRoot = new T.Group(); smRoot.visible = false; root.add(smRoot);
+  const smAssembly = component('sm-detail', L('SM 功能框图', 'SM block diagram'), L('四个子分区各有调度器、寄存器和运算单元，共用下方的 L1 数据缓存 / 共享内存。', 'Four partitions, each with its own scheduler, registers and execution units, share the L1 data cache / shared memory below.'), 'sm', smRoot, 'sm');
+  box(smAssembly, 0, -.08, 0, 10.9, .28, 8.6, mats.siliconSide);
+  box(smAssembly, 0, .07, 0, 10.6, .025, 8.3, mats.smBase);
+  const registerGroup = component('registers', L('寄存器文件', 'Register file'), L('每个子分区的寄存器文件存放线程的操作数和累加器。', 'Each partition’s register file holds thread operands and accumulators.'), 'sm', smAssembly, 'sm-detail');
+  const scheduler = component('warp', L('Warp 调度器', 'Warp scheduler'), L('每个子分区一个，从就绪的 warp 里挑指令发出。它在控制路径上，数据不经过它。', 'One per partition; it picks instructions from ready warps. It sits on the control path, and data doesn’t pass through it.'), 'sm', smAssembly, 'sm-detail');
+  const dispatch = component('dispatch', L('指令派发', 'Dispatch unit'), L('把调度器选中的指令送到运算单元。', 'Sends the chosen instruction to the execution units.'), 'sm', smAssembly, 'sm-detail');
+  const tensor = component('tensor', L('Tensor Core', 'Tensor Core'), ampere ? L('矩阵乘加单元。线程一起提供矩阵片段，操作数和累加器怎样分布由具体指令决定。', 'Matrix multiply-add unit. Threads supply matrix fragments together; how operands and accumulators are spread depends on the instruction.') : L('矩阵乘加单元。Hopper 的 wgmma 指令可以直接从共享内存取操作数。', 'Matrix multiply-add unit. Hopper’s wgmma instructions can read operands straight from shared memory.'), 'sm', smAssembly, 'sm-detail');
+  const lsu = component('lsu', L('载入 / 存储单元', 'Load/store units'), L('执行读写请求，连接寄存器和 L1 / 共享内存。', 'Carry out loads and stores between registers and L1 / shared memory.'), 'sm', smAssembly, 'sm-detail');
+  const smem = component('smem', L('L1 数据缓存 / 共享内存', 'L1 data cache / shared memory'), L(`四个子分区共用的 ${ampere ? '192' : '256'} KB，其中最多 ${ampere ? '164' : '228'} KB 可作共享内存，分 32 banks。`, `${ampere ? '192' : '256'} KB shared by the four partitions, up to ${ampere ? '164' : '228'} KB of it usable as shared memory, in 32 banks.`), 'sm', smAssembly, 'sm-detail');
+  const instruction = component('instruction-cache', L('L1 指令缓存', 'L1 instruction cache'), L('SM 内共用的指令缓存。', 'The SM’s shared instruction cache.'), 'sm', smAssembly, 'sm-detail');
+  const l0Instruction = component('l0-instruction-cache', L('L0 指令缓存', 'L0 instruction cache'), L('每个子分区自己的指令缓存。', 'Each partition’s own instruction cache.'), 'sm', smAssembly, 'sm-detail');
+  const smBus = component('sm-bus', L('SM 内部互连', 'SM internal interconnect'), L('连接运算单元、LD/ST 和 L1 / 共享内存的数据通路（按功能画出）。', 'The data path joining execution units, LD/ST and L1 / shared memory (drawn by function).'), 'sm', smAssembly, 'sm-detail');
+  const fp32Group = component('fp32', L('FP32 运算通道', 'FP32 lanes'), L('执行逐线程的 FP32 指令。', 'Run per-thread FP32 instructions.'), 'sm', smAssembly, 'sm-detail');
+  const fp64Group = component('fp64', L('FP64 运算通道', 'FP64 lanes'), L('执行逐线程的双精度指令。', 'Run per-thread double-precision instructions.'), 'sm', smAssembly, 'sm-detail');
+  const int32Group = component('int32', L('INT32 运算通道', 'INT32 lanes'), L('执行逐线程的整数指令。', 'Run per-thread integer instructions.'), 'sm', smAssembly, 'sm-detail');
+  const sfuGroup = component('sfu', L('特殊函数单元', 'Special function units'), L('做超越函数近似。', 'Approximate transcendental functions.'), 'sm', smAssembly, 'sm-detail');
+  const textureGroup = component('texture', L('纹理单元', 'Texture units'), L('纹理采样与过滤。', 'Texture sampling and filtering.'), 'sm', smAssembly, 'sm-detail');
+  const fp32 = [], fp64 = [], int32 = [], sfuCells = [], registers = [], lsuCells = [], laneContacts = [], registerWordlines = [], tensorArrays = [], tensorBus = [];
+  const partitionOrigins = [{ x: -2.65, z: -1.72 }, { x: 2.65, z: -1.72 }, { x: -2.65, z: 1.08 }, { x: 2.65, z: 1.08 }];
+  const ink = 'rgba(244,246,240,.9)', darkInk = 'rgba(18,22,24,.78)';
+  box(instruction, 0, .23, -3.65, 10.15, .12, .40, mats.instruction);
+  text(instruction, L('L1 指令缓存', 'L1 instruction cache'), 0, .292, -3.65, 4.2, .26, { color: darkInk, weight: 600 });
+  for (let partition = 0; partition < 4; partition++) {
+    const { x, z } = partitionOrigins[partition];
+    box(smAssembly, x, .13, z, 4.95, .08, 2.62, mats.partition);
+    box(l0Instruction, x, .225, z - 1.10, 4.65, .07, .15, mats.instruction).userData.unitCount = 1;
+    box(scheduler, x, .255, z - .87, 4.65, .14, .32, mats.scheduler).userData.unitCount = 1;
+    text(scheduler, L(`子分区 ${partition} · Warp 调度器`, `Partition ${partition} · Warp scheduler`), x, .327, z - .87, 3.4, .22, { color: darkInk, weight: 600 });
+    box(dispatch, x, .25, z - .64, 4.65, .10, .13, mats.dispatch).userData.unitCount = 1;
+    for (let row = 0; row < 2; row++) for (let bank = 0; bank < 16; bank++) {
+      const bx = x - 2.14 + bank * .285, bz = z - .43 + row * .16;
+      registers.push({ x: bx, y: .25, z: bz, w: .22, h: .10, d: .105 });
+      registerWordlines.push({ x: bx, y: .303, z: bz, w: .16, h: .006, d: .016 });
+    }
+    text(registerGroup, L('寄存器文件 · 64 KB', 'Register file · 64 KB'), x, .304, z - .11, 2.4, .17, { color: 'rgba(214,208,232,.85)', weight: 600 });
+    for (let row = 0; row < (ampere ? 2 : 4); row++) for (let lane = 0; lane < 8; lane++) {
+      const lx = x - 1.52 + lane * .31, lz = z + .10 + row * .19;
+      fp32.push({ x: lx, y: .24, z: lz, w: .23, h: .13, d: .14 });
+      laneContacts.push({ x: lx - .092, y: .307, z: lz, w: .022, h: .006, d: .1 }, { x: lx + .092, y: .307, z: lz, w: .022, h: .006, d: .1 });
+    }
+    for (let row = 0; row < 4; row++) for (let lane = 0; lane < 4; lane++) int32.push({ x: x - 2.19 + lane * .10, y: .24, z: z + .10 + row * .19, w: .075, h: .13, d: .14 });
+    for (let row = 0; row < (ampere ? 2 : 4); row++) for (let lane = 0; lane < 4; lane++) fp64.push({ x: x + .86 + lane * .10, y: .24, z: z + .10 + row * .19, w: .075, h: .13, d: .14 });
+    box(fp32Group, x - .435, .32, z + .835, 2.40, .02, .16, mats.partition);
+    text(fp32Group, `FP32 ×${ampere ? 16 : 32}`, x - .435, .332, z + .835, 1.2, .13, { color: 'rgba(170,214,176,.95)', weight: 600 });
+    box(int32Group, x - 2.04, .32, z + .835, .43, .02, .16, mats.partition);
+    text(int32Group, 'INT32', x - 2.04, .332, z + .835, .4, .12, { color: 'rgba(150,212,206,.95)', weight: 600 });
+    box(fp64Group, x + 1.01, .32, z + .835, .44, .02, .16, mats.partition);
+    text(fp64Group, 'FP64', x + 1.01, .332, z + .835, .4, .12, { color: 'rgba(156,196,232,.95)', weight: 600 });
+    box(tensor, x + 1.80, .27, z + .39, .98, .22, .93, mats.tensor).userData.unitCount = 1;
+    for (let row = 0; row < 4; row++) for (let col = 0; col < 4; col++) tensorArrays.push({ x: x + 1.48 + col * .21, y: .385, z: z + .08 + row * .20, w: .15, h: .012, d: .14 });
+    tensorBus.push({ x: x + 1.80, y: .39, z: z + .39, w: .84, h: .008, d: .03 }, { x: x + 1.80, y: .39, z: z + .39, w: .03, h: .008, d: .80 });
+    text(tensor, 'Tensor Core', x + 1.80, .396, z + .80, .86, .12, { color: darkInk, weight: 600 });
+    for (let lane = 0; lane < 8; lane++) lsuCells.push({ x: x - 2.10 + lane * .47, y: .25, z: z + 1.02, w: .37, h: .12, d: .17 });
+    for (let unit = 0; unit < 4; unit++) sfuCells.push({ x: x + 1.77 + unit * .14, y: .25, z: z + 1.02, w: .11, h: .12, d: .17 });
+    box(smBus, x * .5, .18, z + 1.18, Math.abs(x), .03, .045, mats.trace, false);
+  }
+  instances(registerGroup, registers, mats.register);
+  instances(registerGroup, registerWordlines, mats.darkMetal);
+  const countedInstances = (parent, id, cells, material) => { const mesh = instances(parent, cells, material); mesh.name = 'execution-lanes:' + id; mesh.userData.resourceId = id; mesh.userData.unitCount = cells.length; return mesh; };
+  countedInstances(fp32Group, 'fp32', fp32, mats.activeSM); countedInstances(fp64Group, 'fp64', fp64, mats.fp64);
+  countedInstances(int32Group, 'int32', int32, mats.int32); countedInstances(sfuGroup, 'sfu', sfuCells, mats.sfu); countedInstances(lsu, 'lsu', lsuCells, mats.lsu);
+  instances(fp32Group, laneContacts, mats.trace); instances(tensor, tensorArrays, mats.darkMetal); instances(tensor, tensorBus, mats.copper);
+  box(smBus, 0, .18, .50, .065, .03, 3.75, mats.trace, false);
+  box(smBus, 0, .18, 2.40, 10.1, .03, .07, mats.trace, false);
+  const tma = ampere ? null : component('tma', L('张量内存加速器（TMA）', 'Tensor Memory Accelerator (TMA)'), L('在显存和共享内存之间异步搬运整块张量。', 'Moves whole tensors between global and shared memory asynchronously.'), 'sm', smAssembly, 'sm-detail');
+  if (tma) { box(tma, 0, .24, 2.65, 10.05, .10, .28, mats.tma); text(tma, L('张量内存加速器（TMA）', 'Tensor Memory Accelerator (TMA)'), 0, .292, 2.65, 4.4, .2, { color: darkInk, weight: 600 }); }
+  box(smem, 0, .25, 3.20, 10.09, .25, .66, mats.smem);
+  const sharedBanks = []; for (let bank = 0; bank < 32; bank++) sharedBanks.push({ x: -4.79 + bank * .309, y: .378, z: 3.20, w: .22, h: .008, d: .42 });
+  instances(smem, sharedBanks, mats.darkMetal);
+  box(smem, 0, .36, 3.63, 9.86, .12, .30, mats.smem);
+  text(smem, L(`${ampere ? '192' : '256'} KB · L1 数据缓存 / 共享内存`, `${ampere ? '192' : '256'} KB · L1 data cache / shared memory`), 0, .422, 3.63, 6.2, .22, { color: ink, weight: 600 });
+  for (let unit = 0; unit < 4; unit++) { const x = -3.84 + unit * 2.56; box(textureGroup, x, .21, 3.86, 2.32, .10, .24, mats.texture).userData.unitCount = 1; text(textureGroup, L('纹理', 'Texture'), x, .262, 3.86, .9, .15, { color: darkInk, weight: 600 }); }
+  text(smAssembly, L(`${specification.name} · 一个 SM 的功能框图`, `${specification.name} · one SM, block diagram`), 0, .085, -4.06, 4.6, .2, { color: 'rgba(200,210,206,.6)' });
+
+  const hbmDetail = createHBMDetail(T, model, labels), powerDetail = createPowerDetail(T, model, labels), interconnectDetail = createInterconnectDetail(T, model, labels);
+  const hbmRoot = hbmDetail.root, powerRoot = powerDetail.root, interconnectRoot = interconnectDetail.root;
+  root.add(hbmRoot, powerRoot, interconnectRoot);
+  Object.assign(components, hbmDetail.components, powerDetail.components, interconnectDetail.components);
+  const smResourceLegend = getSMResourceLegend(model);
+  for (const entry of smResourceLegend) if (components[entry.id]) Object.assign(components[entry.id], entry);
+  const lessonSM = floorplan.lessonSM;
+  const anchors = {
+    pcb: new T.Vector3(-6.5, .25, 6.1), package: new T.Vector3(-4.7, .3, 4.7), interposer: new T.Vector3(4.8, .35, 3.6),
+    hbm: new T.Vector3(-3.75, .9, -2.6), 'hbm-inactive': new T.Vector3(3.75, .9, 2.6), 'gpu-die': new T.Vector3(0, .8, 0), l2: new T.Vector3(-1.04, .6, 0),
+    power: new T.Vector3(6.55, .5, -3), sxm: new T.Vector3(0, -.65, 6.85), sm: new T.Vector3(lessonSM.x, .6, lessonSM.z),
+    'memory-controller': new T.Vector3(-2.38, .6, -2.6), pcie: new T.Vector3(0, .6, -3.58), nvlink: new T.Vector3(0, .6, 3.58),
+    'a-tile': new T.Vector3(-3.75, .9, -2.6), 'b-tile': new T.Vector3(-3.75, .9, 0), 'c-out': new T.Vector3(3.75, .9, 0),
+    warp: new T.Vector3(-2.65, .5, -2.59), smem: new T.Vector3(0, .6, 3.20), tensor: new T.Vector3(-.85, .5, -1.33), registers: new T.Vector3(-2.65, .5, -2.03), lsu: new T.Vector3(-2.65, .4, -.70), tma: new T.Vector3(0, .4, 2.65),
+    fp32: new T.Vector3(-3.085, .45, -1.33), fp64: new T.Vector3(-1.64, .45, -1.33), int32: new T.Vector3(-4.69, .45, -1.33), sfu: new T.Vector3(-.67, .45, -.70), texture: new T.Vector3(0, .35, 3.86), 'l0-instruction-cache': new T.Vector3(-2.65, .35, -2.82),
+    ...hbmDetail.anchors, ...powerDetail.anchors, ...interconnectDetail.anchors
   };
   function setExplode(t) {
-    t=Math.max(0,Math.min(1,Number(t)||0));
-    for(const layer of layers) layer.group.position.y=t*layer.factor;
-    for(const slice of hbmSlices) slice.mesh.position.y=slice.y+slice.index*t*.12;
-    hbmDetail.setExplode(t);powerDetail.setExplode(t);interconnectDetail.setExplode(t);
+    t = Math.max(0, Math.min(1, Number(t) || 0));
+    for (const layer of layers) layer.group.position.y = t * layer.factor;
+    for (const slice of hbmSlices) slice.mesh.position.y = slice.y + slice.index * t * .12;
+    hbmDetail.setExplode(t); powerDetail.setExplode(t); interconnectDetail.setExplode(t);
   }
-  function setLevel(level){
-    siliconCover.visible=level==='board'||level==='package';
-    pcb.visible=level==='board';serial.visible=['board','package','die'].includes(level);smRoot.visible=level==='sm';
-    hbmRoot.visible=level==='hbm';powerRoot.visible=level==='power';interconnectRoot.visible=level==='interconnect';
+  function setLevel(level) {
+    siliconCover.visible = level === 'board' || level === 'package';
+    pcb.visible = level === 'board'; serial.visible = ['board', 'package', 'die'].includes(level); smRoot.visible = level === 'sm';
+    hbmRoot.visible = level === 'hbm'; powerRoot.visible = level === 'power'; interconnectRoot.visible = level === 'interconnect';
   }
   return { root, components, layers, smRoot, pcb, serial, hbmRoot, hbmDetail, powerRoot, powerDetail, interconnectRoot, interconnectDetail,
-    siliconCover, siliconCoverMaterial:siliconCover.material, anchors, specification, materials:mats, partitionOrigins,smResourceLegend, setExplode, setLevel, surfaceText };
-}
-
-// Surface-aligned teaching routes. These express memory hierarchy and functional
-// connectivity; public architecture diagrams do not reveal metal-mask routing.
-export function teachingRouteSpecs(level, stepIndex, model='h100') {
-  const routes=[];
-  const add=(id,host,stages,points,phase=0,kind='data')=>routes.push({id,host,stages,points,phase,kind});
-  const load=stepIndex===3||stepIndex===6,store=stepIndex===7;
-  if(!['board','package','die','sm'].includes(level))return routes;
-  if(level!=='sm'){
-    if(load){
-      for(const [i,z]of [[0,-2.529],[1,.072]]){
-        add('hbm-input-'+i,'interposer',['HBM','memory-controller'],[[-3.75,.226,z],[-2.57,.226,z]],i*.08);
-        add('cache-to-sm-'+i,'gpu-die',['memory-controller','L2','SM'],[[-2.57,.507,z],[-.18,.507,z],[-.18,.507,-1.05],[-1.5,.507,-1.05]],.18+i*.08);
-      }
-    }else if(store){
-      add('sm-to-l2','gpu-die',['SM','L2','memory-controller'],[[-1.5,.507,-1.05],[-.18,.507,-1.05],[-.18,.507,.072],[2.57,.507,.072]]);
-      add('hbm-writeback','interposer',['memory-controller','HBM'],[[2.57,.226,.072],[3.75,.226,.072]],.22);
-    }
-    return routes;
-  }
-  const shared=[-4.90,.439,3.20],lsu=[-4.72,.439,-.70],reg=[-4.72,.439,-2.03],tensor=[-.85,.439,-1.33];
-  if(load){
-    add('global-to-shared','sm-detail',model==='a100'?['L2/interconnect','async-copy','Shared Memory']:['L2/interconnect','TMA','Shared Memory'],[[5.16,.439,2.65],[0,.439,2.65],[0,.439,3.20],shared],0);
-  }
-  if(stepIndex===4||stepIndex===6){
-    add('shared-to-load-store','sm-detail',['Shared Memory','LD/ST'],[shared,[-5.10,.439,3.20],[-5.10,.439,-.70],lsu],stepIndex===6?.20:0);
-    add('load-store-to-register','sm-detail',['LD/ST','Register File'],[lsu,[-5.10,.439,-.70],[-5.10,.439,-2.03],reg],.22);
-    add('issue-instruction','sm-detail',['Warp Scheduler','Dispatch'],[[-2.65,.34,-2.59],[-2.65,.34,-2.36]],.05,'control');
-  }
-  if(stepIndex===5||stepIndex===6){
-    add('register-to-mma','sm-detail',['Register File','Tensor Core'],[reg,[-5.10,.439,-2.03],[-5.10,.439,-1.33],tensor],stepIndex===6?.42:0);
-    add('mma-accumulator','sm-detail',['Tensor Core','Accumulator registers'],[tensor,[.0,.439,-1.33],[.0,.439,-2.03],[-.5,.439,-2.03]],.28);
-  }
-  if(store)add('store-output','sm-detail',['Accumulator registers','LD/ST','L2/interconnect'],[reg,[-5.10,.439,-2.03],[-5.10,.439,-.70],lsu,[-4.72,.439,2.40],[5.16,.439,2.40]]);
-  return routes;
+    siliconCover, siliconCoverMaterial: siliconCover.material, anchors, specification, materials: mats, partitionOrigins, smResourceLegend,
+    floorplan, hbmSites: HBM_SITES, labels, setLanguage: lang => labels.setLanguage(lang), setExplode, setLevel };
 }
 
 export function sampleSignalPath(points, fraction) {
-  if(!points.length)return[0,0,0];
-  const segments=[];let length=0;
-  for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i],d=Math.hypot(...b.map((v,k)=>v-a[k]));segments.push(d);length+=d;}
-  if(!length)return points[0].slice();
-  let position=Math.max(0,Math.min(1,Number(fraction)||0))*length;
-  for(let i=0;i<segments.length;i++){
-    if(position<=segments[i]||i===segments.length-1){const t=segments[i]?position/segments[i]:0;return points[i].map((v,k)=>v+(points[i+1][k]-v)*t);}
-    position-=segments[i];
+  if (!points.length) return [0, 0, 0];
+  const segments = []; let length = 0;
+  for (let i = 1; i < points.length; i++) { const a = points[i - 1], b = points[i], d = Math.hypot(...b.map((v, k) => v - a[k])); segments.push(d); length += d; }
+  if (!length) return points[0].slice();
+  let position = Math.max(0, Math.min(1, Number(fraction) || 0)) * length;
+  for (let i = 0; i < segments.length; i++) {
+    if (position <= segments[i] || i === segments.length - 1) { const t = segments[i] ? position / segments[i] : 0; return points[i].map((v, k) => v + (points[i + 1][k] - v) * t); }
+    position -= segments[i];
   }
-  return points[points.length-1].slice();
+  return points[points.length - 1].slice();
 }

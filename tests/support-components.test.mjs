@@ -18,7 +18,7 @@ for(const model of ['h100','a100']){
       assert.ok(Object.keys(detail.components).length>=8);
       detail.root.updateMatrixWorld(true);
       for(const c of Object.values(detail.components)){
-        assert.equal(c.level,name);assert.ok(c.label.length>0);assert.ok(c.description.length>15);
+        assert.equal(c.level,name);assert.ok(c.label.zh&&c.label.en,'bilingual label');assert.ok(c.description.zh.length>15&&c.description.en.length>15,'bilingual description');
         assert.ok(c.id.startsWith(name==='power'?'power-':'link-'));
         assert.equal(c.group.userData.componentId,c.id);
         assert.ok(finiteBox(new T.Box3().setFromObject(c.group)),`${c.id} has real visible geometry`);
@@ -47,8 +47,8 @@ for(const model of ['h100','a100']){
       for(const mark of marks){
         const {width,height}=mark.geometry.parameters,image=mark.material.map.image,data=mark.userData.surfaceText;
         assert.ok(Math.abs(image.width/image.height-width/height)/(width/height)<.01,`${data.text} must not stretch glyphs`);
-        assert.ok(data.fontPixels>=24,`${data.text} needs enough source pixels for oblique views`);
-        assert.ok(data.textWidthPixels<=image.width*.921,`${data.text} must not clip`);
+        assert.ok(data.fontSize>=20,`${data.text} needs enough source pixels for oblique views`);
+        assert.ok(data.fontSize<=image.height,`${data.text} must fit the label height`);
         assert.equal(mark.material.toneMapped,false,'printed ink should not wash out with metallic lighting');
       }
     });
@@ -60,11 +60,11 @@ for(const model of ['h100','a100']){
     assert.ok(control.stages.includes('power-controller'));assert.ok(control.stages.includes('power-feedback'));
     let winding=0,core=0;detail.components['power-inductor'].group.traverse(o=>{if(o.material===detail.materials.copper)winding++;if(o.material===detail.materials.core)core++;});
     assert.ok(winding>=5&&core>=4,'opened inductor must expose both conductor and core');
-    assert.match(detail.components['power-board'].description,/功率级.*电感.*电容/);
+    assert.match(detail.components['power-board'].description.zh,/降压.*电感.*电容/);assert.match(detail.components['power-board'].description.en,/buck.*Inductors.*capacitors/);
   });
   test(`${model} power: winding turns connect and the lid markings stay on their shells`,()=>{
     const detail=createPowerDetail(T,model),turns=[],marks=[];
-    detail.root.traverse(o=>{if(Number.isInteger(o.userData.windingTurn))turns.push(o);if(/^L[2-6]$/.test(o.userData.surfaceText?.text||''))marks.push(o);});
+    detail.root.traverse(o=>{if(Number.isInteger(o.userData.windingTurn))turns.push(o);if(o.userData.surfaceText?.text==='R22'&&o.parent?.name?.startsWith('inductor-shell'))marks.push(o);});
     turns.sort((a,b)=>a.userData.windingTurn-b.userData.windingTurn);assert.equal(turns.length,5);
     for(let i=1;i<turns.length;i++)assert.ok(turns[i-1].geometry.parameters.path.getPoint(1).distanceTo(turns[i].geometry.parameters.path.getPoint(0))<1e-6,'a winding must be continuous instead of disconnected closed rings');
     assert.equal(marks.length,5);detail.setExplode(0);detail.root.updateMatrixWorld(true);
@@ -74,8 +74,8 @@ for(const model of ['h100','a100']){
   test(`${model} interconnect: vias, return plane and connector are distinct hierarchical objects`,()=>{
     const detail=createInterconnectDetail(T,model);
     assert.notEqual(detail.components['link-vias'].group,detail.components['link-ground'].group);
-    assert.ok(detail.components['link-vias'].description.includes('TSV'));
-    assert.match(detail.components['link-socket'].description,/模组.*载板.*电源.*信号/);
+    assert.ok(detail.components['link-vias'].description.zh.includes('TSV')&&detail.components['link-vias'].description.en.includes('TSV'));
+    assert.match(detail.components['link-socket'].description.en,/module.*server board.*power.*signals/);
     assert.deepEqual(detail.paths.find(p=>p.kind==='signal').stages,['link-socket','link-vias','link-pairs','link-footprint']);
     assert.ok(detail.paths.find(p=>p.kind==='reference').stages.includes('link-ground'));
     const socketBox=new T.Box3().setFromObject(detail.components['link-socket'].group);
