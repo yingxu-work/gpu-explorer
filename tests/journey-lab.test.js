@@ -63,40 +63,129 @@ test('RGB interpolation preserves barycentric normalization and primary contribu
   assert.deepStrictEqual(L.barycentricColor([.2,.5,.3],[[1,0,0],[0,1,0],[0,0,1]]),[.2,.5,.3]);
   assert.deepStrictEqual(L.barycentricColor([0,1,0],[[1,0,0],[0,1,0],[0,0,1]]),[0,1,0]);
 });
-test('every non-GEMM step has three stages in both languages', function () {
-  assert.deepStrictEqual(Object.keys(L.SPECS), ['pagetable','pixel','stacking']);
-  Object.keys(L.SPECS).forEach(function (journey) {
-    assert.strictEqual(L.SPECS[journey].length, 8);
-    L.SPECS[journey].forEach(function (spec, i) {
-      ['zh', 'en'].forEach(function (lang) {
-        var stages = Array.isArray(spec.stages) ? spec.stages.map(function (s) { return typeof s === 'string' ? s : s[lang]; }) : spec.stages[lang].split(' · ');
-        assert.strictEqual(stages.length, 3, journey + ' ' + i + ' ' + lang);
-        if (lang === 'en') stages.forEach(function (s) { assert.ok(!/[㐀-鿿]/.test(s), 'English stage has no Chinese: ' + s); });
-      });
+var JOURNEYS = ['gemm', 'pagetable', 'pixel', 'stacking'];
+var CJK = /[　-〿㐀-鿿＀-￯]/;
+function text(html) { return html.replace(/<style[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' '); }
+function pick(v, lang) { return v && typeof v === 'object' ? v[lang] : v; }
+
+test('every step of every walkthrough draws a figure in both languages', function () {
+  JOURNEYS.forEach(function (journey) {
+    for (var step = 0; step < 8; step++) ['h100', 'a100'].forEach(function (model) {
+      var zh = L.markup(journey, step, model, 'zh'), en = L.markup(journey, step, model, 'en');
+      assert.ok(zh.length > 200 && en.length > 200, journey + ' ' + step);
+      assert.notStrictEqual(zh, en, journey + ' ' + step + ' is translated');
+      assert.ok(!CJK.test(en), journey + ' ' + step + ' English figure has Chinese text: ' + (en.match(CJK) || [''])[0]);
+      assert.ok(/[一-鿿]/.test(text(zh)), journey + ' ' + step + ' Chinese figure has Chinese text');
+      assert.ok(!/[!！]/.test(text(zh) + text(en)), journey + ' ' + step + ' has no exclamation marks');
+      assert.ok(!/undefined|NaN|\[object/.test(zh + en), journey + ' ' + step + ' has no leaked value');
     });
   });
 });
-Object.keys(L.SPECS).forEach(function (journey) {
-  L.SPECS[journey].forEach(function (spec, step) {
-    test(journey + ' step ' + (step + 1) + ': illustration loops on its own clock and freezes at equal phase', function () {
-      var first = L.visualState(journey, step, .17, 1), later = L.visualState(journey, step, .67, 1);
-      assert.ok(first.particles.length > 0, 'each step draws a moving signal');
-      assert.notDeepStrictEqual(first.particles, later.particles, 'signals keep moving after the result is complete');
-      assert.deepStrictEqual(L.visualState(journey, step, .17, 1), first, 'same phase is an exact freeze');
-      assert.deepStrictEqual(L.visualState(journey, step, 3.17, 1).particles, first.particles, 'the loop repeats every cycle');
-      first.particles.concat(later.particles).forEach(function (p) {
-        assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
-        assert.ok(p.x >= 0 && p.x <= 340 && p.y >= 0 && p.y <= 160, 'signal stays inside the figure');
-      });
-      assert.notStrictEqual(first.signal, later.signal, 'the status line follows the signal');
+test('figure text is at least 11px and uses no gradients or glow', function () {
+  var sizes = (L.STYLE.match(/font(?:-size)?:\s*(\d+)px/g) || []).map(function (m) { return Number(m.match(/(\d+)px/)[1]); });
+  assert.ok(sizes.length > 5);
+  sizes.forEach(function (px) { assert.ok(px >= 11, px + 'px text'); });
+  JOURNEYS.forEach(function (journey) {
+    for (var step = 0; step < 8; step++) (L.markup(journey, step, 'h100', 'en').match(/font-size="(\d+(?:\.\d+)?)"/g) || []).forEach(function (m) {
+      assert.ok(Number(m.match(/"([\d.]+)"/)[1]) >= 11, journey + ' ' + step + ' ' + m);
     });
   });
+  assert.ok(!/gradient|box-shadow|text-shadow|letter-spacing|uppercase/.test(L.STYLE));
 });
-test('translation walk visits L1 TLB, shared TLB, then the directories in order', function () {
-  var at = function (step, phase) { return L.visualState('pagetable', step, phase, 1).particles[0]; };
-  assert.deepStrictEqual(at(1, 0), { x: 34, y: 26 });
-  assert.deepStrictEqual(at(1, .999).x > 100, true);
-  assert.deepStrictEqual(at(2, .999).x > 230, true);
-  assert.ok(at(4, .999).x > 300, 'lower walk ends at the 2 MiB page');
+test('the figure only moves with step progress: there is no looping animation', function () {
+  assert.strictEqual(L.setVisualPhase, undefined);
+  assert.strictEqual(L.visualState, undefined);
+  assert.ok(!/@keyframes|animation:/.test(L.STYLE));
+});
+test('the same example stays on screen for all eight matrix steps', function () {
+  for (var step = 0; step < 8; step++) {
+    var html = L.markup('gemm', step, 'h100', 'en');
+    assert.ok(html.indexOf('C[3,7]') >= 0, 'step ' + step + ' names the target');
+    assert.strictEqual((html.match(/data-lab-p="/g) || []).length, 8, 'step ' + step + ' keeps all eight products');
+    assert.strictEqual(html.indexOf('data-lab-acc') >= 0, step >= 5, 'the accumulator appears once the Tensor Core runs');
+    assert.strictEqual(/Round 1/.test(html), step >= 2, 'rounds are named from the step that introduces them');
+    assert.strictEqual((html.match(/data-lab-round="/g) || []).length, step >= 2 ? 2 : 1, 'step ' + step + ': the location sits under the numbers');
+    var active = L.activeRound(step);
+    assert.strictEqual((html.match(/class="lab-at lab-active"/g) || []).length, active >= 0 ? 1 : 0, 'step ' + step + ': one round outlined when the step works on it');
+    if (active >= 0) assert.ok(new RegExp('lab-at lab-active" data-lab-round="' + active + '"').test(html), 'step ' + step + ': the outlined round is the one the step works on');
+  }
+  assert.ok(L.markup('gemm', 7, 'h100', 'en').indexOf('37') >= 0);
+});
+test('each round of four pairs is somewhere definite at every matrix step', function () {
+  var en = function (step) { return L.roundStatus(step).map(function (s) { return s.en; }); };
+  assert.deepStrictEqual(en(0), en(2));
+  assert.deepStrictEqual(en(3), ['HBM → shared memory', 'still in HBM']);
+  assert.deepStrictEqual(en(4), ['shared memory → registers', 'still in HBM']);
+  assert.strictEqual(en(5)[1], 'still in HBM');
+  assert.strictEqual(en(6)[0], 'added to the accumulator');
+  assert.deepStrictEqual(en(7), ['added to the accumulator', 'added to the accumulator']);
+  assert.deepStrictEqual(en(-3), en(0)); assert.deepStrictEqual(en(99), en(7));
+  assert.deepStrictEqual([0, 1, 2, 3, 4, 5, 6, 7].map(L.activeRound), [-1, -1, -1, 0, 0, 0, 1, -1], 'round 1 moves in steps 4 to 6, round 2 in step 7');
+  ['pagetable', 'stacking'].forEach(function (journey) {
+    for (var step = 0; step < 8; step++) assert.strictEqual(/class="lab-note"/.test(L.markup(journey, step, 'h100', 'en')), step === 0, journey + ' ' + step + ': the how-to-read note is on the first step only');
+  });
+});
+test('the running record adds one line per step and marks the current one', function () {
+  ['pagetable', 'pixel', 'stacking'].forEach(function (journey) {
+    assert.strictEqual(L.LOGS[journey].length, 8);
+    for (var step = 0; step < 8; step++) {
+      var rows = L.logRows(journey, step, 'h100');
+      assert.strictEqual(rows.length, step + 1);
+      assert.deepStrictEqual(rows.map(function (r) { return r.n; }), rows.map(function (_, i) { return i + 1; }));
+      assert.deepStrictEqual(rows.filter(function (r) { return r.now; }).map(function (r) { return r.n; }), [step + 1]);
+      rows.forEach(function (r) { ['zh', 'en'].forEach(function (lang) {
+        assert.ok(String(pick(r.k, lang)).length > 1 && String(pick(r.v, lang)).length > 1, journey + ' row ' + r.n + ' ' + lang);
+        if (lang === 'en') assert.ok(!CJK.test(pick(r.k, lang) + pick(r.v, lang)), journey + ' row ' + r.n);
+      }); });
+      var html = L.markup(journey, step, 'h100', 'en');
+      assert.strictEqual((html.match(/class="lab-n"/g) || []).length, step + 1, journey + ' ' + step + ' record length');
+      assert.strictEqual((html.match(/aria-current="step"/g) || []).length, 1);
+    }
+  });
+  assert.deepStrictEqual(L.logRows('gemm', 3, 'h100'), [], 'the matrix figure carries its own record');
+});
+test('translation record carries the real addresses through the walk', function () {
+  var rows = L.logRows('pagetable', 7, 'h100').map(function (r) { return pick(r.k, 'en') + ' ' + pick(r.v, 'en'); });
+  assert.ok(rows[0].indexOf(L.PAGE.va) >= 0);
+  assert.ok(/L1 TLB/.test(rows[1]) && /miss/.test(rows[1]));
+  assert.ok(/shared TLB/.test(rows[2]) && /GMMU/.test(rows[2]));
+  assert.ok(rows[3].indexOf('PD2[508]') >= 0);
+  assert.ok(rows[4].indexOf('PD1[470]') >= 0 && rows[4].indexOf('PD0[22]') >= 0 && rows[4].indexOf(L.PAGE.pageBase) >= 0);
+  assert.ok(rows[5].indexOf(L.PAGE.physical) >= 0);
+  assert.ok(rows[7].indexOf('A[3,0] = ' + L.GEMM.A[3][0]) >= 0);
+});
+test('the address strip lights the fields each translation step uses', function () {
+  assert.strictEqual(L.PAGE_BITS.length, 8);
+  assert.deepStrictEqual(L.PAGE_BITS[3], [0, 1, 2], 'upper walk uses PD4, PD3, PD2');
+  assert.deepStrictEqual(L.PAGE_BITS[4], [3, 4], 'lower walk uses PD1, PD0');
+  assert.deepStrictEqual(L.PAGE_BITS[5], [5], 'the offset is added last');
+  for (var step = 0; step < 8; step++) {
+    var html = L.markup('pagetable', step, 'h100', 'en');
+    assert.strictEqual((html.match(/data-field="/g) || []).length, 6, 'all six fields stay visible');
+    assert.strictEqual((html.match(/class="lab-bit lab-on"/g) || []).length, L.PAGE_BITS[step].length, 'step ' + step);
+    assert.ok(html.indexOf(L.PAGE.va) >= 0);
+  }
+});
+test('the pixel figure uses the triangle the text describes', function () {
+  var w = L.barycentricWeights(L.PIXEL.vertices, L.PIXEL.center);
+  w.forEach(function (x, i) { assert.ok(Math.abs(x - L.PIXEL.weights[i]) < 1e-9, 'weight ' + i + ' = ' + x); });
+  assert.ok(Math.abs(w[0] + w[1] + w[2] - 1) < 1e-9);
+  assert.deepStrictEqual(L.PIXEL.rgb, [51, 128, 77]);
+  assert.deepStrictEqual(L.PIXEL.center, [L.PIXEL.target[0] + .5, L.PIXEL.target[1] + .5]);
+  assert.ok(L.barycentricWeights(L.PIXEL.vertices, [0.5, 0.5]).some(function (x) { return x < 0; }), 'a corner pixel is outside');
+  assert.ok(L.markup('pixel', 1, 'h100', 'en').indexOf('<polygon') < 0, 'no triangle before the vertices are read');
+  assert.ok(L.markup('pixel', 2, 'h100', 'en').indexOf('<polygon') >= 0);
+  assert.ok(L.markup('pixel', 5, 'h100', 'en').indexOf('fill="rgb(51,128,77)"') < 0, 'the pixel is not coloured before it is written');
+  assert.ok(L.markup('pixel', 6, 'h100', 'en').indexOf('fill="rgb(51,128,77)"') >= 0);
+});
+test('the package cross-section lights the parts each step is about and follows the model', function () {
+  assert.strictEqual(L.STACK_ON.length, 8);
+  L.STACK_ON.forEach(function (parts, step) { assert.ok(parts.length >= 1 && parts.length <= 6, 'step ' + step); });
+  assert.ok(L.STACK_ON[2].indexOf('tsv') >= 0 && L.STACK_ON[4].indexOf('interposer') >= 0 && L.STACK_ON[6].indexOf('cold') >= 0);
+  assert.ok(L.markup('stacking', 3, 'h100', 'en').indexOf('5.2 Gb/s') >= 0);
+  assert.ok(L.markup('stacking', 3, 'a100', 'en').indexOf('3.2 Gb/s') >= 0);
+  assert.ok(L.markup('stacking', 7, 'h100', 'en').indexOf('132 / 144 SMs') >= 0);
+  assert.ok(L.markup('stacking', 7, 'a100', 'en').indexOf('108 / 128 SMs') >= 0);
+  assert.ok(L.markup('stacking', 0, 'h100', 'en').indexOf('3.35 TB/s') >= 0 && L.markup('stacking', 0, 'a100', 'en').indexOf('2.04 TB/s') >= 0);
 });
 console.log('Journey lab: ' + passed + ' tests passed');

@@ -1,8 +1,8 @@
-import { createHBMDetail } from './hbm-model.js?v=20261109a';
-import { createPowerDetail } from './power-model.js?v=20261109a';
-import { createInterconnectDetail } from './interconnect-model.js?v=20261109a';
-import { createLabelFactory } from './surface-label.js?v=20261109a';
-import { boardTexture, siliconBackTexture, sramTexture, logicTexture, substrateTexture } from './surface-textures.js?v=20261109a';
+import { createHBMDetail } from './hbm-model.js?v=20261110a';
+import { createPowerDetail } from './power-model.js?v=20261110a';
+import { createInterconnectDetail } from './interconnect-model.js?v=20261110a';
+import { createLabelFactory } from './surface-label.js?v=20261110a';
+import { boardTexture, siliconBackTexture, sramTexture, logicTexture, substrateTexture } from './surface-textures.js?v=20261110a';
 
 const L = (zh, en) => ({ zh, en });
 
@@ -271,7 +271,7 @@ export function createHardwareModel(T, model = 'h100') {
   instances(sxm, contacts, mats.gold);
 
   // ---------- Package ----------
-  const serial = component('package', L('GPU 封装', 'GPU package'), L('有机基板上放着硅中介层，中介层上并排放 GPU 裸片和 HBM。这种 2.5D 封装让几千根线只走一毫米左右。', 'An organic substrate holds a silicon interposer with the GPU die and HBM side by side on it. This 2.5D package lets thousands of wires run only about a millimetre.'), 'package');
+  const serial = component('package', L('GPU 封装', 'GPU package'), L('有机基板上放着硅中介层，中介层上并排放 GPU 裸片和 HBM。这种 2.5D 封装让几千根线只走一毫米左右。', 'An organic substrate holds a silicon interposer with the GPU die and HBM side by side on it. This 2.5D package lets thousands of wires run only about a millimeter.'), 'package');
   const substrate = new T.Group(); serial.add(substrate); layers.push({ group: substrate, factor: .9 });
   box(substrate, 0, -.105, 0, 10.7, .32, 10.2, mats.substrate);
   const bga = [];

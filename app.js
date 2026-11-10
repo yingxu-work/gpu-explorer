@@ -14,7 +14,7 @@
     board: { title: L('SXM 模组', 'SXM module'), body: L('中间是 GPU 封装，两侧是多相供电，背面是连接服务器的连接器。点一个部件看它做什么，双击进入。', 'The GPU package sits in the middle, multiphase power runs down both sides, and the server connector is underneath. Click a part to see what it does; double-click to go inside.'),
       features: [[L('计算和显存', 'Compute and memory'), L('进入封装，看 GPU 裸片和旁边的 HBM。', 'Go into the package to see the GPU die and the HBM beside it.')], [L('供电与连接', 'Power and connections'), L('电感和功率级把电压降到 1 伏左右；背面的连接器走供电、PCIe 和 NVLink。', 'Inductors and power stages bring the voltage down to about one volt; the connector underneath carries power, PCIe and NVLink.')]] },
     package: { title: L('芯片封装', 'GPU package'), body: L('GPU 裸片和六个 HBM 位置并排放在一块硅中介层上，下面是有机基板。拆开能看到中介层上的凸点和走线。', 'The GPU die and six HBM sites sit side by side on a silicon interposer, over an organic substrate. Take it apart to see the bumps and wiring on the interposer.'),
-      features: [[L('硅中介层', 'Silicon interposer'), L('用芯片工艺布线，几千根数据线只走一毫米左右。', 'Wired with chip lithography, so thousands of data lines run only about a millimetre.')], [L('第六个 HBM 位置', 'The sixth HBM site'), L('这款产品只启用五组 HBM。', 'This product enables five of the six HBM sites.')]] },
+      features: [[L('硅中介层', 'Silicon interposer'), L('用芯片工艺布线，几千根数据线只走一毫米左右。', 'Wired with chip lithography, so thousands of data lines run only about a millimeter.')], [L('第六个 HBM 位置', 'The sixth HBM site'), L('这款产品只启用五组 HBM。', 'This product enables five of the six HBM sites.')]] },
     die: { title: L('GPU 裸片', 'GPU die'), body: L('按 NVIDIA 架构文章里的框图排布：两排 GPC 夹着分成两半的 L2，长边是存储控制器，两端是 PCIe 和 NVLink。', 'Laid out after the block diagram in NVIDIA’s architecture article: two rows of GPCs around a two-part L2, memory controllers on the long edges, PCIe and NVLink at the ends.'),
       features: [[L('GPC、TPC、SM', 'GPCs, TPCs, SMs'), L('两个 SM 组成一个 TPC。暗色格子是没启用的 TPC。', 'Two SMs form a TPC. Dark cells are disabled TPCs.')], [L('L2 缓存', 'L2 cache'), L('所有 SM 共用，读写先查 L2，没命中再去 HBM。', 'Shared by every SM; reads and writes check L2 before going to HBM.')]] },
     sm: { title: L('一个 SM', 'One SM'), body: L('四个子分区各有调度器、寄存器和运算单元，共用下方的 L1 / 共享内存。颜色对应下面的图例。', 'Four partitions, each with a scheduler, registers and execution units, share the L1 / shared memory below. Colours match the legend.'),
@@ -36,7 +36,9 @@
   T.setLang(T.detect(), { persist: false });
   let state = S.decodeState(location.hash);
   let ui;
-  let labels = false;
+  // Walkthroughs start with labels on, because the arrows are named by them. Anatomy starts with them off.
+  const labelsByMode = { learn: true, explore: false };
+  const labelsOn = () => labelsByMode[ui.mode];
   let paths = false;
   let navigationMode = 'rotate';
   let lastLegendKey = '';
@@ -162,7 +164,7 @@
         if (ui.cameraPreset !== 'free' && (changedLevel || applied.camera !== ui.cameraPreset)) sc.setCamera(ui.cameraPreset);
         applied.camera = ui.cameraPreset;
       }
-      sc.setLabels(labels);
+      sc.setLabels(labelsOn());
       sc.setPaths?.(paths && ui.mode === 'explore');
       sc.setNavigationMode?.(navigationMode);
       sc.setProgress?.(ui.progress);
@@ -304,20 +306,45 @@
     $('diagram').dataset.explode = ui.explode.toFixed(3);
     $('diagram').dataset.guideRevision = ui.guideRevision;
     document.body.dataset.motion = moving && ui.mode === 'learn' ? 'running' : 'paused';
-    $('teaching-status').dataset.state = ui.progress >= 1 ? 'complete' : ui.playback === 'paused' ? 'paused' : 'running';
-    $('teaching-status').dataset.motion = moving ? 'running' : 'paused';
   }
-  function renderGuideStatus() {
-    const visible = ui.mode === 'learn';
-    $('teaching-status').hidden = !visible;
-    if (!visible) return;
-    const step = S.currentStep(state);
-    $('teaching-status').dataset.kind = step.kind || '';
-    const path = $('route-nodes'); path.replaceChildren();
-    (step.route || []).forEach((label, index) => {
-      if (index) { const arrow = document.createElement('i'); arrow.setAttribute('aria-hidden', 'true'); arrow.textContent = step.kind === 'target' ? '·' : '→'; path.append(arrow); }
-      const node = document.createElement('span'); node.textContent = tr(label); node.dataset.index = index; path.append(node);
-    });
+  // The key to the arrows sits on the model, next to the arrows it explains.
+  let lastFlowKey = '';
+  function renderFlowLegend() {
+    const box = $('flow-legend');
+    if (ui.mode !== 'learn') { box.hidden = true; lastFlowKey = ''; return; }
+    const sc = scene();
+    const level = S.currentStep(state).level;
+    const key = [state.journey, state.stepIndex, state.model, T.lang, level, Boolean(sc?.lessonLegend)].join(':');
+    if (key === lastFlowKey) return; lastFlowKey = key;
+    const info = sc?.lessonLegend?.(level, state.stepIndex, state.model, state.journey);
+    const rows = info?.legend || [];
+    const list = $('flow-legend-items'); list.replaceChildren();
+    for (const row of rows) {
+      const item = document.createElement('li'), label = document.createElement('span');
+      // A small arrow in the route's own colour, dashed when the route is dashed.
+      item.innerHTML = '<svg viewBox="0 0 24 8" aria-hidden="true"><path d="M1.5 4H17" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"' + (row.dashed ? ' stroke-dasharray="3 4"' : '') + '/><path d="M16 .5 23 4 16 7.5z" fill="currentColor"/></svg>';
+      item.firstChild.style.color = row.hex; item.dataset.color = row.color; if (row.dashed) item.dataset.dashed = 'true';
+      label.textContent = tr(row.label); item.append(label); list.append(item);
+    }
+    list.hidden = !rows.length;
+    $('flow-legend-note').textContent = info?.note ? tr(info.note) : '';
+    $('flow-legend-note').hidden = !info?.note;
+    box.hidden = !rows.length && !info?.note;
+  }
+  function termList(list, terms) {
+    list.replaceChildren();
+    for (const term of terms) {
+      const name = document.createElement('dt'), gloss = document.createElement('dd');
+      name.textContent = tr(term.name); gloss.textContent = tr(term.gloss); name.dataset.term = term.id; list.append(name, gloss);
+    }
+  }
+  function renderTerms() {
+    const terms = S.termsFor(state.journey, state.stepIndex);
+    termList($('step-terms'), terms); $('step-terms-box').hidden = !terms.length;
+    termList($('glossary'), S.glossaryFor(state.journey));
+  }
+  function renderLabelsButton() {
+    $('labels-btn').classList.toggle('active', labelsOn()); $('labels-btn').setAttribute('aria-pressed', String(labelsOn()));
   }
   function renderStatic() {
     T.apply(document);
@@ -376,8 +403,8 @@
     });
     const key = state.journey + ':' + state.stepIndex + ':' + state.model + ':' + T.lang;
     window.GpuExplorerLab?.render($('journey-lab'), state, step, ui.progress);
-    if (key !== lastContentKey) { $('code-panel').textContent = tr(step.code).join('\n'); renderPrediction(); lastContentKey = key; }
-    renderCrumb(); renderTree(); renderResourceLegend(); renderSelection(); renderCompare(); renderTimeline(); renderGuideStatus(); renderPlayback(); syncHash();
+    if (key !== lastContentKey) { $('code-panel').textContent = tr(step.code).join('\n'); renderPrediction(); renderTerms(); lastContentKey = key; }
+    renderCrumb(); renderTree(); renderResourceLegend(); renderSelection(); renderCompare(); renderTimeline(); renderFlowLegend(); renderLabelsButton(); renderPlayback(); syncHash();
   }
   function setLanguage(lang) {
     if (!T.LANGS.includes(lang)) return;
@@ -454,7 +481,7 @@
   window.addEventListener('gpu-scene-error', event => {
     $('scene-loading').hidden = false; $('scene-loading').querySelector('span').textContent = t('scene.errorShort'); $('diagram').dataset.error = event.detail.message;
   });
-  window.addEventListener('gpu-scene-ready', () => { applied = {}; lastTreeKey = ''; render(); });
+  window.addEventListener('gpu-scene-ready', () => { applied = {}; lastTreeKey = ''; lastFlowKey = ''; render(); });
   document.querySelectorAll('.scale-nav [data-level]').forEach(b => b.onclick = () => { applied.level = undefined; state.selected = null; exploreAction({ type: 'LEVEL', level: b.dataset.level }); });
   document.querySelectorAll('.mode-switch [data-mode]').forEach(b => b.onclick = () => b.dataset.mode === 'learn' ? enterGuide() : exploreAction({ type: 'ENTER_EXPLORE' }));
   document.querySelectorAll('.nav-item[data-journey]').forEach(b => b.onclick = () => enterGuide({ journey: b.dataset.journey, index: 0 }));
@@ -474,7 +501,7 @@
   $('motion-btn').onclick = () => { transition({ type: 'MOTION_TOGGLE' }); render(); };
   $('explode-slider').oninput = e => exploreAction({ type: 'EXPLODE_SET', value: Number(e.target.value) / 100 });
   $('explode-auto-btn').onclick = () => exploreAction({ type: 'EXPLODE_TOGGLE' });
-  $('labels-btn').onclick = () => { labels = !labels; scene()?.setLabels(labels); $('labels-btn').classList.toggle('active', labels); $('labels-btn').setAttribute('aria-pressed', String(labels)); };
+  $('labels-btn').onclick = () => { labelsByMode[ui.mode] = !labelsOn(); scene()?.setLabels(labelsOn()); renderLabelsButton(); };
   $('paths-btn').onclick = () => { paths = !paths; render(); };
   for (const mode of ['rotate', 'pan']) $(mode + '-btn').onclick = () => {
     navigationMode = mode; scene()?.setNavigationMode?.(mode);
@@ -530,12 +557,6 @@
       window.GpuExplorerLab?.setProgress($('journey-lab'), ui.progress); scene()?.setProgress?.(ui.progress);
     }
     $('journey-lab').dataset.progress = ui.progress.toFixed(3);
-    window.GpuExplorerLab?.setVisualPhase?.($('journey-lab'), ui.visualPhase, ui.progress);
-    if (ui.mode === 'learn') {
-      const nodes = $('route-nodes').querySelectorAll('span');
-      const active = Math.min(nodes.length - 1, Math.floor((ui.visualPhase % 1) * nodes.length));
-      nodes.forEach((node, i) => node.classList.toggle('route-active', i === active));
-    }
     if (ui.explode !== previous.explode && ui.mode === 'explore') {
       window.__gpuExplorerExplode = ui.explode; scene()?.setExplode(ui.explode); applied.explode = ui.explode;
       $('explode-slider').value = Math.round(ui.explode * 100);

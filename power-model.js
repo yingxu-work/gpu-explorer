@@ -1,6 +1,6 @@
 // Multiphase buck teaching specimen. Component count/layout is illustrative,
 // not a reconstruction of an H100/A100 power schematic or voltage rail.
-import { createLabelFactory } from './surface-label.js?v=20261109a';
+import { createLabelFactory } from './surface-label.js?v=20261110a';
 const L=(zh,en)=>({zh,en});
 export function createPowerDetail(T, model='h100', labelFactory=null) {
   const labels=labelFactory||createLabelFactory(T);

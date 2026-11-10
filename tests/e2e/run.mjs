@@ -95,7 +95,10 @@ const app = page => page.evaluate(() => ({
   lab: document.querySelector('#journey-lab .lab-root')?.dataset || null, progress: Number(document.getElementById('journey-lab').dataset.progress),
   prevDisabled: document.getElementById('prev-btn').disabled, nextDisabled: document.getElementById('next-btn').disabled,
   playLabel: document.getElementById('play-btn').getAttribute('aria-label'), lang: document.documentElement.lang,
-  route: [...document.querySelectorAll('#route-nodes span')].map(n => n.textContent)
+  legend: [...document.querySelectorAll('#flow-legend-items li')].map(n => ({ text: n.textContent, color: n.dataset.color, dashed: n.dataset.dashed === 'true' })),
+  legendVisible: !document.getElementById('flow-legend').hidden, legendNote: document.getElementById('flow-legend-note').textContent,
+  terms: [...document.querySelectorAll('#step-terms dt')].map(n => n.dataset.term), termsVisible: !document.getElementById('step-terms-box').hidden,
+  labelsPressed: document.getElementById('labels-btn').getAttribute('aria-pressed')
 }));
 async function waitStep(page, journey, index, timeout = 45000) {
   await page.waitForFunction(([j, i]) => document.body.dataset.currentJourney === j && document.getElementById('step-counter').textContent.startsWith(String(i + 1).padStart(2, '0')) && document.getElementById('scene3d').dataset.flowJourney === j, [journey, index], { timeout });
@@ -110,8 +113,32 @@ async function checkStep(page, journey, index) {
   assert.ok(Number(s.signalRoutes) + Number(s.flowMarkers) > 0, `${journey} step ${index + 1}: something is drawn on the hardware`);
   assert.equal(a.lab.journey, journey); assert.equal(Number(a.lab.step), index);
   assert.ok(a.title.trim().length > 3 && a.body.trim().length > 10, 'step text present');
-  assert.ok(a.route.length >= 2, 'route chips present');
+  assert.ok(a.legendVisible && (a.legend.length || a.legendNote.length), `${journey} step ${index + 1}: the key to the lines sits on the model`);
+  if (Number(s.signalRoutes)) assert.ok(a.legend.length >= 1, `${journey} step ${index + 1}: every drawn line has a key entry`);
+  const expected = await page.evaluate(([j, i]) => window.GpuExplorerState.termsFor(j, i).map(t => t.id), [journey, index]);
+  assert.deepEqual(a.terms, expected, `${journey} step ${index + 1}: new terms listed`); assert.equal(a.termsVisible, expected.length > 0);
+  assert.equal(a.labelsPressed, 'true', 'walkthroughs show the labels that name the arrows');
+  // The figure comes straight after the text, before the term list.
+  assert.ok(await page.evaluate(() => { const lab = document.getElementById('journey-lab'), terms = document.getElementById('step-terms-box'); return !!(lab.compareDocumentPosition(terms) & Node.DOCUMENT_POSITION_FOLLOWING) && lab.previousElementSibling?.classList.contains('chapter-heading'); }), 'figure sits right under the step text');
   assert.match(a.hash, new RegExp(`j=${journey}&.*s=${index}`));
+  // On a desktop screen the part of the figure that says what happens now is
+  // in view without scrolling the panel.
+  const now = await page.evaluate(() => {
+    if (window.innerWidth < 1100) return null;
+    const scroll = document.querySelector('.inspector-scroll'); if (scroll.scrollTop) return null;
+    const el = document.querySelector('#journey-lab .lab-log li.lab-now') || document.querySelector('#journey-lab [data-lab-acc]') || document.querySelector('#journey-lab .lab-at.lab-active') || document.querySelector('#journey-lab .lab-at');
+    if (!el) return { missing: true };
+    return { bottom: el.getBoundingClientRect().bottom, limit: document.querySelector('.inspector-footer').getBoundingClientRect().top };
+  });
+  await settle(page);
+  const covered = await page.evaluate(() => {
+    const key = document.getElementById('flow-legend'); if (key.hidden || getComputedStyle(key).position !== 'absolute') return [];
+    const k = key.getBoundingClientRect();
+    return [...document.querySelectorAll('#scene3d .teaching-location-marker')].filter(n => n.style.display !== 'none' && n.offsetParent).map(n => ({ text: n.textContent, r: n.getBoundingClientRect() }))
+      .filter(({ r }) => r.left < k.right && r.right > k.left && r.top < k.bottom && r.bottom > k.top).map(x => x.text);
+  });
+  assert.deepEqual(covered, [], `${journey} step ${index + 1}: labels under the key to the arrows`);
+  if (now) { assert.ok(!now.missing, `${journey} step ${index + 1}: the figure marks the current state`); assert.ok(now.bottom <= now.limit, `${journey} step ${index + 1}: current state at ${Math.round(now.bottom)}px is hidden under the footer at ${Math.round(now.limit)}px`); }
   return { s, a };
 }
 const noProblems = (problems, label = '') => assert.deepEqual(problems, [], 'console/page errors ' + label + ':\n' + problems.join('\n'));
@@ -145,6 +172,35 @@ for (const journey of Object.keys(JOURNEYS)) test(`${journey}: every step with N
   for (let i = JOURNEYS[journey] - 1; i > 0; i--) { await page.click('#prev-btn'); await waitStep(page, journey, i - 1); }
   assert.ok((await app(page)).prevDisabled);
   noProblems(problems, journey); await context.close();
+});
+
+test('matrix figure: the round a step works on is marked, and its numbers fill in', async () => {
+  const { page, context, problems } = await open('j=gemm&s=2&mode=learn', { reducedMotion: 'reduce' });
+  const read = () => page.evaluate(() => ({ active: document.querySelector('#journey-lab .lab-at.lab-active')?.dataset.labRound ?? null, where: [...document.querySelectorAll('#journey-lab .lab-at')].map(n => n.textContent), products: [...document.querySelectorAll('#journey-lab [data-lab-p]')].map(n => n.textContent).join(' '), acc: document.querySelector('[data-lab-acc]')?.textContent ?? null }));
+  const expected = [null, '0', '0', '0', '1', null];
+  for (let i = 2; i < 8; i++) {
+    if (i > 2) await page.click('#next-btn');
+    await checkStep(page, 'gemm', i);
+    await page.waitForFunction(() => Number(document.getElementById('journey-lab').dataset.progress) >= 1);
+    const r = await read();
+    assert.equal(r.active, expected[i - 2], `step ${i + 1}: outlined round`);
+    assert.equal(r.where.length, 2);
+    if (i === 5) { assert.equal(r.acc, '19'); assert.equal(r.products, '2 3 6 8 · · · ·'); }
+    if (i === 7) { assert.equal(r.acc, '37'); assert.equal(r.products, '2 3 6 8 4 2 6 6'); }
+  }
+  noProblems(problems); await context.close();
+});
+
+test('labels: on by default in walkthroughs, off in anatomy, each remembered separately', async () => {
+  const { page, context, problems } = await open('j=pixel&s=1&mode=learn');
+  assert.equal(await page.getAttribute('#labels-btn', 'aria-pressed'), 'true');
+  await page.waitForFunction(() => Number(document.getElementById('scene3d').dataset.flowMarkersVisible) > 0);
+  await page.click('#labels-btn'); assert.equal(await page.getAttribute('#labels-btn', 'aria-pressed'), 'false');
+  await page.waitForFunction(() => document.getElementById('scene3d').dataset.flowMarkersVisible === '0');
+  await page.click('[data-mode=explore]'); assert.equal(await page.getAttribute('#labels-btn', 'aria-pressed'), 'false');
+  await page.click('#labels-btn'); await page.click('[data-mode=learn]');
+  assert.equal(await page.getAttribute('#labels-btn', 'aria-pressed'), 'false', 'the walkthrough keeps its own choice');
+  noProblems(problems); await context.close();
 });
 
 test('timeline chips jump to any step and mark the current one', async () => {

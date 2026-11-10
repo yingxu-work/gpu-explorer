@@ -1,6 +1,6 @@
 // A scale-separated explanatory HBM cutaway. Eight DRAM layers are shown to
 // explain stacking; this is not a claim about a specific H100/A100 supplier.
-import { createLabelFactory } from './surface-label.js?v=20261109a';
+import { createLabelFactory } from './surface-label.js?v=20261110a';
 const L = (zh, en) => ({ zh, en });
 export function createHBMDetail(T, model = 'h100', labelFactory = null) {
   const labels = labelFactory || createLabelFactory(T);

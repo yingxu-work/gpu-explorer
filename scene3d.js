@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { lessonPresentation, anatomyPaths, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261109a';
-import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261109a';
-import { createSelectionFeedback } from './selection-feedback.js?v=20261109a';
+import { lessonPresentation, anatomyPaths, createTeachingVisuals, FLOW_COLORS } from './teaching-flow.js?v=20261110a';
+import { createHardwareModel, isolateHardwareSubtree, calculateCameraFit } from './hardware-model.js?v=20261110a';
+import { createSelectionFeedback } from './selection-feedback.js?v=20261110a';
 
 const I18N = window.GpuExplorerI18n;
 const tr = value => I18N ? I18N.pick(value) : (value && typeof value === 'object' ? value.zh : value);
@@ -270,6 +270,7 @@ class HardwareScene {
     else if(this.level==='power'&&hw.powerRoot)bounds=new THREE.Box3().setFromObject(hw.powerRoot);
     else if(this.level==='interconnect'&&hw.interconnectRoot)bounds=new THREE.Box3().setFromObject(hw.interconnectRoot);
     else bounds=new THREE.Box3().setFromObject(hw.smRoot);
+    bounds=this.lessonFocus(bounds);
     hw.setExplode(this.explode);hw.root.updateMatrixWorld(true);
     if(bounds.isEmpty())return;
     const direction=directionOverride||(preserveDirection?this.camera.position.clone().sub(this.controls.target).normalize():new THREE.Vector3(.62,.83,1).normalize());
@@ -277,6 +278,28 @@ class HardwareScene {
     const fit=calculateCameraFit(THREE,bounds,direction,this.camera.fov,this.camera.aspect,margin);
     this.controls.maxDistance=fit.maxDistance;this.camera.far=fit.far;this.camera.updateProjectionMatrix();
     this.moveCamera(fit.position,fit.target,duration);
+  }
+
+  // In a walkthrough the camera frames what the step draws rather than the
+  // whole level, so arrows and labels get enough screen space to read. At
+  // least `share` of the level stays in view so the place is still recognisable.
+  lessonFocus(bounds) {
+    if(!this.guideActive()||this.isolated||bounds.isEmpty())return bounds;
+    const presentation=lessonPresentation(this.level,this.state?.stepIndex||0,this.model,this.state?.journey||'gemm');
+    const box=new THREE.Box3(),point=new THREE.Vector3();
+    const include=(hostId,x,y,z)=>{const host=this.hardware.components[hostId]?.group;if(host)box.expandByPoint(host.localToWorld(point.set(x,y,z)));};
+    for(const route of presentation.routes)for(const p of route.points)include(route.host,p[0],p[1],p[2]);
+    for(const marker of presentation.markers)if(marker.point)for(const sx of [-.5,.5])for(const sz of [-.5,.5])include(marker.host,marker.point[0]+sx*marker.size[0],marker.point[1],marker.point[2]+sz*marker.size[1]);
+    if(box.isEmpty())return bounds;
+    const share=presentation.focus||{board:.86,package:.62,die:.6,sm:.56,hbm:.8}[this.level]||1,focus=bounds.clone();
+    for(const axis of ['x','z']){
+      const full=bounds.max[axis]-bounds.min[axis],half=Math.min(full/2,Math.max(full*share/2,(box.max[axis]-box.min[axis])/2+full*.07));
+      const low=Math.min(bounds.min[axis],box.min[axis]),high=Math.max(bounds.max[axis],box.max[axis]);
+      const centre=Math.max(low+half,Math.min(high-half,(box.max[axis]+box.min[axis])/2));
+      focus.min[axis]=centre-half;focus.max[axis]=centre+half;
+    }
+    focus.min.y=Math.min(bounds.min.y,box.min.y);focus.max.y=Math.max(bounds.max.y,box.max.y);
+    return focus;
   }
 
   setCamera(name) {
@@ -445,7 +468,7 @@ class HardwareScene {
       node.textContent=tr(item.marker.label);this.flowMarkerLayer.appendChild(node);this.flowMarkerNodes.push({...item,node});
     }
     this.flowMarkerLayer.style.display=this.labelsVisible?'':'none';
-    this.container.dataset.transport='routed-ribbons';this.container.dataset.signalRoutes=String(this.flowObjects.length);
+    this.container.dataset.transport='tube-arrows';this.container.dataset.signalRoutes=String(this.flowObjects.length);
     this.container.dataset.flowMarkers=String(this.flowMarkerNodes.length);this.container.dataset.flowKind=presentation.kind;
     this.container.dataset.flowPhase=tr(presentation.title);this.container.dataset.flowJourney=active?(this.state?.journey||'gemm'):'anatomy';this.container.dataset.flowXray=String(!!(active&&presentation.xray));this.container.dataset.flowMinWidth=String(presentation.routes.length?Math.min(...presentation.routes.map(route=>route.width)):0);
     this.container.dataset.flowVisible=String(this.flowObjects.length+this.flowMarkerNodes.length>0);
@@ -507,15 +530,28 @@ class HardwareScene {
     // Data-location badges project from the same coordinate system as their
     // surface patches. They remain legible when motion has finished.
     const flowOccupied=[];let visibleFlowMarkers=0;
+    // The key to the arrows sits over the top left of the view; labels keep out of it.
+    const legendNode=document.getElementById('flow-legend');let legend=null;
+    if(legendNode&&!legendNode.hidden&&getComputedStyle(legendNode).position==='absolute'&&this.flowMarkerNodes.length){const a=legendNode.getBoundingClientRect(),b=this.container.getBoundingClientRect();legend={right:a.right-b.left,bottom:a.bottom-b.top};}
     for(const item of this.flowMarkerNodes){
       const world=item.host.localToWorld(new THREE.Vector3(...item.marker.point));const point=world.clone().project(this.camera);
       let visible=this.labelsVisible&&teachingActive&&point.z>=-1&&point.z<=1;if(visible)visibleFlowMarkers++;
-      const x=Math.max(62,Math.min(this.width-62,(point.x*.5+.5)*this.width));
-      let y=(-point.y*.5+.5)*this.height+(item.marker.role==='target'?27:-29);
+      // The label sits just outside the outlined patch (above it, or below a
+      // destination, unless the marker names a side), so it never covers an
+      // arrow that ends inside the patch.
+      let top=Infinity,bottom=-Infinity,left=Infinity,right=-Infinity;
+      for(const sx of [-.5,.5])for(const sz of [-.5,.5]){const corner=item.host.localToWorld(new THREE.Vector3(item.marker.point[0]+sx*item.marker.size[0],item.marker.point[1],item.marker.point[2]+sz*item.marker.size[1])).project(this.camera);const cx=(corner.x*.5+.5)*this.width,cy=(-corner.y*.5+.5)*this.height;top=Math.min(top,cy);bottom=Math.max(bottom,cy);left=Math.min(left,cx);right=Math.max(right,cx);}
+      const anchor=item.marker.anchor||(item.marker.role==='target'?'below':'above'),half=(item.labelWidth||(item.labelWidth=item.node.offsetWidth)||80)/2;
+      let x=anchor==='left'?left-half-10:anchor==='right'?right+half+10:(point.x*.5+.5)*this.width;
+      x=Math.max(half+6,Math.min(this.width-half-6,x));
+      let y=anchor==='below'?bottom+18:anchor==='above'?top-18:(top+bottom)/2;
       for(const previous of flowOccupied)if(Math.abs(previous.x-x)<128&&Math.abs(previous.y-y)<29)y=previous.y+31;
-      y=Math.max(28,Math.min(this.height-35,y));flowOccupied.push({x,y});
+      y=Math.max(28,Math.min(this.height-35,y));
+      if(legend&&x-half<legend.right+8&&y-14<legend.bottom+8)y=Math.min(this.height-35,legend.bottom+24);
+      for(const previous of flowOccupied)if(Math.abs(previous.x-x)<128&&Math.abs(previous.y-y)<29)y=previous.y+31;
+      flowOccupied.push({x,y});
       item.node.style.left=`${x}px`;item.node.style.top=`${y}px`;item.node.style.display=visible?'':'none';
-      item.node.dataset.complete=String(progress>=1);const text=tr(item.marker.label)+(progress>=1&&item.marker.role==='target'?' ✓':'');if(item.node.textContent!==text)item.node.textContent=text;
+      item.node.dataset.complete=String(progress>=1);const text=tr(item.marker.label);if(item.node.textContent!==text){item.node.textContent=text;item.labelWidth=0;}
     }
     this.container.dataset.flowMarkersVisible=String(visibleFlowMarkers);
     // Sparse labels projected from the actual hardware, with local collision
@@ -554,6 +590,8 @@ if(container){
       getComponents(){return main.getComponents();},selectComponent(id){main.selectComponent(id);},
       getLevel(){return main.level;},getSelected(){return main.selected;},
       setPaths(value){return main.setPaths(value);},
+      // What the overlays on a step mean: one entry per colour and dash style drawn.
+      lessonLegend(level,stepIndex,model,journey){const p=lessonPresentation(level,stepIndex,model,journey);return {legend:p.legend.map(entry=>({...entry,hex:'#'+(FLOW_COLORS[entry.color]||FLOW_COLORS.a).toString(16).padStart(6,'0')})),note:p.note,title:p.title};},
       setLanguage(lang){main.setLanguage(lang);compare?.setLanguage(lang);},
       getStatus(){return {model:main.model,level:main.level,selected:main.selected,isolated:main.isolated,exploded:main.explode,paths:main.pathsVisible,drawCalls:main.renderer.info.render.calls,triangles:main.renderer.info.render.triangles};}
     };

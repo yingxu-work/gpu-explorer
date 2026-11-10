@@ -91,7 +91,8 @@ test('step text: bilingual, sentence-length bodies, no shouting', () => {
     assert.ok(step.body.zh.length <= 120 && step.body.en.length <= 300, `${key} ${i + 1}: body fits a few lines`);
     assert.ok(step.code.zh.length >= 1 && step.code.zh.length === step.code.en.length && step.code.zh.length <= 8, `${key} ${i + 1}: code`);
     assert.ok(step.code.en.every(line => !CJK.test(line)));
-    assert.ok(step.route.length >= 2 && step.route.length <= 4);
+    assert.ok(Array.isArray(step.terms) && step.terms.length <= 3, `${key} ${i + 1}: at most three new terms`);
+    step.terms.forEach(id => assert.ok(S.GLOSSARY[id], `${key} ${i + 1}: term ${id} is in the glossary`));
     assert.ok(step.chip.label.zh.length <= 6 && step.chip.label.en.length <= 10, `${key} ${i + 1}: chip label`);
     assert.ok(step.trace && step.trace.length <= 60 && !CJK.test(step.trace), 'trace is a short formula');
   });
@@ -116,4 +117,45 @@ test('address translation uses the GPU page-table layout, not a CPU one', () => 
   assert.match(text, /GMMU/); assert.match(text, /2 MiB/);
   assert.deepEqual(S.ADDRESS.fields.map(f => f.width), [1, 9, 9, 9, 8, 21], 'Hopper GMMU field widths (57-bit VA)');
   assert.equal(S.ADDRESS.fields.reduce((n, f) => n + f.width, 0), 57);
+});
+test('glossary: every term has a short bilingual line and is used by a walkthrough', () => {
+  const used = new Set();
+  for (const key of Object.keys(S.JOURNEYS)) {
+    const list = S.glossaryFor(key);
+    assert.ok(list.length >= 8, `${key} has a glossary`);
+    assert.equal(new Set(list.map(t => t.id)).size, list.length, `${key}: no term twice`);
+    list.forEach(t => used.add(t.id));
+    const seen = new Set();
+    S.JOURNEYS[key].steps.forEach((step, i) => {
+      assert.deepEqual(S.termsFor(key, i).map(t => t.id), step.terms);
+      step.terms.forEach(id => { assert.ok(!seen.has(id), `${key} ${i + 1}: ${id} is introduced once`); seen.add(id); });
+    });
+  }
+  for (const [id, entry] of Object.entries(S.GLOSSARY)) {
+    assert.ok(used.has(id), `${id} is used`);
+    for (const field of ['name', 'gloss']) {
+      assert.ok(entry[field].zh && entry[field].en, `${id} ${field}`);
+      assert.ok(!CJK.test(entry[field].en), `${id} ${field}: English has no Chinese`);
+      assert.ok(!/[!！]/.test(entry[field].zh + entry[field].en));
+    }
+    assert.ok(entry.gloss.zh.length <= 48 && entry.gloss.en.length <= 120, `${id}: one short line`);
+  }
+  assert.deepEqual(S.termsFor('nope', 0), []); assert.deepEqual(S.glossaryFor('nope'), []);
+});
+test('one name per thing: the walkthroughs do not mix synonyms', () => {
+  const text = Object.values(S.JOURNEYS).flatMap(j => j.steps.flatMap(s => [s.title, s.body, s.hardware, s.chip.label, s.chip.gloss]));
+  const zh = text.map(t => t.zh).join('\n'), en = text.map(t => t.en).join('\n');
+  assert.ok(!/L2 TLB/.test(zh + en + S.JOURNEYS.pagetable.steps.map(s => s.trace + s.code.en.join(' ')).join(' ')), 'the second TLB is always the shared TLB');
+  assert.ok(!/GEMM|lane\b|\[3\]\[/.test(zh + en), 'no GEMM, lane or A[3][0] notation in prose');
+  assert.ok(!/点任意一项|Click any term/.test(zh + en), 'the text does not point at controls that are not there');
+});
+
+test('each walkthrough has its own title, distinct from its step titles', () => {
+  const titles = Object.values(S.JOURNEYS).map(j => j.title.zh);
+  assert.equal(new Set(titles).size, titles.length);
+  for (const [key, j] of Object.entries(S.JOURNEYS)) for (const step of j.steps) {
+    assert.notEqual(step.title.zh, j.title.zh, `${key}: a step title was copied over the walkthrough title`);
+    assert.notEqual(step.title.en, j.title.en);
+  }
+  assert.deepEqual(Object.values(S.JOURNEYS).map(j => j.title.en), ['One matrix multiply', 'One address translation', 'One pixel’s journey', 'Why the chips are stacked']);
 });

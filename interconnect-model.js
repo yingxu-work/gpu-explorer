@@ -1,5 +1,5 @@
 // A PCB/SXM cutaway specimen, not a vendor pinout or a recovered module netlist.
-import { createLabelFactory } from './surface-label.js?v=20261109a';
+import { createLabelFactory } from './surface-label.js?v=20261110a';
 const L=(zh,en)=>({zh,en});
 export function createInterconnectDetail(T, model='h100', labelFactory=null) {
   const labels=labelFactory||createLabelFactory(T);

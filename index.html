@@ -2,7 +2,7 @@
 <html lang="zh-CN"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#141415">
 <meta name="description" data-i18n-content="meta.description" content="可拆解的 H100 / A100 三维模型。看一次矩阵乘法、一次地址翻译、一个像素和一组 HBM 堆叠分别发生在芯片的哪里。"><title>GPU Explorer · 拆开一块 GPU，跟着它算一次</title>
-<link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css?v=20261109a">
+<link rel="icon" href="data:,"><link rel="stylesheet" href="styles.css?v=20261110a">
 <script type="importmap">{"imports":{"three":"./three/three.module.js","three/addons/":"./three/addons/"}}</script></head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -75,18 +75,20 @@
    <div class="stage-bottom"><nav class="cam-bar" data-i18n-aria="cam.nav" aria-label="视角"><button class="active" data-cam="three-quarter" data-i18n="cam.3d">斜视</button><button data-cam="top" data-i18n="cam.top">俯视</button><button data-cam="side" data-i18n="cam.side">侧视</button></nav><button id="fullscreen-btn" class="icon-btn" data-i18n-aria="cam.fullscreen" data-i18n-title="cam.fullscreen" aria-label="全屏"><svg class="icon" aria-hidden="true"><use href="#i-expand"/></svg></button></div>
    <div id="scene-loading" class="scene-loading"><span data-i18n="scene.loading">正在载入硬件模型</span><i></i></div>
   </div></div>
+  <section id="flow-legend" class="flow-legend" data-i18n-aria="legend.aria" aria-label="图上的线代表什么" hidden><ul id="flow-legend-items"></ul><p id="flow-legend-note"></p></section>
   <section class="dissection-controls" data-i18n-aria="explode.section" aria-label="拆开"><button id="explode-auto-btn" class="icon-btn" data-i18n-aria="explode.auto" aria-label="播放拆开再合拢" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg></button><strong class="explode-caption" data-i18n="explode.title">拆开</strong><div class="explode-track"><div><span data-i18n="explode.min">合拢</span><span data-i18n="explode.max">拆开</span></div><input id="explode-slider" type="range" min="0" max="100" value="0" data-i18n-aria="explode.slider" aria-label="拆开程度"></div><output id="explode-value" for="explode-slider">0%</output></section>
  </main>
  <aside class="inspector" data-i18n-aria="inspector.label" aria-label="详情">
   <div class="inspector-head"><span id="inspector-label"></span><span id="step-counter">01 / 08</span></div>
   <div class="inspector-scroll"><div id="learn-content"><div class="chapter-heading"><h2 id="step-title"></h2><p id="step-body"></p></div>
-   <section id="teaching-status" class="teaching-status" data-i18n-aria="step.route" aria-label="这一步的路径" hidden><div id="route-nodes" class="route-nodes"></div></section>
    <div id="journey-lab" data-i18n-aria="step.lab" aria-label="数值演示"></div>
+   <section id="step-terms-box" class="step-terms" hidden><h3 data-i18n="terms.title">这一步的新名词</h3><dl id="step-terms" class="terms" data-i18n-aria="terms.aria" aria-label="这一步出现的名词"></dl></section>
    <div class="step-animation-control"><button id="replay-btn" class="text-btn" data-i18n-aria="step.replayAria" aria-label="重新演示这一步"><svg class="icon" aria-hidden="true"><use href="#i-reset"/></svg><span data-i18n="step.replay">重新演示</span></button><button id="motion-btn" class="text-btn" data-i18n-aria="step.pauseAria" aria-label="暂停这一步的动画"><svg class="icon" aria-hidden="true"><use href="#i-pause"/></svg><span data-i18n="step.pause">暂停</span></button></div>
-   <details id="hardware-details" open><summary><span data-i18n="details.hardware">发生在哪里</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><p id="hardware-note" class="detail-text"></p></details>
+   <details id="hardware-details"><summary><span data-i18n="details.hardware">硬件细节</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><p id="hardware-note" class="detail-text"></p></details>
    <details id="math-details"><summary><span data-i18n="details.math">公式</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><div id="fact" class="fact"></div></details>
    <details id="code-details"><summary><span data-i18n="details.code">伪代码</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><pre id="code-panel"></pre></details>
    <details id="predict-details"><summary><span data-i18n="details.predict">想一想</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><section id="predict" class="predict"></section></details>
+   <details id="glossary-details"><summary><span data-i18n="details.glossary">名词表</span><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></summary><dl id="glossary" class="terms"></dl></details>
    <p id="journey-scope" class="scope-note"></p>
   </div>
   <div id="explore-content" hidden><h2 id="explore-title"></h2><p id="explore-description"></p>
@@ -118,5 +120,5 @@
  <li><a href="https://www.ti.com/document-viewer/lit/html/SSZTC61/GUID-0C11D72C-F6B3-479F-81D7-D5EFA802CA64" target="_blank" rel="noopener">TI multiphase power</a></li>
  <li><a href="https://www.ti.com/lit/an/sbaa405a/sbaa405a.pdf" target="_blank" rel="noopener">TI PCB reference planes and return paths</a></li>
 </ul><p data-i18n="sources.credit"></p></dialog>
-<script src="i18n.js?v=20261109a"></script><script src="state.js?v=20261109a"></script><script src="journey-lab.js?v=20261109a"></script><script src="interaction-state.js?v=20261109a"></script><script src="app.js?v=20261109a"></script><script type="module" src="scene3d.js?v=20261109a"></script>
+<script src="i18n.js?v=20261110a"></script><script src="state.js?v=20261110a"></script><script src="journey-lab.js?v=20261110a"></script><script src="interaction-state.js?v=20261110a"></script><script src="app.js?v=20261110a"></script><script type="module" src="scene3d.js?v=20261110a"></script>
 </body></html>

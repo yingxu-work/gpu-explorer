@@ -1,6 +1,6 @@
 # GPU Explorer
 
-[在线体验 / Live](https://yingxu-work.github.io/gpu-explorer/) · [项目构想](docs/PROJECT_CONCEPT.md) · [本轮改版 / This revision](docs/REVAMP_2026-11-09.md) · [SM 来源](docs/SM_LAYOUT_SOURCES.md) · [SM 资源](docs/SM_EXECUTION_UNITS.md)
+[在线体验 / Live](https://yingxu-work.github.io/gpu-explorer/) · [项目构想](docs/PROJECT_CONCEPT.md) · [本轮改版 / This revision](docs/REVAMP_2026-11-09.md) · [流程箭头与示例面板 / Walkthrough arrows and panel](docs/WALKTHROUGHS_2026-11-10.md) · [SM 来源](docs/SM_LAYOUT_SOURCES.md) · [SM 资源](docs/SM_EXECUTION_UNITS.md)
 
 **中文** · [English](#english)
 

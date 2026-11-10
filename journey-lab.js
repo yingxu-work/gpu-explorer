@@ -1,5 +1,6 @@
-/* Worked examples shown beside the 3D model. The scalar arithmetic is kept
- * separate from the hardware geometry and from Tensor Core fragment maps. */
+/* Worked examples shown beside the 3D model. Each walkthrough has one figure
+ * that keeps its shape from the first step to the last; a step only fills in
+ * more of it. Colours match the arrows on the model (teaching-flow.js). */
 (function (root, factory) {
   var api = factory(root);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
@@ -7,10 +8,12 @@
 })(typeof window !== 'undefined' ? window : this, function (root) {
   'use strict';
   var I18N = (root && root.GpuExplorerI18n) || (typeof require === 'function' ? require('./i18n.js') : null);
+  var forced = null;
   function L(zh, en) { return { zh: zh, en: en }; }
-  function lang() { return (I18N && I18N.lang) || 'zh'; }
+  function lang() { return forced || (I18N && I18N.lang) || 'zh'; }
   function tr(v) { return v && typeof v === 'object' && 'zh' in v ? v[lang()] : v; }
 
+  // ---------- Matrix multiply ----------
   var ROW = 3, COL = 7, K = 8, TILE_K = 4;
   var A = Array.from({ length: 4 }, function (_, i) {
     return Array.from({ length: K }, function (_, k) { return 1 + (i * 3 + k * 2) % 4; });
@@ -38,6 +41,7 @@
   }
   var C = multiply(A, B), TRACE = dotTrace();
   function clamp(p) { p = Number(p); return Number.isFinite(p) ? Math.max(0, Math.min(1, p)) : 0; }
+  // How many of the eight products have been added at a step and a progress.
   function accumulation(step, progress) {
     var p = clamp(progress), count;
     if (step < 5) return { count: 0, value: 0, currentK: null, complete: false };
@@ -46,7 +50,25 @@
     else count = K;
     return { count: count, value: count ? TRACE[count - 1].acc : 0, currentK: count < K ? count : K - 1, complete: count === K };
   }
+  // Where each round's four pairs of numbers are at each step.
+  var AT = {
+    hbm: L('还在 HBM', 'still in HBM'),
+    load: L('HBM → 共享内存', 'HBM → shared memory'),
+    read: L('共享内存 → 寄存器', 'shared memory → registers'),
+    mma: L('寄存器 → Tensor Core', 'registers → Tensor Core'),
+    all: L('HBM 一路到 Tensor Core', 'HBM all the way to the Tensor Core'),
+    done: L('已加进累加器', 'added to the accumulator')
+  };
+  var ROUNDS = [
+    ['hbm', 'hbm'], ['hbm', 'hbm'], ['hbm', 'hbm'], ['load', 'hbm'],
+    ['read', 'hbm'], ['mma', 'hbm'], ['done', 'all'], ['done', 'done']
+  ];
+  // The round of four pairs a step works on (0 or 1), or -1 when it works on neither.
+  var ACTIVE_ROUND = [-1, -1, -1, 0, 0, 0, 1, -1];
+  function roundStatus(step) { return ROUNDS[Math.max(0, Math.min(7, step))].map(function (key) { return AT[key]; }); }
+  function activeRound(step) { return ACTIVE_ROUND[Math.max(0, Math.min(7, step))]; }
 
+  // ---------- Address translation ----------
   // GPU virtual address split by the Hopper GMMU layout (57-bit VA):
   // PD4[56] PD3[55:47] PD2[46:38] PD1[37:29] PD0[28:21], 2 MiB page offset [20:0].
   var GPU_FIELDS = [
@@ -66,66 +88,142 @@
     var mask = (1n << BigInt(pageBits)) - 1n;
     return BigInt(pageBase) + (BigInt(va) & mask);
   }
+  // Which address fields a step uses (indices into GPU_FIELDS).
+  var PAGE_BITS = [[0, 1, 2, 3, 4, 5], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2], [3, 4], [5], [], []];
+
+  // ---------- Pixel ----------
   function barycentricColor(weights, colors) {
     if (weights.length !== colors.length) throw new Error('One weight per vertex is required');
     return colors[0].map(function (_, channel) {
       return weights.reduce(function (sum, weight, i) { return sum + weight * colors[i][channel]; }, 0);
     });
   }
+  function barycentricWeights(tri, p) {
+    var d = (tri[1][1] - tri[2][1]) * (tri[0][0] - tri[2][0]) + (tri[2][0] - tri[1][0]) * (tri[0][1] - tri[2][1]);
+    var w0 = ((tri[1][1] - tri[2][1]) * (p[0] - tri[2][0]) + (tri[2][0] - tri[1][0]) * (p[1] - tri[2][1])) / d;
+    var w1 = ((tri[2][1] - tri[0][1]) * (p[0] - tri[2][0]) + (tri[0][0] - tri[2][0]) * (p[1] - tri[2][1])) / d;
+    return [w0, w1, 1 - w0 - w1];
+  }
+  // Screen positions are in pixels on an 8 × 8 target; pixel (3, 4) has its centre at (3.5, 4.5).
+  var PIXEL = { target: [3, 4], center: [3.5, 4.5], vertices: [[4.5, 0], [1, 6], [7, 5]], colors: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    weights: [.2, .5, .3], uv: [.25, .75], texel: [1, 1, 1], depth: .4, stored: .7 };
+  PIXEL.color = barycentricColor(PIXEL.weights, PIXEL.colors);
+  PIXEL.rgb = PIXEL.color.map(function (x, i) { return Math.round(x * PIXEL.texel[i] * 255); });
+
+  // ---------- Stacking ----------
   // HBM bandwidth per data line, from the published product bandwidth.
   function perLineRate(bytesPerSecond, stacks, bitsPerStack) { return bytesPerSecond * 8 / (stacks * bitsPerStack); }
+  var PRODUCT = {
+    h100: { bandwidth: '3.35 TB/s', bytes: 3.35e12, line: '5.2 Gb/s', channels: L('16 个通道 × 64 位', '16 channels × 64 bits'), power: L('最高 700 W', 'up to 700 W'), sm: '132 / 144', memory: 'HBM3' },
+    a100: { bandwidth: '2.04 TB/s', bytes: 2.039e12, line: '3.2 Gb/s', channels: L('8 个通道 × 128 位', '8 channels × 128 bits'), power: L('400 W', '400 W'), sm: '108 / 128', memory: 'HBM2e' }
+  };
+  function product(model) { return PRODUCT[model] || PRODUCT.h100; }
 
-  function escapeHTML(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  // ---------- The running record: one line per step, kept as the walkthrough goes on ----------
+  var LOGS = {
+    pagetable: [
+      { k: L('LD/ST 算出虚拟地址', 'LD/ST works out the virtual address'), v: PAGE.va },
+      { k: L('查 SM 旁边的 L1 TLB', 'Look in the L1 TLB by the SM'), v: L('没有，未命中', 'not there, a miss') },
+      { k: L('查共享 TLB', 'Look in the shared TLB'), v: L('也没有，交给 GMMU', 'not there either, over to the GMMU') },
+      { k: L('读 PD4[0]、PD3[0]、PD2[508]', 'Read PD4[0], PD3[0], PD2[508]'), v: L('得到 PD1 在哪', 'gives where PD1 is') },
+      { k: L('读 PD1[470]、PD0[22]', 'Read PD1[470], PD0[22]'), v: L('页基址 ' + PAGE.pageBase, 'page base ' + PAGE.pageBase) },
+      { k: L('页基址 + 偏移 0x164a40', 'Page base + offset 0x164a40'), v: L('物理地址 ' + PAGE.physical, 'physical address ' + PAGE.physical) },
+      { k: L('去 HBM 读 ' + PAGE.physical, 'Read ' + PAGE.physical + ' from HBM'), v: L('读出 A[3,0]', 'returns A[3,0]') },
+      { k: L('数据回到寄存器', 'The data reaches the register'), v: 'A[3,0] = ' + A[ROW][0] }
+    ],
+    pixel: [
+      { k: L('在哪算', 'Where it runs'), v: L('图形 TPC 里的一个 SM', 'an SM in a graphics TPC') },
+      { k: L('读入三个顶点', 'Read three vertices'), v: L('v₀ 红，v₁ 绿，v₂ 蓝', 'v₀ red, v₁ green, v₂ blue') },
+      { k: L('屏幕坐标', 'Screen positions'), v: '(4.5, 0)  (1, 6)  (7, 5)' },
+      { k: L('像素 (3, 4) 的权重', 'Weights at pixel (3, 4)'), v: L('0.2、0.5、0.3，在三角形里', '0.2, 0.5, 0.3, so it is inside') },
+      { k: L('按权重混合颜色', 'Blend colors by weight'), v: '(0.2, 0.5, 0.3)' },
+      { k: L('乘上白色纹素 (1, 1, 1)', 'Times the white texel (1, 1, 1)'), v: L('颜色不变', 'color unchanged') },
+      { k: L('深度 0.4 比已有的 0.7 近', 'Depth 0.4 is nearer than the stored 0.7'), v: L('× 255 后写入 (51, 128, 77)', '× 255, write (51, 128, 77)') },
+      { k: L('整帧拷给主机', 'Copy the frame to the host'), v: 'PCIe / NVLink' }
+    ],
+    stacking: [
+      { k: L('要喂饱 SM 的带宽', 'Bandwidth the SMs need'), v: function (m) { return product(m).bandwidth; } },
+      { k: L('一组 HBM', 'One HBM stack'), v: L('多层 DRAM 叠在底部接口芯片上', 'DRAM dies on a base interface die') },
+      { k: L('层与层之间', 'Between the layers'), v: L('TSV 和微凸点，每层几十微米', 'TSVs and microbumps, tens of microns per layer') },
+      { k: L('数据线', 'Data lines'), v: function (m) { return L('5 × 1024 = 5120 根，每根约 ' + product(m).line, '5 × 1024 = 5120, about ' + product(m).line + ' each'); } },
+      { k: L('HBM 到 GPU', 'HBM to GPU'), v: L('约 1 mm，走在硅中介层里', 'about 1 mm, inside the silicon interposer') },
+      { k: L('往下到电路板', 'Down to the board'), v: L('微凸点 → C4 凸点 → 焊球，一层比一层大', 'microbumps → C4 bumps → solder balls, larger each time') },
+      { k: L('热量', 'Heat'), v: function (m) { return L(product(m).power.zh + '，从顶面进冷板', product(m).power.en + ', out through the top into the cold plate'); } },
+      { k: L('启用的部分', 'Switched on'), v: function (m) { return L(product(m).sm + ' 个 SM，5 / 6 组 HBM', product(m).sm + ' SMs, 5 / 6 HBM stacks'); } }
+    ]
+  };
+  function logRows(journey, step, model) {
+    var rows = LOGS[journey] || [];
+    return rows.slice(0, Math.max(0, Math.min(rows.length - 1, step)) + 1).map(function (row, i) {
+      return { n: i + 1, k: row.k, v: typeof row.v === 'function' ? row.v(model || 'h100') : row.v, now: i === step };
+    });
+  }
+
+  // ---------- Markup ----------
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+  function t(v) { return esc(tr(v)); }
   var MONO = 'ui-monospace,SFMono-Regular,"JetBrains Mono",Consolas,monospace';
   var STYLE = [
-    '.lab-root{--lab-a:#6fd3bf;--lab-b:#e7b67a;--lab-c:#94b6ee;--lab-addr:#c9a7f2;--lab-heat:#f08a5d;--lab-line:rgba(237,237,237,.09);--lab-dim:#8b8f93;color:#e6e7e4;font-size:13px;line-height:1.5;min-width:0}',
-    '.lab-root *{box-sizing:border-box}.lab-root button{font:inherit}',
-    '.lab-caption{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:0 0 8px;color:var(--lab-dim);font-size:12px}',
-    '.lab-caption strong{font:500 12px ' + MONO + ';color:#e6e7e4;font-variant-numeric:tabular-nums;white-space:nowrap}',
-    '.lab-kicker{font-size:12px;color:var(--lab-dim);margin-bottom:6px}',
-    '.lab-matrices{display:grid;grid-template-columns:minmax(0,1fr) 12px minmax(0,1fr) 12px minmax(0,1fr);gap:4px;align-items:center;padding:4px 0 12px}',
-    '.lab-matrix{min-width:0}.lab-matrix-title{display:flex;align-items:baseline;gap:6px;margin-bottom:6px;font:500 12px ' + MONO + ';color:var(--lab-a)}.lab-matrix-title small{font-size:11px;color:var(--lab-dim);font-weight:400}',
-    '.lab-matrix-b .lab-matrix-title{color:var(--lab-b)}.lab-matrix-c .lab-matrix-title{color:var(--lab-c)}',
-    '.lab-grid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:2px}',
-    '.lab-cell{display:flex;align-items:center;justify-content:center;min-width:0;height:14px;border-radius:2px;background:rgba(237,237,237,.04);color:#5d6266;font:10px/1 ' + MONO + ';transition:background-color .15s,color .15s}',
-    '.lab-cell.lab-a{background:rgba(111,211,191,.16);color:var(--lab-a)}.lab-cell.lab-b{background:rgba(231,182,122,.16);color:var(--lab-b)}.lab-cell.lab-c{background:rgba(148,182,238,.14);color:var(--lab-c)}',
-    '.lab-cell.lab-output{box-shadow:0 0 0 1px var(--lab-c);color:var(--lab-c);background:rgba(148,182,238,.22)}.lab-cell.lab-k-focus{box-shadow:0 0 0 1px currentColor}',
-    '.lab-operator{text-align:center;color:var(--lab-dim)}',
-    '.lab-vectors{display:grid;gap:4px;padding:2px 0 12px}.lab-vector-row{display:grid;grid-template-columns:56px repeat(8,minmax(0,1fr));align-items:center;gap:3px}',
-    '.lab-vector-label{font:11px ' + MONO + ';color:var(--lab-a)}.lab-vector-row:last-child .lab-vector-label{color:var(--lab-b)}.lab-vector-row .lab-cell{height:22px;font-size:12px}',
-    '.lab-final-result{display:flex;align-items:baseline;justify-content:space-between;padding:0 0 12px;color:var(--lab-c);font:13px ' + MONO + '}.lab-final-result strong{font-size:32px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums}',
-    '.lab-stage{position:relative;padding:12px;border:1px solid var(--lab-line);border-radius:10px;background:#18191b;min-height:96px}',
-    '.lab-formula{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;font:20px/1.5 ' + MONO + ';min-height:40px}',
-    '.lab-acolor{color:var(--lab-a)}.lab-bcolor{color:var(--lab-b)}.lab-ccolor{color:var(--lab-c)}.lab-formula sub{font-size:.6em}',
-    '.lab-note{font-size:12px;color:var(--lab-dim);margin:8px 0 0;line-height:1.55}',
-    '.lab-products{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;margin-top:10px}',
-    '.lab-product{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;border:1px solid transparent;border-radius:6px;background:rgba(237,237,237,.04);color:#9a9ea1;font:11px ' + MONO + ';cursor:pointer;transition:background-color .15s,border-color .15s}',
-    '.lab-product .lab-product-k{font-size:10px;color:#6c7174}.lab-product .lab-product-number{font-size:14px;color:#c9cdd0}',
-    '.lab-product:hover,.lab-product:focus-visible,.lab-product.lab-product-on{background:rgba(148,182,238,.1);border-color:rgba(148,182,238,.5);outline:none}',
-    '.lab-av{color:var(--lab-a)}.lab-bv{color:var(--lab-b)}.lab-cv{color:var(--lab-c)}.lab-product.lab-product-done .lab-product-number{color:var(--lab-a)}',
-    '.lab-equation-status{display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--lab-dim);font:12px ' + MONO + '}.lab-equation-status strong{color:var(--lab-c);font-size:28px;font-weight:500;font-variant-numeric:tabular-nums}',
-    '.lab-expression{font:13px/1.6 ' + MONO + ';color:#b9bdc0;margin-top:4px;min-height:22px}',
-    '.lab-transfer{display:grid;grid-template-columns:1fr 24px 1fr;gap:6px;align-items:center}.lab-transfer-box{padding:8px;border:1px solid var(--lab-line);border-radius:6px;min-width:0}',
-    '.lab-pair-row{display:flex;gap:3px;margin-top:6px}.lab-pair{flex:1;text-align:center;font:12px ' + MONO + ';color:var(--lab-a);border-radius:4px;background:rgba(111,211,191,.1);padding:3px 0}.lab-pair.lab-b{color:var(--lab-b);background:rgba(231,182,122,.1)}',
-    '.lab-transfer-arrow{text-align:center;color:var(--lab-a)}.lab-packet{opacity:var(--packet-alpha,0)}',
-    '.lab-copy-progress{height:2px;background:rgba(111,211,191,.12);margin-top:10px;overflow:hidden}.lab-copy-progress i{display:block;background:var(--lab-a);height:100%;width:var(--lab-progress,0%)}',
-    '.lab-lanes{display:grid;grid-template-columns:repeat(16,minmax(0,1fr));gap:3px;margin-top:8px}.lab-lane{height:18px;display:flex;align-items:center;justify-content:center;border-radius:3px;background:rgba(111,211,191,.1);color:var(--lab-a);font:10px ' + MONO + ';opacity:.45}.lab-lane.lab-lane-on{opacity:1;background:rgba(111,211,191,.26)}',
-    '.lab-blocks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.lab-block{padding:8px;border:1px solid var(--lab-line);text-align:center;font:11px ' + MONO + ';color:var(--lab-dim);border-radius:6px}.lab-block.lab-target{border-color:var(--lab-c);background:rgba(148,182,238,.1);color:var(--lab-c)}',
-    '.lab-output-path{display:flex;align-items:center;justify-content:space-between;font:12px ' + MONO + ';gap:6px;margin:4px 0}.lab-output-path span{padding:6px 8px;border:1px solid var(--lab-line);border-radius:6px;color:var(--lab-c)}',
-    '.lab-bits{display:grid;gap:3px;margin-bottom:10px}.lab-bit{min-width:0;padding:6px 2px;text-align:center;border-top:2px solid rgba(201,167,242,.2);background:rgba(201,167,242,.05);border-radius:0 0 4px 4px;font:12px ' + MONO + ';color:#8e9195;font-variant-numeric:tabular-nums}',
-    '.lab-bit small{display:block;font-size:10px;color:#6f7377;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.lab-bit.lab-active{border-color:var(--lab-addr);color:var(--lab-addr);background:rgba(201,167,242,.13)}.lab-bit.lab-offset.lab-active{border-color:var(--lab-b);color:var(--lab-b);background:rgba(231,182,122,.12)}',
-    '.lab-svg{display:block;width:100%;overflow:visible;margin:0 0 8px}',
-    '.lab-svg text{font:10px ' + MONO + ';text-anchor:middle;fill:#9a9ea1}.lab-svg .lab-svg-strong{fill:#e6e7e4;font-size:11px}.lab-svg .lab-svg-result{fill:var(--lab-a);font-size:12px}.lab-svg .lab-svg-dim{fill:#6f7377}',
-    '.lab-box{fill:#1d1f21;stroke:rgba(237,237,237,.14);stroke-width:1}.lab-box.lab-active{fill:#1c2e2b;stroke:var(--lab-a)}.lab-box.lab-addr{fill:#272231;stroke:var(--lab-addr)}.lab-box.lab-warn{fill:#2c2519;stroke:var(--lab-b)}.lab-box.lab-off{fill:#121314;stroke:rgba(237,237,237,.06)}',
-    '.lab-path{fill:none;stroke:rgba(237,237,237,.16);stroke-width:1.4}.lab-path.lab-live{stroke:var(--lab-a);stroke-width:1.6}.lab-path.lab-addr{stroke:var(--lab-addr)}.lab-path.lab-heat{stroke:var(--lab-heat)}',
-    '.lab-dot{fill:#f2f2ee}.lab-dot.lab-dot-addr{fill:var(--lab-addr)}.lab-dot.lab-dot-heat{fill:var(--lab-heat)}',
-    '.lab-pixel{fill:rgba(237,237,237,.06)}.lab-pixel.lab-target{fill:none;stroke:var(--lab-c);stroke-width:1.5}.lab-pixel.lab-filled{fill:#33804d}',
-    '.lab-tri{fill:url(#lab-tri-grad);opacity:.55;stroke:rgba(148,182,238,.5)}.lab-weight{stroke:rgba(237,237,237,.25);stroke-dasharray:3 3;fill:none}',
-    '.lab-bar-r{fill:#d47b7b}.lab-bar-g{fill:#6cbc7c}.lab-bar-b{fill:#7b92d4}',
-    '.lab-scan{fill:rgba(148,182,238,.5)}',
-    '.lab-status{display:flex;justify-content:space-between;gap:10px;align-items:baseline;font-size:12px;color:var(--lab-dim);margin:0 0 6px}.lab-status span:last-child{font:12px ' + MONO + ';color:var(--lab-a);white-space:nowrap}',
-    '.lab-result{font:13px ' + MONO + ';color:#e6e7e4;padding:10px 12px;border:1px solid var(--lab-line);border-radius:8px;background:#18191b;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}',
-    '@media(prefers-reduced-motion:reduce){.lab-root *{transition:none!important}}'
+    '.lab-root{--lab-a:#61ddc3;--lab-b:#efbe78;--lab-c:#94b9ff;--lab-addr:#c9a7f2;--lab-heat:#f08a5d;--lab-accent:#bddaa7;--lab-line:rgba(237,237,237,.08);--lab-line-strong:rgba(237,237,237,.16);--lab-text:#ededed;--lab-text-2:#a1a1a6;--lab-dim:#85858b;color:var(--lab-text);font-size:13px;line-height:1.5;min-width:0}',
+    '.lab-root *{box-sizing:border-box}',
+    '.lab-fig{padding:12px;border:1px solid var(--lab-line);border-radius:12px;background:#19191b}',
+    '.lab-note{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--lab-text-2)}',
+    // matrix map
+    '.lab-map{display:grid;grid-template-columns:auto 16px auto 16px auto;justify-content:space-between;align-items:end}',
+    '.lab-mat{display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0}',
+    '.lab-grid{display:grid;grid-template-columns:repeat(8,9px);gap:2px}',
+    '.lab-cell{width:9px;height:9px;border-radius:2px;background:rgba(237,237,237,.08)}',
+    '.lab-cell.lab-a{background:var(--lab-a)}.lab-cell.lab-b{background:var(--lab-b)}.lab-cell.lab-tile{background:rgba(148,185,255,.3)}.lab-cell.lab-c{background:var(--lab-c)}',
+    '.lab-cap{font-size:12px;line-height:1.35;color:var(--lab-text-2);white-space:nowrap;text-align:center}',
+    '.lab-cap b{font:500 12px ' + MONO + '}.lab-cap .lab-ta{color:var(--lab-a)}.lab-cap .lab-tb{color:var(--lab-b)}.lab-cap .lab-tc{color:var(--lab-c)}',
+    '.lab-op{color:var(--lab-dim);text-align:center;padding-bottom:22px}',
+    // the eight pairs
+    '.lab-ktable{display:grid;grid-template-columns:minmax(52px,auto) repeat(4,minmax(0,1fr)) 12px repeat(4,minmax(0,1fr));gap:2px;align-items:center;margin-top:16px;font:13px ' + MONO + ';font-variant-numeric:tabular-nums}',
+    '.lab-rowlabel{font-size:12px;color:var(--lab-text-2);white-space:nowrap;padding-right:8px}',
+    '.lab-round{grid-column:span 4;font:12px/1.5 system-ui,sans-serif;color:var(--lab-dim);text-align:center}',
+    '.lab-kc{height:24px;display:flex;align-items:center;justify-content:center;border-radius:4px}',
+    '.lab-kc.lab-khead{height:20px;font-size:12px;color:var(--lab-dim)}',
+    '.lab-kc.lab-a{background:rgba(97,221,195,.14);color:var(--lab-a)}.lab-kc.lab-b{background:rgba(239,190,120,.14);color:var(--lab-b)}',
+    '.lab-kc.lab-p{background:rgba(237,237,237,.05);color:var(--lab-dim)}.lab-kc.lab-p.lab-done{background:rgba(148,185,255,.18);color:var(--lab-c)}.lab-kc.lab-p.lab-next{outline:1px solid var(--lab-c);outline-offset:-1px}',
+    '.lab-at{grid-column:span 4;margin-top:4px;padding:4px 8px;border-radius:6px;border:1px solid var(--lab-line-strong);font:12px/1.4 system-ui,sans-serif;color:var(--lab-text);text-align:center}',
+    '.lab-at.lab-at-all{grid-column:span 9}',
+    '.lab-at.lab-active{border-color:var(--lab-accent);background:rgba(189,218,167,.1)}',
+    '.lab-round.lab-active{color:var(--lab-accent)}',
+    '.lab-ktable .lab-dim{opacity:.4}',
+    '.lab-acc{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--lab-line);font-size:12px;color:var(--lab-text-2)}',
+    '.lab-acc strong{font:500 24px/1 ' + MONO + ';color:var(--lab-c);font-variant-numeric:tabular-nums}',
+    '.lab-acc span[data-lab-expression]{font:12px ' + MONO + ';color:var(--lab-text-2)}',
+    // address fields
+    '.lab-va{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12px;color:var(--lab-text-2)}',
+    '.lab-va code{font:13px ' + MONO + ';color:var(--lab-text)}',
+    '.lab-bits{display:grid;gap:2px;margin-top:8px}',
+    '.lab-bit{min-width:0;padding:4px 2px;text-align:center;border-radius:4px;border-top:2px solid var(--lab-line-strong);background:rgba(237,237,237,.04)}',
+    '.lab-bit span{display:block;font-size:11px;line-height:1.45;color:var(--lab-dim);white-space:nowrap}',
+    '.lab-bit b{display:block;font:500 13px/1.5 ' + MONO + ';color:var(--lab-text-2);font-variant-numeric:tabular-nums}',
+    '.lab-bit.lab-on{border-top-color:var(--lab-addr);background:rgba(201,167,242,.12)}.lab-bit.lab-on b{color:var(--lab-addr)}.lab-bit.lab-on span{color:var(--lab-text-2)}',
+    // the record
+    '.lab-log{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:2px}',
+    '.lab-log li{display:grid;grid-template-columns:16px minmax(0,1fr);gap:8px;padding:4px 8px;border-radius:8px;font-size:12px;line-height:1.5;color:var(--lab-dim)}',
+    '.lab-log .lab-n{font:12px/1.5 ' + MONO + ';color:var(--lab-dim)}',
+    '.lab-log b{margin-left:4px;font-weight:400;color:var(--lab-text-2);overflow-wrap:anywhere}',
+    '.lab-log li.lab-now{background:rgba(237,237,237,.06);color:var(--lab-text-2)}.lab-log li.lab-now b{color:var(--lab-text);font-weight:500}.lab-log li.lab-now .lab-n{color:var(--lab-accent)}',
+    // pixel
+    '.lab-px{display:grid;grid-template-columns:152px minmax(0,1fr);gap:16px;align-items:center}',
+    '.lab-svg{display:block;width:100%;height:auto}',
+    '.lab-px .lab-svg{width:152px;height:152px}',
+    '.lab-svg text{font:11px ' + MONO + ';fill:#a1a1a6}',
+    '.lab-key{display:grid;gap:8px;margin:0;font-size:12px;line-height:1.4;color:var(--lab-text-2)}',
+    '.lab-key div{display:flex;align-items:center;gap:8px;min-width:0}.lab-key i{flex:none;width:10px;height:10px;border-radius:50%}',
+    '.lab-key b{margin-left:auto;font:400 12px ' + MONO + ';color:var(--lab-text)}',
+    '.lab-key .lab-result{padding-top:8px;border-top:1px solid var(--lab-line)}.lab-key .lab-result i{width:20px;height:20px;border-radius:4px;border:1px solid var(--lab-line-strong)}',
+    // cross-section
+    '.lab-part{fill:#2b2d30;stroke:rgba(237,237,237,.14);stroke-width:1}.lab-part.lab-on{fill:#39403a;stroke:var(--lab-accent)}',
+    '.lab-ball{fill:#6f7377}.lab-ball.lab-on{fill:var(--lab-accent)}',
+    '.lab-tsv{stroke:#b98a5e;stroke-width:1.5}.lab-tsv.lab-on{stroke:var(--lab-accent);stroke-width:2}',
+    '.lab-cold{fill:none;stroke:rgba(237,237,237,.3);stroke-width:1;stroke-dasharray:4 3}.lab-cold.lab-on{stroke:var(--lab-accent)}',
+    '.lab-lead{stroke:rgba(237,237,237,.18);stroke-width:1}',
+    '.lab-svg text.lab-on{fill:#ededed}',
+    '.lab-link{fill:none;stroke:var(--lab-a);stroke-width:2}.lab-heatline{fill:none;stroke:var(--lab-heat);stroke-width:2}.lab-heathead{fill:var(--lab-heat)}'
   ].join('\n');
   function installStyle(doc) {
     if (doc.getElementById('gpu-explorer-lab-style')) return;
@@ -133,327 +231,184 @@
     doc.head.appendChild(style);
   }
 
-  // ---------- GEMM ----------
-  function matrix(data, name, which, step) {
-    var cols = data[0].length;
-    var out = '<div class="lab-matrix lab-matrix-' + which + '"><div class="lab-matrix-title">' + name + '<small>' + data.length + ' × ' + cols + '</small></div><div class="lab-grid" role="img" aria-label="' + escapeHTML(tr(L('矩阵 ' + name + '，' + data.length + ' 行 ' + cols + ' 列', 'Matrix ' + name + ', ' + data.length + ' rows by ' + cols + ' columns'))) + '">';
-    data.forEach(function (row, i) { row.forEach(function (value, j) {
-      var cls = 'lab-cell', content = value, k = -1;
-      if (which === 'a' && i === ROW && step >= 1) { cls += ' lab-a'; k = j; }
-      if (which === 'b' && j === COL && step >= 1) { cls += ' lab-b'; k = i; }
-      if (which === 'c') {
-        content = '·';
-        if (step === 2 && i >= 2 && j >= 4) cls += ' lab-c';
-        if (i === ROW && j === COL) { cls += ' lab-output'; content = step === 7 ? C[ROW][COL] : '?'; }
-      }
-      out += '<span class="' + cls + '"' + (k >= 0 ? ' data-matrix-k="' + k + '"' : '') + ' title="' + name + '[' + i + ',' + j + ']' + (which !== 'c' ? ' = ' + value : '') + '">' + content + '</span>';
-    }); });
-    return out + '</div></div>';
-  }
-  function matrices(step) {
-    return '<div class="lab-matrices">' + matrix(A, 'A', 'a', step) + '<div class="lab-operator">×</div>' + matrix(B, 'B', 'b', step) + '<div class="lab-operator">=</div>' + matrix(C, 'C', 'c', step) + '</div>';
-  }
-  function vectors() {
-    return '<div class="lab-vectors" aria-label="' + escapeHTML(tr(L('C[3,7] 用到的 A 行和 B 列', 'The row of A and column of B used by C[3,7]'))) + '">' + ['a', 'b'].map(function (which) {
-      return '<div class="lab-vector-row"><span class="lab-vector-label">' + (which === 'a' ? 'A[3,:]' : 'B[:,7]') + '</span>' + TRACE.map(function (t) {
-        return '<span class="lab-cell lab-' + which + '" data-matrix-k="' + t.k + '" title="' + (which === 'a' ? 'A[3,' + t.k + ']' : 'B[' + t.k + ',7]') + ' = ' + t[which] + '">' + t[which] + '</span>';
-      }).join('') + '</div>';
-    }).join('') + '</div>';
-  }
-  function products() {
-    return '<div class="lab-products">' + TRACE.map(function (t) {
-      return '<button type="button" class="lab-product" data-lab-k="' + t.k + '" aria-label="' + escapeHTML(tr(L('k=' + t.k + '：' + t.a + ' 乘 ' + t.b + ' 等于 ' + t.product, 'k=' + t.k + ': ' + t.a + ' times ' + t.b + ' is ' + t.product))) + '" title="A[3,' + t.k + '] × B[' + t.k + ',7] = ' + t.product + '"><span class="lab-product-k">k' + t.k + '</span><span><span class="lab-av">' + t.a + '</span>·<span class="lab-bv">' + t.b + '</span></span><span class="lab-product-number">' + t.product + '</span></button>';
-    }).join('') + '</div>';
-  }
-  function transfer(start, end) {
-    function bank(isDestination) {
-      return '<div class="lab-transfer-box"><div class="lab-kicker">' + escapeHTML(tr(isDestination ? L('共享内存 · 片上', 'Shared memory · on chip') : L('HBM · 片外', 'HBM · off chip'))) + '</div>' + ['a', 'b'].map(function (which) {
-        return '<div class="lab-pair-row">' + TRACE.slice(start, end).map(function (t, i) {
-          return '<span class="lab-pair' + (which === 'b' ? ' lab-b' : '') + (isDestination ? ' lab-packet' : '') + '"' + (isDestination ? ' data-packet="' + i + '"' : '') + '>' + t[which] + '</span>';
-        }).join('') + '</div>';
-      }).join('') + '</div>';
+  // Matrix multiply: which cells matter, the eight pairs, where they are, the running sum.
+  function matrix(which, rows, step) {
+    var out = '<div class="lab-grid" role="img" aria-label="' + t(L('矩阵 ' + which + '，' + rows + ' 行 8 列', 'Matrix ' + which + ', ' + rows + ' rows by 8 columns')) + '">';
+    for (var i = 0; i < rows; i++) for (var j = 0; j < 8; j++) {
+      var cls = 'lab-cell';
+      if (which === 'A' && i === ROW) cls += ' lab-a';
+      if (which === 'B' && j === COL) cls += ' lab-b';
+      if (which === 'C') { if (i === ROW && j === COL) cls += ' lab-c'; else if (step >= 2 && i >= 2 && j >= 4) cls += ' lab-tile'; }
+      out += '<span class="' + cls + '"></span>';
     }
-    return '<div class="lab-transfer">' + bank(false) + '<span class="lab-transfer-arrow">→</span>' + bank(true) + '</div><div class="lab-copy-progress"><i></i></div>';
+    return out + '</div>';
   }
-  var GEMM_CAPTIONS = [L('只看一个输出', 'One output'), L('它依赖的输入', 'Its inputs'), L('一个 CTA 负责一块输出', 'One CTA per output tile'), L('载入第 1 个 K 块', 'Load K tile 1'), L('32 个 lane 一起工作', '32 lanes together'), L('累加第 1 个 K 块', 'Accumulate K tile 1'), L('同步，换下一块', 'Sync, then the next tile'), L('写回显存', 'Write back')];
-  var GEMM_LOCATIONS = ['C[3,7]', 'A[3,:] · B[:,7]', 'tile → CTA → SM', 'k = 0…3', 'warp = 32 threads', 'acc = 0 → 19', 'acc = 19 → 37', 'C[3,7] = 37'];
   function gemm(step) {
-    var html = step >= 3 && step <= 6 ? vectors() : (step === 7 ? '<div class="lab-final-result" role="status" aria-label="' + escapeHTML(tr(L('C[3,7] 等于 37', 'C[3,7] equals 37'))) + '"><span>C[3,7] = 19 + 18</span><strong>37</strong></div>' : '') + matrices(step), body;
-    html += '<div class="lab-caption"><span>' + escapeHTML(tr(GEMM_CAPTIONS[step])) + '</span><strong>' + GEMM_LOCATIONS[step] + '</strong></div>';
-    if (step === 0) {
-      body = '<div class="lab-formula"><span class="lab-ccolor">C<sub>3,7</sub></span><span>=</span><span>Σ<sub>k=0..7</sub></span><span class="lab-acolor">A<sub>3,k</sub></span><span>·</span><span class="lab-bcolor">B<sub>k,7</sub></span></div><p class="lab-note">' + escapeHTML(tr(L('跟着这一个数，看它经过显存、共享内存、计算，再写回。', 'Follow this one number from memory to shared memory, through compute and back.'))) + '</p>';
-    } else if (step === 1) {
-      body = '<div class="lab-kicker">' + escapeHTML(tr(L('点任意一项，看它来自哪两个数', 'Click a term to trace its two inputs'))) + '</div>' + products() + '<p class="lab-note">' + escapeHTML(tr(L('每对数相乘，8 项加起来就是 C[3,7]。', 'Multiply each pair; the eight products add up to C[3,7].'))) + '</p>';
-    } else if (step === 2) {
-      body = '<div class="lab-blocks"><div class="lab-block">CTA 0 · C[0:2, 0:4]</div><div class="lab-block">CTA 1 · C[0:2, 4:8]</div><div class="lab-block">CTA 2 · C[2:4, 0:4]</div><div class="lab-block lab-target">CTA 3 · C[2:4, 4:8]</div></div><p class="lab-note">' + escapeHTML(tr(L('C[3,7] 在 CTA 3 里，每个 CTA 算自己那一块。', 'C[3,7] is in CTA 3. Each CTA computes its own tile.'))) + '</p>';
-    } else if (step === 3) {
-      body = '<div class="lab-kicker">' + escapeHTML(tr(L('第 1 / 2 个 K 块 · k = 0…3', 'K tile 1 of 2 · k = 0…3'))) + '</div>' + transfer(0, 4) + '<p class="lab-note">' + escapeHTML(tr(L('搬进共享内存后，同一块 A、B 会被多个输出反复读取。', 'Once in shared memory, the same tiles are read by many outputs.'))) + '</p>';
-    } else if (step === 4) {
-      body = '<div class="lab-kicker">' + escapeHTML(tr(L('一条指令，32 个 lane', 'One instruction, 32 lanes'))) + '</div><div class="lab-lanes">' + Array.from({ length: 32 }, function (_, i) { return '<span class="lab-lane">' + i + '</span>'; }).join('') + '</div><p class="lab-note">' + escapeHTML(tr(L('线程一起给 Tensor Core 提供矩阵片段。下一步把目标输出的内积展开来算。', 'The threads feed matrix fragments to the Tensor Core together. The next step unrolls the dot product for our output.'))) + '</p>';
-    } else if (step === 5 || step === 6) {
-      body = '<div class="lab-equation-status"><span>' + escapeHTML(tr(step === 5 ? L('第 1 / 2 个 K 块', 'K tile 1 of 2') : L('第 2 / 2 个 K 块', 'K tile 2 of 2'))) + '</span><span>acc <strong data-lab-acc role="status" aria-label="' + escapeHTML(tr(L('当前累加值', 'Current accumulator'))) + '">' + (step === 5 ? '0' : '19') + '</strong></span></div><div class="lab-expression" data-lab-expression></div>' + products();
-    } else {
-      body = '<div class="lab-output-path"><span>acc = 37</span>→<span>Store</span>→<span>C[3,7]</span></div><p class="lab-note">' + escapeHTML(tr(L('19 + 18 = 37。两个 K 块都加完才写回。', '19 + 18 = 37. It is only written once both K tiles are added.'))) + '</p>';
+    var done = step >= 7, acc = accumulation(step, step === 5 || step === 6 ? 0 : 1), status = roundStatus(step);
+    var cCap = '<b class="lab-tc">C[3,7] = ' + (done ? C[ROW][COL] : '?') + '</b>' + (step >= 2 ? '<br>' + t(L('在 CTA 3 这一块', 'in the CTA 3 tile')) : '');
+    var html = '<div class="lab-map">' +
+      '<div class="lab-mat">' + matrix('A', 4, step) + '<div class="lab-cap">' + t(L('A 的第 3 行', 'row 3 of A')) + '<br><b class="lab-ta">A[3,k]</b></div></div><div class="lab-op">×</div>' +
+      '<div class="lab-mat">' + matrix('B', 8, step) + '<div class="lab-cap">' + t(L('B 的第 7 列', 'column 7 of B')) + '<br><b class="lab-tb">B[k,7]</b></div></div><div class="lab-op">=</div>' +
+      '<div class="lab-mat">' + matrix('C', 4, step) + '<div class="lab-cap">' + cCap + '</div></div></div>';
+    // Each round's four columns carry where those numbers are now; the round
+    // this step works on is outlined and the other one is dimmed.
+    var active = activeRound(step);
+    function roundOf(k) { return k < TILE_K ? 0 : 1; }
+    function dim(k) { return active >= 0 && roundOf(k) !== active ? ' lab-dim' : ''; }
+    var table = '';
+    if (step >= 2) table += '<span></span><span class="lab-round' + (active === 0 ? ' lab-active' : '') + '">' + t(L('第 1 轮', 'Round 1')) + '</span><span></span><span class="lab-round' + (active === 1 ? ' lab-active' : '') + '">' + t(L('第 2 轮', 'Round 2')) + '</span>';
+    function row(label, cls, cell) {
+      var out = '<span class="lab-rowlabel">' + label + '</span>';
+      TRACE.forEach(function (tk) { if (tk.k === TILE_K) out += '<span></span>'; out += '<span class="lab-kc ' + cls + dim(tk.k) + '"' + (cls === 'lab-p' ? ' data-lab-p="' + tk.k + '"' : '') + '>' + cell(tk) + '</span>'; });
+      return out;
     }
-    return html + '<div class="lab-stage">' + body + '</div>';
-  }
-
-  // ---------- Other walkthroughs: small diagrams driven by the visual clock ----------
-  function svgText(x, y, text, klass) { return '<text x="' + x + '" y="' + y + '" class="' + (klass || '') + '">' + escapeHTML(tr(text)) + '</text>'; }
-  function box(x, y, w, h, label, state) { return '<rect class="lab-box' + (state ? ' lab-' + state : '') + '" x="' + (x - w / 2) + '" y="' + (y - h / 2) + '" width="' + w + '" height="' + h + '" rx="5"/>' + svgText(x, y + 4, label, state ? 'lab-svg-strong' : ''); }
-  function poly(points, klass) { return '<polyline class="lab-path ' + (klass || '') + '" points="' + points.map(function (p) { return p.join(','); }).join(' ') + '"/>'; }
-  function dots(count, klass) { var out = ''; for (var i = 0; i < count; i++) out += '<circle data-phase-marker="' + i + '" class="lab-dot ' + (klass || '') + '" cx="-20" cy="-20" r="3.5"/>'; return out; }
-  function svg(inner, label, height) { return '<svg class="lab-svg" viewBox="0 0 340 ' + (height || 150) + '" role="img" aria-label="' + escapeHTML(tr(label)) + '"><defs><linearGradient id="lab-tri-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d47b7b"/><stop offset=".5" stop-color="#6cbc7c"/><stop offset="1" stop-color="#7b92d4"/></linearGradient></defs>' + inner + '</svg>'; }
-
-  var PAGE_NODES = { lsu: [34, 26], tlb1: [102, 26], tlb2: [170, 26], gmmu: [238, 26], hbm: [306, 26], pd4: [34, 104], pd3: [92, 104], pd2: [150, 104], pd1: [208, 104], pd0: [266, 104], page: [318, 104] };
-  var PAGE_LABELS = { lsu: 'LD/ST', tlb1: 'L1 TLB', tlb2: 'L2 TLB', gmmu: 'GMMU', hbm: 'HBM', pd4: 'PD4[0]', pd3: 'PD3[0]', pd2: 'PD2[508]', pd1: 'PD1[470]', pd0: 'PD0[22]', page: '2 MiB' };
-  function pageDiagram(spec) {
-    var inner = poly([[34, 26], [306, 26]]) + poly([[238, 26], [238, 64], [34, 64], [34, 104]]) + poly([[34, 104], [318, 104]]);
-    spec.paths.forEach(function (p) { inner += poly(p, 'lab-live lab-addr'); });
-    Object.keys(PAGE_NODES).forEach(function (id) {
-      var p = PAGE_NODES[id], w = id === 'page' ? 40 : id.indexOf('pd') === 0 ? 52 : 56;
-      var state = spec.miss && spec.miss.indexOf(id) >= 0 ? 'warn' : spec.active.indexOf(id) >= 0 ? 'addr' : spec.done && spec.done.indexOf(id) >= 0 ? 'active' : null;
-      inner += box(p[0], p[1], w, 26, PAGE_LABELS[id], state);
+    table += row('k', 'lab-khead', function (tk) { return tk.k; }) +
+      row('A[3,k]', 'lab-a', function (tk) { return tk.a; }) +
+      row('B[k,7]', 'lab-b', function (tk) { return tk.b; }) +
+      row(t(L('乘积', 'product')), 'lab-p', function () { return '·'; });
+    table += '<span class="lab-rowlabel">' + t(L('在哪', 'Where')) + '</span>';
+    if (step < 2) table += '<span class="lab-at lab-at-all" data-lab-round="all">' + t(L('16 个数都还在 HBM', 'All 16 numbers are still in HBM')) + '</span>';
+    else [0, 1].forEach(function (n) {
+      if (n) table += '<span></span>';
+      table += '<span class="lab-at' + (active === n ? ' lab-active' : active >= 0 ? ' lab-dim' : '') + '" data-lab-round="' + n + '">' + t(status[n]) + '</span>';
     });
-    inner += svgText(170, 140, spec.note, 'lab-svg-dim') + dots(spec.paths.length, 'lab-dot-addr');
-    return inner;
+    html += '<div class="lab-ktable" role="img" aria-label="' + t(L('C[3,7] 用到的 8 对数、它们的乘积和现在在哪', 'The eight pairs C[3,7] uses, their products, and where they are now')) + '">' + table + '</div>';
+    if (step >= 5) html += '<div class="lab-acc"><span>' + t(L('累加器', 'Accumulator')) + '</span><strong data-lab-acc role="status" aria-label="' + t(L('累加器当前的值', 'Current accumulator value')) + '">' + acc.value + '</strong><span data-lab-expression></span>' + (done ? '<span>' + t(L('写回 HBM 里的 C[3,7]', 'written to C[3,7] in HBM')) + '</span>' : '') + '</div>';
+    else if (step === 1) html += '<p class="lab-note">' + t(L('每一列上下两个数相乘，比如 k = 0 是 2 × 1 = 2。8 个乘积加起来就是 C[3,7]。', 'Multiply the two numbers in each column: for k = 0 that is 2 × 1 = 2. The eight products add up to C[3,7].')) + '</p>';
+    return '<div class="lab-fig">' + html + '</div>';
   }
-  var PAGE_STEPS = [
-    { active: ['lsu'], paths: [[[34, 52], [34, 26]]], bits: [0, 1, 2, 3, 4, 5], note: L('程序只看得到虚拟地址', 'Programs only see virtual addresses'), stages: [L('算地址', 'Compute address'), L('交给 LD/ST', 'Hand to LD/ST'), L('准备翻译', 'Translate')] },
-    { active: ['tlb1'], miss: ['tlb1'], paths: [[[34, 26], [102, 26]]], bits: [0, 1, 2, 3, 4], note: L('虚拟页号 = 地址 >> 21', 'Virtual page = address >> 21'), stages: [L('查 L1 TLB', 'Check L1 TLB'), L('没有这一项', 'No entry'), L('未命中', 'Miss')] },
-    { active: ['tlb2', 'gmmu'], miss: ['tlb1', 'tlb2'], paths: [[[102, 26], [170, 26], [238, 26]]], bits: [0, 1, 2, 3, 4], note: L('GMMU 开始查页表', 'The GMMU starts the walk'), stages: [L('查共享 TLB', 'Check shared TLB'), L('未命中', 'Miss'), L('GMMU 接手', 'GMMU takes over')] },
-    { active: ['pd4', 'pd3', 'pd2', 'hbm'], miss: ['tlb1', 'tlb2'], paths: [[[238, 26], [306, 26]], [[34, 104], [92, 104], [150, 104]]], bits: [0, 1, 2], note: L('每一层都要读一次显存', 'Each level is one memory read'), stages: ['PD4[0]', 'PD3[0]', 'PD2[508]'] },
-    { active: ['pd1', 'pd0', 'page'], done: ['pd4', 'pd3', 'pd2'], miss: ['tlb1', 'tlb2'], paths: [[[150, 104], [208, 104], [266, 104], [318, 104]]], bits: [3, 4], note: L('PD0 这一项就是 2 MiB 页的页表项', 'The PD0 entry is the 2 MiB page entry'), stages: ['PD1[470]', 'PD0[22]', L('页基址', 'Page base')] },
-    { active: ['page', 'tlb1', 'tlb2'], done: ['pd4', 'pd3', 'pd2', 'pd1', 'pd0'], paths: [[[318, 104], [318, 64], [102, 64], [102, 26]]], bits: [5], pa: true, note: '0x24e000000 + 0x164a40', stages: [L('页基址', 'Page base'), L('+ 偏移', '+ offset'), L('填回 TLB', 'Fill TLBs')] },
-    { active: ['hbm'], done: ['tlb1', 'tlb2', 'gmmu'], paths: [[[238, 26], [306, 26]]], bits: [], pa: true, note: L('物理地址 → 堆栈、通道、bank', 'PA → stack, channel, bank'), stages: [L('L2 未命中', 'L2 miss'), L('存储控制器', 'Memory controller'), L('读 DRAM', 'Read DRAM')] },
-    { active: ['lsu'], done: ['tlb1', 'tlb2', 'hbm'], paths: [[[306, 26], [306, 64], [34, 64], [34, 26]]], bits: [], pa: true, note: L('同一页的下次访问：TLB 命中', 'Next access in this page: TLB hit'), stages: ['HBM', 'L2', L('寄存器', 'Register')] }
-  ];
-  function addressBits(spec) {
-    var labels = ['PD4', 'PD3', 'PD2', 'PD1', 'PD0', 'offset'];
-    var widths = [1, 9, 9, 9, 8, 21];
-    var cols = widths.map(function (w) { return Math.max(w, 6) + 'fr'; }).join(' ');
+  function expression(step, count) {
+    var from = step === 6 ? TILE_K : 0, terms = TRACE.slice(from, count).map(function (tk) { return tk.product; });
+    if (step >= 7) return '= 19 + 18';
+    if (step === 6) return '= 19' + terms.map(function (p) { return ' + ' + p; }).join('');
+    return terms.length ? '= ' + terms.join(' + ') : '';
+  }
+
+  function log(journey, step, model) {
+    return '<ol class="lab-log">' + logRows(journey, step, model).map(function (row) {
+      return '<li' + (row.now ? ' class="lab-now" aria-current="step"' : '') + '><span class="lab-n">' + row.n + '</span><span>' + t(row.k) + ' <b>' + t(row.v) + '</b></span></li>';
+    }).join('') + '</ol>';
+  }
+
+  // Address translation: the address, its six fields, and the record of the lookup.
+  function pagetable(step, model) {
+    var names = ['PD4', 'PD3', 'PD2', 'PD1', 'PD0', tr(L('页内偏移', 'offset'))], weights = [1.1, 1.4, 1.4, 1.4, 1.4, 2.6];
     var values = [PAGE.fields.pd4, PAGE.fields.pd3, PAGE.fields.pd2, PAGE.fields.pd1, PAGE.fields.pd0, '0x' + PAGE.fields.offset.toString(16)];
-    return '<div class="lab-bits" style="grid-template-columns:' + cols + '" aria-label="' + escapeHTML(tr(L('虚拟地址 0x7f3ac2d64a40 按页表层级拆开', 'Virtual address 0x7f3ac2d64a40 split by page-table level'))) + '">' + labels.map(function (name, i) {
-      return '<div class="lab-bit' + (i === 5 ? ' lab-offset' : '') + (spec.bits.indexOf(i) >= 0 ? ' lab-active' : '') + '" title="' + widths[i] + ' bit"><small>' + escapeHTML(i === 5 ? tr(L('偏移', 'offset')) : name) + '</small>' + values[i] + '</div>';
+    var on = PAGE_BITS[step] || [];
+    var strip = '<div class="lab-bits" style="grid-template-columns:' + weights.map(function (w) { return 'minmax(0,' + w + 'fr)'; }).join(' ') + '" role="img" aria-label="' + t(L('虚拟地址 ' + PAGE.va + ' 切成的六段', 'The six fields of virtual address ' + PAGE.va)) + '">' + GPU_FIELDS.map(function (f, i) {
+      var width = f.hi - f.lo + 1;
+      return '<div class="lab-bit' + (on.indexOf(i) >= 0 ? ' lab-on' : '') + '" data-field="' + f.id + '"><span>' + esc(names[i]) + '</span><b>' + values[i] + '</b><span>' + t(L(width + ' 位', width + (width === 1 ? ' bit' : ' bits'))) + '</span></div>';
     }).join('') + '</div>';
+    return '<div class="lab-fig"><div class="lab-va"><span>' + t(L('A[3,0] 的虚拟地址', 'Virtual address of A[3,0]')) + '</span><code>' + PAGE.va + '</code></div>' + strip +
+      (step === 0 ? '<p class="lab-note">' + t(L('57 位地址切成 6 段。前 5 段各是一层页目录（PD）里的下标，最后 21 位是 2 MiB 页里的偏移。', 'The 57-bit address is cut into six fields. Each of the first five is an index into one level of page directory (PD); the last 21 bits are the offset inside a 2 MiB page.')) + '</p>' : '') +
+      log('pagetable', step, model) + '</div>';
   }
 
-  var PIXEL_STEPS = [
-    { stages: [L('132 个 SM', '132 SMs'), L('2 个图形 TPC', '2 graphics TPCs'), L('像素 (3, 4)', 'Pixel (3, 4)')], paths: [[[90, 75], [150, 75]]], height: 150 },
-    { stages: ['v₀', 'v₁', 'v₂'], paths: [[[30, 120], [68, 13]], [[30, 120], [10, 121]], [[30, 120], [136, 121]]], height: 150 },
-    { stages: [L('读位置', 'Read position'), 'M · p', L('屏幕坐标', 'Screen position')], paths: [[[150, 70], [230, 70]]], height: 150 },
-    { stages: [L('扫描', 'Scan'), L('判断在内部', 'Inside test'), L('生成片元', 'Emit fragment')], paths: [[[68, 13], [59.4, 99.4]], [[10, 121], [59.4, 99.4]], [[136, 121], [59.4, 99.4]]], scan: true, height: 150 },
-    { stages: ['R 0.2', 'G 0.5', 'B 0.3'], paths: [[[40, 75], [150, 75]]], height: 150 },
-    { stages: ['uv (0.25, 0.75)', L('白色纹素', 'White texel'), L('颜色不变', 'Color unchanged')], paths: [[[50, 106], [50, 80], [170, 80], [170, 46], [260, 46]]], height: 150 },
-    { stages: [L('新 z = 0.4', 'New z = 0.4'), L('已有 z = 0.7', 'Stored z = 0.7'), L('通过，写入', 'Pass, write')], paths: [[[40, 42], [150, 42], [150, 72], [250, 72]]], height: 150 },
-    { stages: [L('帧缓冲', 'Framebuffer'), L('PCIe / NVLink', 'PCIe / NVLink'), L('主机', 'Host')], paths: [[[100, 75], [240, 75]]], height: 150 }
+  // Pixel: the 8 × 8 target with the triangle, the three vertices, and the record.
+  function pixel(step, model) {
+    var size = 16, pad = 12, P = PIXEL, hexes = ['#e06c6c', '#6cbc7c', '#7b92d4'], names = [L('红', 'red'), L('绿', 'green'), L('蓝', 'blue')];
+    function sx(v) { return pad + v * size; }
+    var filled = step >= 6, rgb = 'rgb(' + P.rgb.join(',') + ')', inner = '';
+    for (var r = 0; r < 8; r++) for (var c = 0; c < 8; c++) inner += '<rect x="' + (sx(c) + 1) + '" y="' + (sx(r) + 1) + '" width="' + (size - 2) + '" height="' + (size - 2) + '" rx="2" fill="rgba(237,237,237,.07)"/>';
+    var pts = P.vertices.map(function (v) { return sx(v[0]) + ',' + sx(v[1]); }).join(' ');
+    if (step >= 2) inner += '<polygon points="' + pts + '" fill="' + (step >= 3 ? 'rgba(237,237,237,.1)' : 'none') + '" stroke="rgba(237,237,237,.55)" stroke-width="1.2" stroke-linejoin="round"/>';
+    if (filled) inner += '<rect x="' + (sx(P.target[0]) + 1) + '" y="' + (sx(P.target[1]) + 1) + '" width="' + (size - 2) + '" height="' + (size - 2) + '" rx="2" fill="' + rgb + '"/>';
+    if (step >= 3 && step <= 5) P.vertices.forEach(function (v) { inner += '<line x1="' + sx(v[0]) + '" y1="' + sx(v[1]) + '" x2="' + sx(P.center[0]) + '" y2="' + sx(P.center[1]) + '" stroke="rgba(237,237,237,.4)" stroke-width="1" stroke-dasharray="3 3"/>'; });
+    inner += '<rect x="' + sx(P.target[0]) + '" y="' + sx(P.target[1]) + '" width="' + size + '" height="' + size + '" rx="3" fill="none" stroke="#94b9ff" stroke-width="1.5"/>';
+    if (step >= 2) P.vertices.forEach(function (v, i) {
+      var x = sx(v[0]), y = sx(v[1]), lx = [x + 9, x - 4, x + 4][i], ly = [y + 4, y + 16, y + 16][i];
+      inner += '<circle cx="' + x + '" cy="' + y + '" r="4" fill="' + hexes[i] + '" stroke="#19191b" stroke-width="1"/><text x="' + lx + '" y="' + ly + '">v' + '₀₁₂'[i] + '</text>';
+    });
+    var svg = '<svg class="lab-svg" viewBox="0 0 152 152" role="img" aria-label="' + t(L('8 × 8 的画面，三角形和像素 (3, 4)', 'The 8 × 8 target with the triangle and pixel (3, 4)')) + '">' + inner + '</svg>';
+    var key = '';
+    if (step >= 1) P.vertices.forEach(function (v, i) {
+      key += '<div><i style="background:' + hexes[i] + '"></i><span>v' + '₀₁₂'[i] + ' ' + t(names[i]) + '</span>' + (step >= 3 ? '<b>' + t(L('权重 ', 'weight ')) + P.weights[i] + '</b>' : '') + '</div>';
+    });
+    key += '<div class="lab-result"><i style="background:' + (step >= 4 ? rgb : 'transparent') + '"></i><span>' + t(L('像素 (3, 4)', 'Pixel (3, 4)')) + '</span><b>' + (step >= 6 ? '(' + P.rgb.join(', ') + ')' : step >= 4 ? '(' + P.color.join(', ') + ')' : '?') + '</b></div>';
+    var note = model === 'a100' ? '<p class="lab-note">' + t(L('NVIDIA 没有说明 A100 的图形能力，这里按 H100 来讲。', 'NVIDIA doesn’t describe A100’s graphics capability, so this follows H100.')) + '</p>' : '';
+    return '<div class="lab-fig"><div class="lab-px">' + svg + '<div class="lab-key">' + key + '</div></div>' + note + log('pixel', step, model) + '</div>';
+  }
+
+  // Stacking: one cross-section of the package, with this step's parts picked out.
+  var STACK_ON = [['dram', 'base', 'die'], ['dram', 'base'], ['tsv'], ['base', 'link'], ['interposer', 'link'], ['ubump', 'interposer', 'c4', 'substrate', 'balls', 'pcb'], ['cold', 'heat'], ['die', 'dram']];
+  var STACK_LABELS = [
+    ['cold', L('冷板（模型里没画）', 'Cold plate (not drawn)'), 12], ['dram', L('DRAM 叠层（画了 8 层）', 'DRAM dies (8 shown)'), 40], ['tsv', L('TSV 硅通孔', 'TSVs'), 55],
+    ['base', L('底部接口芯片', 'Base die'), 73], ['ubump', L('微凸点', 'Microbumps'), 80], ['interposer', L('硅中介层', 'Silicon interposer'), 90],
+    ['c4', L('C4 凸点', 'C4 bumps'), 101], ['substrate', L('有机基板', 'Organic substrate'), 114], ['balls', L('焊球', 'Solder balls'), 129], ['pcb', L('PCB（SXM 模组）', 'PCB (SXM board)'), 142]
   ];
-  function pixelGrid(x, y, size, filled) {
-    var out = '';
-    for (var i = 0; i < 64; i++) {
-      var col = i % 8, row = Math.floor(i / 8), target = col === 3 && row === 4;
-      out += '<rect x="' + (x + col * size) + '" y="' + (y + row * size) + '" width="' + (size - 2) + '" height="' + (size - 2) + '" rx="1" class="lab-pixel' + (target ? ' lab-target' : '') + (target && filled ? ' lab-filled' : '') + '"/>';
-    }
-    return out;
-  }
-  function triangle() {
-    return '<path class="lab-tri" d="M68 13 10 121 136 121Z"/><path class="lab-weight" d="M68 13 59.4 99.4 10 121M59.4 99.4 136 121"/>' + svgText(68, 9, 'v₀') + svgText(8, 136, 'v₁') + svgText(140, 136, 'v₂') + '<circle cx="59.4" cy="99.4" r="3.5" fill="#f2f2ee"/>';
-  }
-  function pixelDiagram(step, model) {
-    var inner = '';
-    if (step === 0) {
-      for (var t = 0; t < 8; t++) for (var r2 = 0; r2 < 9; r2++) inner += '<rect x="' + (14 + t * 9) + '" y="' + (18 + r2 * 12) + '" width="7" height="10" rx="1" class="lab-box' + (t === 0 && r2 === 3 ? ' lab-active' : '') + '"/>';
-      inner += svgText(50, 140, L('一个 GPC（9 个 TPC）', 'One GPC (9 TPCs)'), 'lab-svg-dim') + pixelGrid(170, 18, 13, false) + svgText(222, 140, L('目标像素 (3, 4)', 'Target pixel (3, 4)'), 'lab-svg-dim');
-      if (model === 'a100') inner += svgText(170, 8, L('A100 的图形能力 NVIDIA 没有说明，按 H100 讲', 'NVIDIA doesn’t describe A100 graphics; shown as on H100'), 'lab-svg-dim');
-    } else if (step === 1) {
-      inner = '<g transform="translate(160,0)">' + triangle() + '</g>' + box(40, 75, 64, 30, L('顶点缓冲', 'Vertex buffer'), 'active') + poly([[72, 75], [150, 75]], 'lab-live') + svgText(48, 120, 'HBM → L2 → SM', 'lab-svg-dim');
-    } else if (step === 2) {
-      inner = box(60, 70, 80, 34, 'p = (x, y, z, 1)', null) + box(190, 70, 70, 34, 'M · p', 'active') + box(290, 70, 80, 34, L('屏幕 x, y', 'Screen x, y'), null) + poly([[100, 70], [155, 70]], 'lab-live') + poly([[225, 70], [250, 70]], 'lab-live') + svgText(170, 125, L('在 SM 的 FP32 通道上执行', 'Runs on the SM’s FP32 lanes'), 'lab-svg-dim');
-    } else if (step === 3) {
-      inner = '<clipPath id="lab-tri-clip"><path d="M68 13 10 121 136 121Z"/></clipPath>' + triangle() + '<rect data-phase-scan class="lab-scan" x="8" y="14" width="132" height="2"/>' + svgText(250, 50, 'w = (0.2, 0.5, 0.3)', 'lab-svg-result') + svgText(250, 74, L('三个权重都 ≥ 0', 'All three weights ≥ 0'), 'lab-svg-dim') + svgText(250, 96, L('在三角形内', 'Inside the triangle'), 'lab-svg-dim');
-    } else if (step === 4) {
-      inner = box(40, 75, 60, 34, L('片元', 'Fragment'), null) + box(150, 75, 90, 40, 'Σ wᵢ · vᵢ', 'active') + poly([[70, 75], [105, 75]], 'lab-live');
-      [.2, .5, .3].forEach(function (v, i) { inner += '<rect class="' + ['lab-bar-r', 'lab-bar-g', 'lab-bar-b'][i] + '" x="' + (232 + i * 28) + '" y="' + (115 - v * 90) + '" width="18" height="' + (v * 90) + '" rx="2"/>' + svgText(241 + i * 28, 132, ['R', 'G', 'B'][i]); });
-    } else if (step === 5) {
-      for (var yy = 0; yy < 2; yy++) for (var xx = 0; xx < 2; xx++) inner += '<rect x="' + (20 + xx * 30) + '" y="' + (94 + yy * 22) + '" width="28" height="20" class="lab-box' + (xx === 0 && yy === 1 ? ' lab-active' : '') + '"/>';
-      inner += svgText(50, 86, L('纹理', 'Texture'), 'lab-svg-dim') + box(170, 46, 90, 34, 'sample(uv)', 'active') + svgText(285, 42, '(1, 1, 1)', 'lab-svg-result') + svgText(200, 122, 'c × 1 = c', 'lab-svg-result') + poly([[50, 106], [50, 80], [170, 80], [170, 63]], 'lab-live');
-    } else if (step === 6) {
-      inner = '<rect x="20" y="36" width="88" height="10" rx="2" fill="#6fd3bf"/>' + svgText(64, 28, 'z = 0.4') + '<rect x="20" y="96" width="154" height="10" rx="2" fill="#5d6266"/>' + svgText(97, 122, L('已有 z = 0.7', 'Stored z = 0.7')) + box(210, 72, 74, 34, '0.4 < 0.7', 'active') + svgText(300, 76, 'pass', 'lab-svg-result') + svgText(210, 130, 'fb[3,4] = (51, 128, 77)', 'lab-svg-strong');
-    } else {
-      inner = pixelGrid(20, 30, 11, true) + svgText(64, 22, L('帧缓冲 · HBM', 'Framebuffer · HBM'), 'lab-svg-dim') + box(270, 75, 90, 34, L('主机', 'Host'), 'active') + poly([[110, 75], [225, 75]], 'lab-live') + svgText(168, 66, 'PCIe / NVLink', 'lab-svg-dim') + svgText(170, 135, L('H100 SXM 没有显示接口', 'H100 SXM has no display output'), 'lab-svg-dim');
-    }
-    return inner + dots(PIXEL_STEPS[step].paths.length);
+  function stacking(step, model) {
+    var on = STACK_ON[step] || [], inner = '', i, x;
+    function cls(base, id) { return base + (on.indexOf(id) >= 0 ? ' lab-on' : ''); }
+    inner += '<rect class="' + cls('lab-cold', 'cold') + '" x="8" y="6" width="164" height="12" rx="2"/>';
+    [[12, 60], [120, 168]].forEach(function (span) {
+      for (i = 0; i < 8; i++) inner += '<rect class="' + cls('lab-part', 'dram') + '" x="' + span[0] + '" y="' + (28 + i * 5) + '" width="' + (span[1] - span[0]) + '" height="4" rx="1"/>';
+      inner += '<rect class="' + cls('lab-part', 'base') + '" x="' + span[0] + '" y="69" width="' + (span[1] - span[0]) + '" height="8" rx="1"/>';
+      [14, 24, 34].forEach(function (dx) { inner += '<line class="' + cls('lab-tsv', 'tsv') + '" x1="' + (span[0] + dx) + '" x2="' + (span[0] + dx) + '" y1="28" y2="69"/>'; });
+    });
+    inner += '<rect class="' + cls('lab-part', 'die') + '" x="68" y="28" width="44" height="49" rx="2"/><text x="90" y="56" text-anchor="middle"' + (on.indexOf('die') >= 0 ? ' class="lab-on"' : '') + '>GPU</text>';
+    for (x = 15; x <= 166; x += 6) inner += '<circle class="' + cls('lab-ball', 'ubump') + '" cx="' + x + '" cy="80.5" r="1.5"/>';
+    inner += '<rect class="' + cls('lab-part', 'interposer') + '" x="6" y="84" width="168" height="12" rx="2"/>';
+    for (x = 14; x <= 168; x += 11) inner += '<circle class="' + cls('lab-ball', 'c4') + '" cx="' + x + '" cy="101" r="2.5"/>';
+    inner += '<rect class="' + cls('lab-part', 'substrate') + '" x="2" y="106" width="176" height="16" rx="2"/>';
+    for (x = 12; x <= 170; x += 17.5) inner += '<circle class="' + cls('lab-ball', 'balls') + '" cx="' + x + '" cy="128.5" r="4"/>';
+    inner += '<rect class="' + cls('lab-part', 'pcb') + '" x="0" y="135" width="180" height="14" rx="2"/>';
+    if (on.indexOf('link') >= 0) inner += '<path class="lab-link" d="M36 77V90H90V77"/><path class="lab-link" d="M144 77V90H90"/>';
+    if (on.indexOf('heat') >= 0) [36, 90, 144].forEach(function (hx) { inner += '<path class="lab-heatline" d="M' + hx + ' 27V20"/><path class="lab-heathead" d="M' + (hx - 4) + ' 21L' + hx + ' 14L' + (hx + 4) + ' 21Z"/>'; });
+    STACK_LABELS.forEach(function (label, n) {
+      var y = 14 + n * 15, lit = on.indexOf(label[0]) >= 0, tx = { cold: 172, dram: 168, tsv: 154, base: 168, ubump: 168, interposer: 174, c4: 170, substrate: 178, balls: 172, pcb: 180 }[label[0]];
+      inner += '<path class="lab-lead" d="M' + tx + ' ' + label[2] + 'L190 ' + (y - 4) + '"/><text x="194" y="' + y + '"' + (lit ? ' class="lab-on"' : '') + '>' + t(label[1]) + '</text>';
+    });
+    var svg = '<svg class="lab-svg" viewBox="0 0 326 156" role="img" aria-label="' + t(L('封装的剖面：从冷板到电路板', 'Cross-section of the package, cold plate down to the board')) + '">' + inner + '</svg>';
+    return '<div class="lab-fig">' + svg + (step === 0 ? '<p class="lab-note">' + t(L('剖面示意，没有按比例画。亮起来的是这一步讲的部分。', 'A cross-section sketch, not to scale. The lit parts are the ones this step is about.')) + '</p>' : '') + log('stacking', step, model) + '</div>';
   }
 
-  var STACK_STEPS = [
-    { stages: ['A100 2.04 TB/s', 'H100 3.35 TB/s', L('5 组 HBM', '5 stacks')], paths: [[[40, 110], [40, 30]]] },
-    { stages: L('DRAM ×8 · 底部芯片 · 中介层', 'DRAM ×8 · base die · interposer'), paths: [[[300, 130], [300, 20]]] },
-    { stages: ['TSV', L('微凸点', 'Microbump'), L('底部芯片', 'Base die')], paths: [[[130, 134], [130, 18]], [[210, 134], [210, 18]]] },
-    { stages: [L('通道并行', 'Channels in parallel'), '1024 bit', '× 5'], paths: [[[20, 70], [320, 70]]] },
-    { stages: ['HBM', L('中介层', 'Interposer'), 'PHY'], paths: [[[64, 40], [138, 40]], [[64, 78], [138, 78]], [[64, 116], [138, 116]], [[276, 40], [202, 40]], [[276, 78], [202, 78]]] },
-    { stages: L('微凸点 · 凸点 · 焊球', 'Microbumps · bumps · balls'), paths: [[[24, 18], [24, 138]]] },
-    { stages: [L('发热', 'Heat'), L('顶面', 'Top surface'), L('冷板', 'Cold plate')], paths: [[[170, 112], [170, 20]], [[70, 112], [70, 30]], [[270, 112], [270, 30]]], heat: true },
-    { stages: ['144 → 132 SM', L('6 → 5 组 HBM', '6 → 5 stacks'), L('位置每颗不同', 'Varies per chip')], paths: [[[14, 10], [166, 10]], [[212, 12], [316, 12]]] }
-  ];
-  function stackDiagram(step, model) {
-    var inner = '', a100 = model === 'a100', i;
-    if (step === 0) {
-      inner += svgText(40, 140, L('需求', 'Need'), 'lab-svg-dim');
-      [['A100', 2.04], ['H100', 3.35]].forEach(function (row, n) {
-        var w = row[1] / 3.35 * 200, y = 40 + n * 44, on = (n === 1) !== a100;
-        inner += svgText(100, y + 4, row[0], on ? 'lab-svg-strong' : '') + '<rect x="130" y="' + (y - 9) + '" width="' + w.toFixed(1) + '" height="16" rx="3" fill="' + (on ? '#6fd3bf' : '#3b3f42') + '"/>' + svgText(130 + w + 26, y + 4, row[1] + ' TB/s', on ? 'lab-svg-result' : '');
-      });
-    } else if (step === 1 || step === 2) {
-      for (i = 0; i < 8; i++) inner += '<rect class="lab-box' + (step === 1 ? ' lab-active' : '') + '" x="70" y="' + (18 + i * 13) + '" width="200" height="10" rx="2"/>';
-      inner += '<rect class="lab-box lab-addr" x="60" y="124" width="220" height="12" rx="2"/>' + svgText(170, 148, L('底部接口芯片', 'Base die'), 'lab-svg-dim');
-      if (step === 2) for (i = 0; i < 9; i++) { inner += '<line x1="130" x2="130" y1="' + (18 + i * 13 - 3) + '" y2="' + (18 + i * 13 + 10) + '" stroke="#b87a4c" stroke-width="3"/><line x1="210" x2="210" y1="' + (18 + i * 13 - 3) + '" y2="' + (18 + i * 13 + 10) + '" stroke="#b87a4c" stroke-width="3"/>'; }
-      else inner += svgText(300, 76, '×8', 'lab-svg-strong');
-    } else if (step === 3) {
-      var ch = a100 ? 8 : 16, w = 280 / ch;
-      for (i = 0; i < ch; i++) inner += '<rect class="lab-box lab-active" x="' + (30 + i * w) + '" y="44" width="' + (w - 3) + '" height="52" rx="2"/>';
-      inner += svgText(170, 30, a100 ? '8 × 128 bit' : '16 × 64 bit', 'lab-svg-strong') + svgText(170, 122, a100 ? '2.04e12 × 8 ÷ 5120 ≈ 3.2 Gb/s' : '3.35e12 × 8 ÷ 5120 ≈ 5.2 Gb/s', 'lab-svg-result') + svgText(170, 142, L('每根数据线的速率', 'Rate per data line'), 'lab-svg-dim');
-    } else if (step === 4) {
-      inner += box(170, 78, 64, 116, 'GPU', 'active');
-      [40, 78, 116].forEach(function (y) { inner += box(40, y, 48, 30, 'HBM', 'addr'); });
-      [40, 78].forEach(function (y) { inner += box(300, y, 48, 30, 'HBM', 'addr'); });
-      inner += box(300, 116, 48, 30, L('未启用', 'off'), 'off');
-      [40, 78, 116].forEach(function (y) { inner += poly([[64, y], [138, y]], 'lab-live'); });
-      [40, 78].forEach(function (y) { inner += poly([[276, y], [202, y]], 'lab-live'); });
-      inner += svgText(170, 150, L('每组 1024 根线，长约 1 mm', '1024 lines per stack, about 1 mm long'), 'lab-svg-dim');
-    } else if (step === 5) {
-      var rows = [[L('裸片 / HBM', 'Die / HBM'), '#4d565d'], [L('微凸点', 'Microbumps'), '#9aa1a6'], [L('硅中介层', 'Silicon interposer'), '#3b4248'], [L('C4 凸点', 'C4 bumps'), '#9aa1a6'], [L('有机基板', 'Organic substrate'), '#2f3a33'], [L('焊球', 'Solder balls'), '#9aa1a6'], ['PCB', '#1b4a3a']];
-      rows.forEach(function (r, n) { var h = n % 2 ? 6 : 14, y = 18 + n * 17; inner += '<rect x="60" y="' + y + '" width="220" height="' + h + '" rx="2" fill="' + r[1] + '"/>' + svgText(310, y + 8, r[0], 'lab-svg-dim'); });
-    } else if (step === 6) {
-      inner += '<rect x="30" y="16" width="280" height="10" rx="2" fill="#3b3f42"/>' + svgText(170, 12, L('冷板（模型里没有画）', 'Cold plate (not in the model)'), 'lab-svg-dim');
-      inner += box(170, 124, 70, 24, 'GPU', 'warn') + box(70, 124, 50, 24, 'HBM', 'warn') + box(270, 124, 50, 24, 'HBM', 'warn');
-      [70, 170, 270].forEach(function (x) { inner += poly([[x, 112], [x, 30]], 'lab-live lab-heat'); });
-      inner += svgText(170, 80, a100 ? '400 W' : '≤ 700 W', 'lab-svg-strong');
-    } else {
-      var off = a100 ? function (g, t) { return g === 7 || (g >= 5 && t === (g * 3 + 2) % 8); } : function (g, t) { return g < 6 && t === (g * 5 + 3) % 9; };
-      var tpcs = a100 ? 8 : 9;
-      for (var g = 0; g < 8; g++) for (var t2 = 0; t2 < tpcs; t2++) inner += '<rect x="' + (14 + (g % 4) * 38 + (g % 4 > 1 ? 4 : 0)) + '" y="' + (16 + Math.floor(g / 4) * 64 + t2 * 6.4) + '" width="32" height="5" rx="1" class="lab-box' + (off(g, t2) ? ' lab-off' : ' lab-active') + '"/>';
-      for (var s = 0; s < 6; s++) inner += '<rect x="' + (212 + (s % 2) * 56) + '" y="' + (18 + Math.floor(s / 2) * 40) + '" width="48" height="32" rx="3" class="lab-box' + (s === 5 ? ' lab-off' : ' lab-addr') + '"/>';
-      inner += svgText(84, 148, a100 ? '108 / 128 SM' : '132 / 144 SM', 'lab-svg-strong') + svgText(264, 148, L('5 / 6 组 HBM', '5 / 6 stacks'), 'lab-svg-strong');
-    }
-    return inner + dots(STACK_STEPS[step].paths.length, STACK_STEPS[step].heat ? 'lab-dot-heat' : '');
-  }
-
-  var SPECS = { pagetable: PAGE_STEPS, pixel: PIXEL_STEPS, stacking: STACK_STEPS };
-  function stagesOf(spec) { var st = spec.stages; return Array.isArray(st) ? st : tr(st).split(' · '); }
-  function along(points, fraction) {
-    var lengths = [], total = 0;
-    for (var i = 1; i < points.length; i++) {
-      var dx = points[i][0] - points[i - 1][0], dy = points[i][1] - points[i - 1][1];
-      total += Math.sqrt(dx * dx + dy * dy); lengths.push(total);
-    }
-    var target = clamp(fraction) * total, last = 0;
-    for (var j = 0; j < lengths.length; j++) {
-      if (target <= lengths[j] || j === lengths.length - 1) {
-        var p = (target - last) / (lengths[j] - last || 1);
-        return { x: points[j][0] + (points[j + 1][0] - points[j][0]) * p, y: points[j][1] + (points[j + 1][1] - points[j][1]) * p };
-      }
-      last = lengths[j];
-    }
-    return { x: points[0][0], y: points[0][1] };
-  }
-  function cycle(phase) { phase = Number(phase); return Number.isFinite(phase) ? ((phase % 1) + 1) % 1 : 0; }
-  // The repeating illustration is driven by an unbounded visual phase; it never
-  // changes the worked result, which follows the separate progress clock.
-  function visualState(journey, step, phase, progress) {
-    var table = SPECS[journey]; if (!table) return null;
-    step = Math.max(0, Math.min(table.length - 1, Math.floor(Number(step) || 0)));
-    var u = cycle(phase), spec = table[step], stages = stagesOf(spec), segment = Math.min(stages.length - 1, Math.floor(u * stages.length));
-    var paths = journey === 'pagetable' ? spec.paths : spec.paths;
-    return { journey: journey, step: step, phase: Number(phase) || 0, cycle: u, segment: segment, signal: tr(stages[segment]),
-      pulse: .5 - .5 * Math.cos(u * Math.PI * 2), progress: progress === undefined ? null : clamp(progress),
-      particles: paths.map(function (p, i) { return along(p, cycle(u + i * (journey === 'stacking' && step === 4 ? .2 : 0))); }),
-      scan: spec.scan ? { x: 8, y: 14 + u * 107, width: 132, height: 2 } : null };
-  }
-  function concept(journey, step, model) {
-    var spec = SPECS[journey][step], stages = stagesOf(spec), status = '<div class="lab-status"><span>' + escapeHTML(tr(L('循环演示', 'Looping'))) + '</span><span data-phase-status>' + escapeHTML(tr(stages[0])) + '</span></div>';
-    var body;
-    if (journey === 'pagetable') body = addressBits(spec) + svg(pageDiagram(spec), L('地址翻译经过的部件', 'Parts the translation passes through'), 150) + (spec.pa ? '<div class="lab-result">PA = 0x24e000000 + 0x164a40 = 0x24e164a40</div>' : '');
-    else if (journey === 'pixel') body = svg(pixelDiagram(step, model), L('像素 (3, 4) 在这一步的处理', 'Pixel (3, 4) at this step'), spec.height);
-    else body = svg(stackDiagram(step, model), L('封装和堆叠示意', 'Package and stacking sketch'), 152);
-    return status + body;
+  var FIGURES = { gemm: gemm, pagetable: pagetable, pixel: pixel, stacking: stacking };
+  // The figure for one step as an HTML string. Pure, so Node tests can read it.
+  function markup(journey, step, model, language) {
+    var draw = FIGURES[journey] || gemm;
+    var i = Math.max(0, Math.min(7, Math.floor(Number(step) || 0)));
+    var previous = forced; forced = language || null;
+    try { return draw(i, model || 'h100'); } finally { forced = previous; }
   }
 
   var caches = typeof WeakMap === 'function' ? new WeakMap() : null;
-  function setVisualPhase(container, phase, progress) {
-    if (!container || !caches) return;
-    var cache = caches.get(container); if (!cache || cache.journey === 'gemm') return;
-    var d = visualState(cache.journey, cache.step, phase, progress); if (!d) return;
-    var rootNode = cache.root;
-    rootNode.dataset.phase = Number(d.phase).toFixed(4);
-    rootNode.dataset.signal = d.signal;
-    rootNode.dataset.segment = String(d.segment);
-    if (progress !== undefined) rootNode.dataset.progress = clamp(progress).toFixed(3);
-    cache.phaseMarkers.forEach(function (node, i) { var p = d.particles[i]; if (!p) return; node.setAttribute('cx', p.x.toFixed(2)); node.setAttribute('cy', p.y.toFixed(2)); });
-    if (d.scan) cache.phaseScans.forEach(function (node) { node.setAttribute('y', d.scan.y.toFixed(2)); });
-    if (cache.phaseStatus && cache.phaseStatus.textContent !== d.signal) cache.phaseStatus.textContent = d.signal;
-    cache.lastVisualPhase = Number(phase) || 0;
-  }
-  function focusK(cache, k) {
-    cache.k = k;
-    cache.matrixCells.forEach(function (node) { node.classList.toggle('lab-k-focus', Number(node.dataset.matrixK) === k); });
-    cache.products.forEach(function (node) { node.classList.toggle('lab-product-on', Number(node.dataset.labK) === k); });
-  }
   function setProgress(container, progress) {
     if (!container || !caches) return;
     var cache = caches.get(container); if (!cache) return;
     var p = clamp(progress);
-    cache.root.style.setProperty('--lab-progress', (p * 100).toFixed(1) + '%');
-    if (cache.journey !== 'gemm') return;
-    if (cache.step === 3) cache.packets.forEach(function (node) { node.style.setProperty('--packet-alpha', String(clamp(p * 5 - Number(node.dataset.packet)))); });
-    if (cache.step === 4) cache.lanes.forEach(function (node, i) { node.classList.toggle('lab-lane-on', i <= Math.floor(p * 31)); });
-    if (cache.step === 5 || cache.step === 6) {
-      var acc = accumulation(cache.step, p);
-      if (acc.count !== cache.accCount) {
-        cache.accCount = acc.count;
-        cache.acc.textContent = String(acc.value);
-        var t = TRACE[acc.count < K ? acc.count : K - 1];
-        cache.expression.innerHTML = cache.step === 5 && acc.count === TILE_K
-          ? '<span class="lab-cv">2 + 3 + 6 + 8 = 19</span> · ' + escapeHTML(tr(L('第一块完成', 'tile 1 done')))
-          : acc.count === K
-          ? '<span class="lab-cv">19 + 18 = 37</span> · ' + escapeHTML(tr(L('累加完成', 'done')))
-          : String(acc.value) + ' + <span class="lab-av">' + t.a + '</span> × <span class="lab-bv">' + t.b + '</span> → <span class="lab-cv">' + t.acc + '</span>';
-        cache.products.forEach(function (node) { node.classList.toggle('lab-product-done', Number(node.dataset.labK) < acc.count); });
-        if (cache.playing || cache.manualK === null) focusK(cache, acc.currentK);
-      }
-    }
+    cache.root.dataset.progress = p.toFixed(3);
+    if (cache.journey !== 'gemm' || cache.step < 5) return;
+    var acc = accumulation(cache.step, p);
+    if (acc.count === cache.accCount) return;
+    cache.accCount = acc.count;
+    if (cache.acc) cache.acc.textContent = String(acc.value);
+    if (cache.expression) cache.expression.textContent = expression(cache.step, acc.count);
+    cache.products.forEach(function (node) {
+      var k = Number(node.dataset.labP), done = k < acc.count;
+      node.textContent = done ? TRACE[k].product : '·';
+      node.classList.toggle('lab-done', done);
+      node.classList.toggle('lab-next', !done && k === acc.count && (cache.step === 5 || cache.step === 6));
+    });
   }
   function render(container, state, step, progress) {
     if (!container || !container.ownerDocument) return;
     installStyle(container.ownerDocument);
-    var journey = SPECS[state.journey] ? state.journey : 'gemm';
-    var max = journey === 'gemm' ? 7 : SPECS[journey].length - 1;
-    var i = Math.max(0, Math.min(max, Math.floor(state.stepIndex || 0)));
+    var journey = FIGURES[state.journey] ? state.journey : 'gemm';
+    var i = Math.max(0, Math.min(7, Math.floor(state.stepIndex || 0)));
     var key = journey + ':' + i + ':' + (state.model || 'h100') + ':' + lang();
     var cache = caches && caches.get(container);
     if (!cache || cache.key !== key) {
-      var html = journey === 'gemm' ? gemm(i) : concept(journey, i, state.model);
-      container.innerHTML = '<div class="lab-root" data-journey="' + escapeHTML(journey) + '" data-step="' + i + '" data-lang="' + lang() + '">' + html + '</div>';
-      cache = { key: key, container: container, root: container.firstElementChild, journey: journey, step: i, accCount: -1, playing: !!state.playing, manualK: null,
-        lastVisualPhase: cache && cache.lastVisualPhase || 0,
-        matrixCells: Array.from(container.querySelectorAll('[data-matrix-k]')),
-        phaseMarkers: Array.from(container.querySelectorAll('[data-phase-marker]')), phaseScans: Array.from(container.querySelectorAll('[data-phase-scan]')),
-        phaseStatus: container.querySelector('[data-phase-status]'),
-        packets: Array.from(container.querySelectorAll('[data-packet]')), lanes: Array.from(container.querySelectorAll('.lab-lane')),
-        products: Array.from(container.querySelectorAll('[data-lab-k]')), acc: container.querySelector('[data-lab-acc]'), expression: container.querySelector('[data-lab-expression]') };
+      container.innerHTML = '<div class="lab-root" data-journey="' + esc(journey) + '" data-step="' + i + '" data-lang="' + lang() + '">' + markup(journey, i, state.model) + '</div>';
+      cache = { key: key, root: container.firstElementChild, journey: journey, step: i, accCount: -1,
+        products: Array.from(container.querySelectorAll('[data-lab-p]')), acc: container.querySelector('[data-lab-acc]'), expression: container.querySelector('[data-lab-expression]') };
       if (caches) caches.set(container, cache);
-      cache.products.forEach(function (node) {
-        function selectPair() { cache.manualK = Number(node.dataset.labK); focusK(cache, cache.manualK); }
-        node.addEventListener('click', selectPair); node.addEventListener('focus', selectPair);
-      });
     }
-    if (state.playing && !cache.playing) cache.manualK = null;
-    cache.playing = !!state.playing;
     setProgress(container, progress === undefined ? 0 : progress);
-    if (journey !== 'gemm') setVisualPhase(container, cache.lastVisualPhase || 0, progress);
   }
-  return { render: render, setProgress: setProgress, setVisualPhase: setVisualPhase, visualState: visualState, SPECS: SPECS, STYLE: STYLE,
+  return { render: render, setProgress: setProgress, markup: markup, logRows: logRows, roundStatus: roundStatus, activeRound: activeRound, LOGS: LOGS, STYLE: STYLE,
     GEMM: { A: A, B: B, C: C, row: ROW, col: COL, k: K, tileK: TILE_K, trace: TRACE, tileSums: [19, 18], result: C[ROW][COL] },
     multiply: multiply, dotTrace: dotTrace, accumulation: accumulation,
-    gpuAddressFields: gpuAddressFields, physicalAddress: physicalAddress, PAGE: PAGE,
-    barycentricColor: barycentricColor, perLineRate: perLineRate };
+    gpuAddressFields: gpuAddressFields, physicalAddress: physicalAddress, PAGE: PAGE, PAGE_BITS: PAGE_BITS,
+    PIXEL: PIXEL, barycentricColor: barycentricColor, barycentricWeights: barycentricWeights,
+    perLineRate: perLineRate, PRODUCT: PRODUCT, STACK_ON: STACK_ON };
 });
